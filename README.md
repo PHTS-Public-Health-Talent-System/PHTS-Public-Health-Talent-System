@@ -9,6 +9,7 @@ This README is intentionally detailed so anyone joining the project can understa
 ## 1) What This System Does
 
 ### Core workflows
+
 1. **Request Workflow (Eligibility Requests)**
    - Users submit P.T.S. requests with attachments
    - Approvals happen in multiple steps (HEAD_WARD → HEAD_DEPT → PTS_OFFICER → HEAD_HR → HEAD_FINANCE → DIRECTOR)
@@ -62,10 +63,12 @@ phts-project/
 │  ├─ next.config.ts
 │  └─ package.json
 │
+├─ infra/
+│  └─ ocr/                   # OCR stack (optional)
+│     ├─ docker-compose.ocr.yml
+│     ├─ ocr-typhoon/         # OCR service container
+│     └─ ocr-models/          # OCR model files (ignored)
 ├─ scripts/                  # Workspace scripts
-├─ docs/                     # System documentation
-├─ ocr-typhoon/              # OCR service (optional)
-├─ ocr-models/               # OCR model files (ignored)
 └─ package.json              # Root scripts
 ```
 
@@ -74,29 +77,34 @@ phts-project/
 ## 4) Quick Start
 
 ### Step 1 — Install all dependencies
+
 ```
 cd phts-project
 npm run install:all
 ```
 
 ### Step 2 — Environment configuration
+
 - Backend: `backend/.env`
 - Frontend: `frontend/.env.local`
 - Example file: `backend/.env.example`
 
 Typical env keys:
+
 - DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
 - JWT_SECRET
 - REDIS_HOST, REDIS_PORT (if enabled)
 - NEXT_PUBLIC_API_URL (frontend)
 
 ### Step 3 — Run dev (backend + frontend)
+
 ```
 cd phts-project
 npm run dev:all
 ```
 
 ### Step 4 — Build all
+
 ```
 cd phts-project
 npm run build:all
@@ -105,6 +113,7 @@ npm run build:all
 ---
 
 ## 5) Root Scripts (package.json)
+
 - `npm run install:all` — install backend + frontend deps
 - `npm run dev:all` — run backend + frontend together
 - `npm run build:all` — build backend + frontend
@@ -112,8 +121,10 @@ npm run build:all
 ---
 
 ## 6) OCR Support
+
 OCR is optional but supported:
-- `docker-compose.ocr.yml` is provided for OCR service
+
+- Docker compose lives at `infra/ocr/docker-compose.ocr.yml`
 - OCR results are stored in `req_ocr_results`
 
 See details in `backend/README.md`.
@@ -121,12 +132,13 @@ See details in `backend/README.md`.
 ---
 
 ## 7) Documentation
-- System design + workflows: `docs/`
-- Internal repo guidelines: `AGENTS.md`
+
+- System design + workflows: `../docs/` (workspace root)
 
 ---
 
 ## 8) Team Conventions
+
 - Keep domain logic inside the correct module
 - camelCase for API/services
 - PascalCase for React components
@@ -136,5 +148,6 @@ See details in `backend/README.md`.
 ---
 
 More details:
+
 - Backend: `backend/README.md`
 - Frontend: `frontend/README.md`
