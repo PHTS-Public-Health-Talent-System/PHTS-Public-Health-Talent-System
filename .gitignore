@@ -1,0 +1,96 @@
+# Dependencies
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.yarn/logs/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.turbo/
+.swc/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+next-env.d.ts
+*.sarif
+codeql-db/
+.eslintcache
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.test
+.env.perf
+.envrc
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime data
+tmp/
+temp/
+
+# Deployment
+.vercel
+
+# Editor and OS files
+**/.vscode/
+**/.idea/
+**/.history/
+.DS_Store
+Thumbs.db
+
+# Certificates and secrets
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Database dumps and local DBs
+*.sql
+*.dump
+*.bak
+*.backup
+*.sqlite
+*.sqlite3
+*.db
+
+# AI assistant files (may contain credentials)
+CLAUDE.md
+database.txt
+AGENTS.md
+
+# Uploads
+uploads/
+
+# Local OCR models (large files)
+infra/ocr/ocr-models/
+
+# Miscellaneous
+.cache/
+.githooks/
+scripts/
+
+# SonarScanner
+.scannerwork/
+
+# frontend_old
+/frontend_old

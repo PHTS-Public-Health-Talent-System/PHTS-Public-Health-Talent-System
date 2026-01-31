@@ -1,0 +1,225 @@
+import { Router } from "express";
+import {
+  approveByDirector,
+  approveByHR,
+  approveByHeadFinance,
+  addPeriodItems,
+  calculateOnDemand,
+  calculatePeriod,
+  createPeriod,
+  createLeavePayException,
+  createLeaveReturnReport,
+  deleteLeavePayException,
+  deleteLeaveReturnReport,
+  getPeriodDetail,
+  getPeriodPayouts,
+  getPeriodSummaryByProfession,
+  getPeriodReport,
+  listPeriods,
+  listLeavePayExceptions,
+  listLeaveReturnReports,
+  removePeriodItem,
+  rejectPeriod,
+  searchPayouts,
+  submitToHR,
+} from "./payroll.controller.js";
+import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
+import { validate } from "../../shared/validate.middleware.js";
+import {
+  createPeriodSchema,
+  calculateOnDemandSchema,
+  addPeriodItemsSchema,
+  rejectPeriodSchema,
+  leavePayExceptionSchema,
+  leaveReturnReportSchema,
+} from "./payroll.schema.js";
+import { UserRole } from "../../types/auth.js";
+
+const router = Router();
+
+// View period status (authenticated dashboard users)
+router.get("/period/:periodId/payouts", protect, getPeriodPayouts);
+router.get(
+  "/payouts/search",
+  protect,
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  searchPayouts,
+);
+router.get(
+  "/period",
+  protect,
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  listPeriods,
+);
+router.get(
+  "/period/:periodId",
+  protect,
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  getPeriodDetail,
+);
+router.get(
+  "/period/:periodId/report",
+  protect,
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  getPeriodReport,
+);
+router.get(
+  "/period/:periodId/summary-by-profession",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  getPeriodSummaryByProfession,
+);
+
+// Create a new period (PTS_OFFICER/ADMIN)
+router.post(
+  "/period",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  validate(createPeriodSchema),
+  createPeriod,
+);
+router.post(
+  "/period/:periodId/items",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  validate(addPeriodItemsSchema),
+  addPeriodItems,
+);
+router.delete(
+  "/period/:periodId/items/:itemId",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  removePeriodItem,
+);
+
+// Ad-hoc calculation for a single employee (integration tests/tools)
+router.post(
+  "/calculate",
+  protect,
+  restrictTo(
+    UserRole.ADMIN,
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+    UserRole.HEAD_HR,
+  ),
+  validate(calculateOnDemandSchema),
+  calculateOnDemand,
+);
+
+// Calculate (OFFICER/ADMIN)
+router.post(
+  "/period/:periodId/calculate",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  calculatePeriod,
+);
+
+// Submit to HR (OFFICER/ADMIN)
+router.post(
+  "/period/:periodId/submit",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  submitToHR,
+);
+
+// Approve by HR
+router.post(
+  "/period/:periodId/approve-hr",
+  protect,
+  restrictTo(UserRole.HEAD_HR, UserRole.ADMIN),
+  approveByHR,
+);
+
+// Approve by Director
+router.post(
+  "/period/:periodId/approve-director",
+  protect,
+  restrictTo(UserRole.DIRECTOR, UserRole.ADMIN),
+  approveByDirector,
+);
+
+// Approve by Head Finance
+router.post(
+  "/period/:periodId/approve-head-finance",
+  protect,
+  restrictTo(UserRole.HEAD_FINANCE, UserRole.ADMIN),
+  approveByHeadFinance,
+);
+
+// Reject (HR/Director/Admin)
+router.post(
+  "/period/:periodId/reject",
+  protect,
+  restrictTo(UserRole.HEAD_HR, UserRole.DIRECTOR, UserRole.ADMIN),
+  validate(rejectPeriodSchema),
+  rejectPeriod,
+);
+
+// Leave pay exceptions (PTS_OFFICER only)
+router.post(
+  "/leave-pay-exceptions",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(leavePayExceptionSchema),
+  createLeavePayException,
+);
+router.get(
+  "/leave-pay-exceptions",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER),
+  listLeavePayExceptions,
+);
+router.delete(
+  "/leave-pay-exceptions/:id",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER),
+  deleteLeavePayException,
+);
+
+// Leave return reports (education leave) (PTS_OFFICER only)
+router.post(
+  "/leave-return-reports",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(leaveReturnReportSchema),
+  createLeaveReturnReport,
+);
+router.get(
+  "/leave-return-reports",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER),
+  listLeaveReturnReports,
+);
+router.delete(
+  "/leave-return-reports/:id",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER),
+  deleteLeaveReturnReport,
+);
+
+export default router;
