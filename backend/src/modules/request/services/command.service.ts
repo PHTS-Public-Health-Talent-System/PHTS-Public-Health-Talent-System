@@ -449,6 +449,17 @@ export class RequestCommandService {
       if (data.request_type !== undefined)
         updateData.request_type = data.request_type;
 
+      if (data.requested_amount !== undefined) {
+        const amount = Number(data.requested_amount);
+        if (amount > 0) {
+          const isValidRate = await validateRateAmount(amount);
+          if (!isValidRate) {
+            throw new Error(`ยอดเงิน ${amount} ไม่ตรงกับอัตราที่กำหนดในระบบ`);
+          }
+        }
+        updateData.requested_amount = amount;
+      }
+
       if (data.effective_date !== undefined) {
         updateData.effective_date = new Date(
           normalizeDateToYMD(data.effective_date),
