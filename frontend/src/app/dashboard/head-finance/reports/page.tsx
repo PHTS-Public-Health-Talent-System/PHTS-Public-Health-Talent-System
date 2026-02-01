@@ -19,7 +19,7 @@ function triggerDownload(blob: Blob, filename: string) {
   window.URL.revokeObjectURL(url);
 }
 
-export default function HrReportsPage() {
+export default function HeadFinanceReportsPage() {
   const [year, setYear] = useState("");
   const [month, setMonth] = useState("");
   const [profession, setProfession] = useState("");

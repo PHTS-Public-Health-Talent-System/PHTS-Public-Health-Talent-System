@@ -11,6 +11,16 @@ import { useEntityAuditTrail } from "@/features/audit/hooks";
 import { getPeriodStatusLabel, toPeriodLabel } from "@/features/payroll/period-utils";
 import type { PayPeriod, PeriodPayoutRow, PeriodSummaryRow } from "@/features/payroll/api";
 
+type AuditEvent = {
+  audit_id: number;
+  created_at?: string | null;
+  event_type?: string | null;
+  actor_name?: string | null;
+  actor_id?: number | null;
+  actor_role?: string | null;
+  action_detail?: unknown;
+};
+
 export default function HrPayrollDetailPage() {
   const params = useParams();
   const periodId = Number(params.periodId);
@@ -46,21 +56,28 @@ export default function HrPayrollDetailPage() {
           <Button onClick={() => approve.mutate(periodId)} disabled={approve.isPending}>
             {approve.isPending ? "กำลังอนุมัติ..." : "อนุมัติ"}
           </Button>
-          <Button
-            variant="outline"
-            onClick={async () => {
-              const blob = await downloadReport.mutateAsync(periodId);
-              const url = window.URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `period-${periodId}-report.pdf`;
-              a.click();
-              window.URL.revokeObjectURL(url);
-            }}
-            disabled={downloadReport.isPending}
-          >
-            ดาวน์โหลด PDF
-          </Button>
+          <div>
+            {period?.status !== "CLOSED" && (
+              <div className="text-xs text-muted-foreground mb-1">
+                ดาวน์โหลดได้เฉพาะงวดที่ปิดแล้ว
+              </div>
+            )}
+            <Button
+              variant="outline"
+              onClick={async () => {
+                const blob = await downloadReport.mutateAsync(periodId);
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `period-${periodId}-report.pdf`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+              }}
+              disabled={downloadReport.isPending || period?.status !== "CLOSED"}
+            >
+              ดาวน์โหลด PDF
+            </Button>
+          </div>
           <input
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
@@ -170,7 +187,7 @@ export default function HrPayrollDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(auditTrail.data ?? []).map((event: any) => (
+                {((auditTrail.data ?? []) as AuditEvent[]).map((event) => (
                   <TableRow key={event.audit_id}>
                     <TableCell>
                       {event.created_at ? new Date(event.created_at).toLocaleString() : "-"}

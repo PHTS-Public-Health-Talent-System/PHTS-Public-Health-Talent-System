@@ -11,7 +11,7 @@ import { usePeriods, useSearchPayouts } from "@/features/payroll/hooks";
 import { getPeriodStatusLabel, toPeriodLabel } from "@/features/payroll/period-utils";
 import type { PayoutSearchRow, PayPeriod } from "@/features/payroll/api";
 
-export default function HrPayrollHistoryPage() {
+export default function HeadFinanceHistoryPage() {
   const [query, setQuery] = useState("");
   const [year, setYear] = useState("");
   const [month, setMonth] = useState("");
@@ -157,7 +157,7 @@ export default function HrPayrollHistoryPage() {
                     <TableCell className="text-right">{Number(row.total_payable ?? 0).toLocaleString()}</TableCell>
                     <TableCell className="text-right">
                       <Button asChild size="sm" variant="outline">
-                        <Link href={`/dashboard/head-hr/payroll-check/${row.period_id}`}>ดูงวด</Link>
+                        <Link href={`/dashboard/head-finance/budget-check/${row.period_id}`}>ดูงวด</Link>
                       </Button>
                     </TableCell>
                   </TableRow>

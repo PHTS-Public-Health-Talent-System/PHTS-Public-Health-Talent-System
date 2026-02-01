@@ -46,7 +46,6 @@ export default function LoginPage() {
       await login(values)
       // Login success will trigger redirect in AuthProvider
     } catch (err: unknown) {
-      console.error(err)
       const message =
         typeof err === "object" && err && "response" in err
           ? (err as { response?: { data?: { error?: string } } }).response?.data?.error

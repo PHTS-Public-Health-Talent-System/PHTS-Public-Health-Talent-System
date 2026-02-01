@@ -67,15 +67,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // credentials should contain { citizen_id, password }
       const { data } = await api.post<ApiResponse<{ token: string; user: User }>>("/auth/login", credentials)
 
-      // Expected response: { success: true, token: "...", user: { ... } }
+      // Backend returns { success, token, user } (no nested data)
       if (data.success) {
-        localStorage.setItem("token", data.data.token)
-        localStorage.setItem("user", JSON.stringify(data.data.user))
+        const token = (data as unknown as { token?: string }).token ?? data.data?.token
+        const user = (data as unknown as { user?: User }).user ?? data.data?.user
+        if (!token || !user) {
+          throw new Error("Login response missing token or user")
+        }
 
-        setUser(data.data.user)
+        localStorage.setItem("token", token)
+        localStorage.setItem("user", JSON.stringify(user))
+
+        setUser(user)
 
         // Redirect based on Role
-        const role = data.data.user.role
+        const role = user.role
         if (role === 'USER') router.push('/dashboard/user')
         else if (role === 'HEAD_WARD') router.push('/dashboard/head-ward')
         else if (role === 'PTS_OFFICER') router.push('/dashboard/pts-officer')

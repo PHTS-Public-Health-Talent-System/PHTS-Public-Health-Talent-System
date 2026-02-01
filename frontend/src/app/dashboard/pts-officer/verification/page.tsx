@@ -80,7 +80,7 @@ export default function PtsOfficerVerificationPage() {
                       <span className="font-semibold">
                         {req.request_no ?? `#${req.request_id}`}
                       </span>
-                      <StatusBadge status={req.status} />
+                      <StatusBadge status={req.status} currentStep={req.current_step} />
                     </div>
                     <div className="text-sm text-muted-foreground">
                       สังกัด: {req.current_department ?? "-"}

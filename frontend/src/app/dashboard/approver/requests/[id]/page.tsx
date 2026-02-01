@@ -67,6 +67,7 @@ export default function ApproverRequestDetailPage({
     hasNewSignature,
   )
 
+
   const handleAction = async (action: "APPROVE" | "RETURN" | "REJECT") => {
     if (action === "REJECT" && !comment.trim()) {
       toast.error("กรุณาระบุเหตุผลในการไม่อนุมัติ")
@@ -112,7 +113,7 @@ export default function ApproverRequestDetailPage({
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2">
             {request.request_no ?? `#${request.request_id}`}
-            <StatusBadge status={request.status} />
+            <StatusBadge status={request.status} currentStep={request.current_step} />
           </h2>
           <p className="text-sm text-muted-foreground">
             ผู้ยื่น: {requesterName} ({request.citizen_id})

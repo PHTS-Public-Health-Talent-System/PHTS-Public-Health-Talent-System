@@ -5,9 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Eye, Search } from "lucide-react"
 
-import { useMyScopes, usePendingApprovals } from "@/features/request/hooks"
+import { useMyScopes, usePendingApprovals, useApproveBatch } from "@/features/request/hooks"
 import { buildScopeOptions } from "@/features/request/approver-utils"
 import { StatusBadge } from "@/components/common/status-badge"
+import { ConfirmDialog } from "@/components/common/confirm-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -19,6 +20,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useAuth } from "@/components/providers/auth-provider"
+import { toast } from "sonner"
+import { useQueryClient } from "@tanstack/react-query"
 
 export default function ApproverRequestsClient() {
   const router = useRouter()
@@ -26,9 +30,16 @@ export default function ApproverRequestsClient() {
   const scopeQuery = searchParams.get("scope") || "ALL"
   const queryParam = searchParams.get("q") || ""
 
+  const { user } = useAuth()
+  const isDirector = user?.role === "DIRECTOR"
+  const approveBatch = useApproveBatch()
+  const qc = useQueryClient()
+
   const { data: scopes } = useMyScopes()
   const [search, setSearch] = useState(queryParam)
   const [scopeFilter, setScopeFilter] = useState(scopeQuery)
+  const [batchComment, setBatchComment] = useState("")
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
 
   const pendingScope = scopeFilter === "ALL" ? undefined : scopeFilter
   const { data: requests, isLoading } = usePendingApprovals(pendingScope)
@@ -65,6 +76,21 @@ export default function ApproverRequestsClient() {
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     )
   }, [filtered])
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    )
+  }
+
+  const selectAllVisible = () => {
+    setSelectedIds(sorted.map((req) => req.request_id))
+  }
+
+  const clearSelection = () => {
+    setSelectedIds([])
+    setBatchComment("")
+  }
 
   return (
     <div className="space-y-6">
@@ -104,6 +130,60 @@ export default function ApproverRequestsClient() {
         </div>
       </div>
 
+      {isDirector && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">อนุมัติแบบชุด (ผอ.)</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={selectAllVisible}
+              disabled={sorted.length === 0}
+            >
+              เลือกทั้งหมดในรายการ
+            </Button>
+            <Input
+              value={batchComment}
+              onChange={(e) => setBatchComment(e.target.value)}
+              placeholder="ระบุความเห็น (ถ้ามี)"
+              className="w-72"
+            />
+            <ConfirmDialog
+              trigger={
+                <Button disabled={selectedIds.length === 0 || approveBatch.isPending}>
+                  อนุมัติที่เลือก ({selectedIds.length})
+                </Button>
+              }
+              title="ยืนยันการอนุมัติแบบชุด"
+              description="ต้องการอนุมัติคำขอที่เลือกทั้งหมดหรือไม่?"
+              confirmLabel="อนุมัติทั้งหมด"
+              onConfirm={() => {
+                approveBatch.mutate(
+                  { requestIds: selectedIds, comment: batchComment || undefined },
+                  {
+                    onSuccess: () => {
+                      toast.success("อนุมัติคำขอที่เลือกแล้ว")
+                      qc.invalidateQueries({ queryKey: ["pending-approvals"] })
+                      clearSelection()
+                    },
+                    onError: (error: unknown) => {
+                      const msg = error instanceof Error ? error.message : "อนุมัติไม่สำเร็จ"
+                      toast.error(msg)
+                    },
+                  },
+                )
+              }}
+            />
+            {selectedIds.length > 0 && (
+              <Button variant="ghost" onClick={clearSelection}>
+                ล้างการเลือก
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">รายการรออนุมัติ</CardTitle>
@@ -132,10 +212,18 @@ export default function ApproverRequestsClient() {
                 >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
+                      {isDirector && (
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={selectedIds.includes(req.request_id)}
+                          onChange={() => toggleSelect(req.request_id)}
+                        />
+                      )}
                       <span className="font-semibold">
                         {req.request_no ?? `#${req.request_id}`}
                       </span>
-                      <StatusBadge status={req.status} />
+                      <StatusBadge status={req.status} currentStep={req.current_step} />
                     </div>
                     <div className="text-sm text-muted-foreground">
                       สังกัด: {req.current_department ?? "-"}
