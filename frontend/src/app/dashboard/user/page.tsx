@@ -6,13 +6,9 @@ import {
   BadgeCheck,
   Hourglass,
   Eye,
-  Bell,
   Wallet,
   ArrowRight,
-  ChevronRight,
-  Clock,
-  CheckCircle2,
-  BellRing
+  Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,7 +26,6 @@ import { StatCard } from "@/components/common/stat-card";
 import { StatusBadge } from "@/components/common/status-badge";
 import { REQUEST_TYPE_LABELS } from "@/types/request.types";
 import { useMemo } from "react";
-import { Badge } from "@/components/ui/badge";
 
 export default function UserDashboardPage() {
   const { user } = useAuth();
@@ -147,8 +142,8 @@ export default function UserDashboardPage() {
                 <FileText className="h-5 w-5 text-primary" /> รายการล่าสุด
               </CardTitle>
               {requests && requests.length > 0 && (
-                <Link href="/dashboard/user/requests" className="text-primary hover:underline text-sm font-medium flex items-center">
-                  ดูทั้งหมด <ChevronRight className="h-4 w-4" />
+                <Link href="/dashboard/user/requests" className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                  ดูทั้งหมด <ArrowRight className="h-4 w-4" />
                 </Link>
               )}
             </div>
@@ -213,9 +208,10 @@ export default function UserDashboardPage() {
         <Card className="h-fit border-slate-200 shadow-soft rounded-2xl overflow-hidden">
           <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg font-bold flex items-center gap-2">
-                <BellRing className="h-5 w-5 text-primary" /> การแจ้งเตือน
-              </CardTitle>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Bell className="h-5 w-5 text-primary" />
+                  การแจ้งเตือน
+                </CardTitle>
               <Link href="/dashboard/user/notifications">
                  <Button variant="ghost" size="sm" className="text-xs">ดูทั้งหมด</Button>
               </Link>
@@ -226,11 +222,11 @@ export default function UserDashboardPage() {
                <div className="space-y-4">
                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}
                </div>
-            ) : latestNotifs.length === 0 ? (
-              <div className="text-center py-10 text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                <BellRing className="mx-auto h-8 w-8 mb-2 opacity-20" />
-                <p className="text-sm">ไม่มีการแจ้งเตือนใหม่</p>
-              </div>
+              ) : latestNotifs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-muted-foreground bg-muted/30 rounded-xl border border-dashed">
+                  <Bell className="h-8 w-8 mb-2 opacity-20" />
+                  <p className="text-sm">ไม่มีการแจ้งเตือนใหม่</p>
+                </div>
             ) : (
               <div className="space-y-3">
                 {latestNotifs.map((n) => (

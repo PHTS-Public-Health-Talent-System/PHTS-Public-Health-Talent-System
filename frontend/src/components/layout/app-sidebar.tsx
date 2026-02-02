@@ -69,7 +69,8 @@ const roleMenus: Record<string, MenuItem[]> = {
     { title: "หน้าหลัก", url: "/dashboard/user", icon: LayoutDashboard },
     { title: "ยื่นคำขอ", url: "/dashboard/user/requests", icon: FileText },
     { title: "การแจ้งเตือน", url: "/dashboard/user/notifications", icon: Bell },
-    { title: "โปรไฟล์", url: "/dashboard/user/profile", icon: Settings },
+    { title: "โปรไฟล์", url: "/dashboard/user/profile", icon: UserCheck },
+    { title: "ตั้งค่าระบบ", url: "/dashboard/user/settings", icon: Settings },
   ],
   HEAD_WARD: [
     { title: "หน้าหลัก", url: "/dashboard/head-ward", icon: LayoutDashboard },
@@ -165,7 +166,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       className={cn(
                         "h-12 text-base font-medium rounded-xl transition-all duration-200",
                         isActive
-                          ? "bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800"
+                          ? "bg-sky-100 text-sky-700 font-semibold"
                           : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                       )}
                     >
@@ -196,9 +197,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
            <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                 <SidebarMenuButton className="h-12 text-slate-600 hover:bg-slate-50 rounded-xl">
-                    <Settings className="mr-3 h-5 w-5 text-slate-400" />
-                    <span>ตั้งค่าระบบ</span>
+                 <SidebarMenuButton 
+                    asChild 
+                    className="h-12 text-slate-600 hover:bg-slate-50 rounded-xl"
+                 >
+                    <Link href="/dashboard/user/settings">
+                      <Settings className="mr-3 h-5 w-5 text-slate-400" />
+                      <span>ตั้งค่าระบบ</span>
+                    </Link>
                  </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
