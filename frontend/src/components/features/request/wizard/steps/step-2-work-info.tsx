@@ -29,7 +29,7 @@ export function Step2WorkInfo({ data, updateData }: Step2Props) {
       <div className="space-y-1">
         <h3 className="text-lg font-medium text-primary">รายละเอียดการปฏิบัติงาน</h3>
         <p className="text-sm text-muted-foreground">
-          กรุณาระบุลักษณะงานที่ท่านรับผิดชอบเพื่อใช้ประกอบการพิจารณา (ตาม Wireframe Section 4)
+          กรุณาระบุลักษณะงานที่ท่านรับผิดชอบเพื่อใช้ประกอบการพิจารณา
         </p>
       </div>
 

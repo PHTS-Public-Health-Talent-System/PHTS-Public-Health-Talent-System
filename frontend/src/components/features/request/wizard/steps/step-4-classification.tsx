@@ -1,26 +1,65 @@
 "use client"
 
-import { CheckCircle2, RefreshCw, Info } from "lucide-react"
-import { useEffect, useRef } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useMemo, useEffect } from "react"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { toast } from "sonner"
-
-import { RequestFormData } from "@/types/request.types"
-import { useAttachmentOcr, useMasterRates, useRequestAttachmentOcr } from "@/features/request/hooks"
 import {
-  getAttachmentOcr,
-  getRecommendedClassification,
-  type MasterRate,
-  type OcrResult,
-} from "@/features/request/api"
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Card, CardContent } from "@/components/ui/card"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
+import { RequestFormData } from "@/types/request.types"
+import { CheckCircle2, ShieldCheck, Info, DollarSign } from "lucide-react"
+import { useMasterRates } from "@/features/request/hooks"
+import { MasterRate } from "@/features/request/api"
 
+// Profession code to Thai name mapping
+const PROFESSION_LABELS: Record<string, string> = {
+  DOCTOR: "แพทย์",
+  DENTIST: "ทันตแพทย์",
+  PHARMACIST: "เภสัชกร",
+  NURSE: "พยาบาลวิชาชีพ",
+  MED_TECH: "นักเทคนิคการแพทย์",
+  RAD_TECH: "นักรังสีการแพทย์",
+  PHYSIO: "นักกายภาพบำบัด",
+  ALLIED_OTHER: "สหวิชาชีพอื่นๆ",
+}
+
+const GROUP_SUMMARIES: Record<string, Record<number, string>> = {
+  DOCTOR: {
+    1: "ปฏิบัติหน้าที่หลักตามมาตรฐานกำหนดตำแหน่ง",
+    2: "วุฒิบัตรสาขาอื่นๆ / ปริญญาโท-เอก / พัฒนาคุณภาพ / รพช. > 4 ปี",
+    3: "วุฒิบัตรสาขาเฉพาะทาง (พยาธิ, นิติเวช, จิตเวช, ศัลย์ทรวงอก/ประสาท, ระบาด)"
+  },
+  DENTIST: {
+    1: "ปฏิบัติหน้าที่หลักตามมาตรฐานกำหนดตำแหน่ง",
+    2: "ปฏิบัติหน้าที่หลัก + ปริญญาโทหรือเอก",
+    3: "ปฏิบัติหน้าที่หลัก + วุฒิบัตรแสดงความรู้ความชำนาญ"
+  },
+  PHARMACIST: {
+    1: "ปฏิบัติหน้าที่หลักตามมาตรฐานกำหนดตำแหน่ง",
+    2: "เตรียมยาเคมีบำบัด / คลินิกโรคติดต่อร้ายแรง / คุ้มครองผู้บริโภค"
+  },
+  NURSE: {
+    1: "OPD / ครอบครัวและชุมชน / อนามัยโรงเรียน / อาจารย์พยาบาล (กลุ่ม 1)",
+    2: "ER / ห้องคลอด / ผ่าตัด / IPD / IC / ตรวจบำบัดพิเศษ / อาจารย์พยาบาล (กลุ่ม 1-2)",
+    3: "วิสัญญี / พยาบาลเวชปฏิบัติ (NP) / ICU / CCU / ติดเชื้อรุนแรง / APN / หัวหน้าทีมคุณภาพ / อาจารย์พยาบาล (กลุ่ม 1)"
+  },
+  MED_TECH: { 1: "ปฏิบัติหน้าที่หลักด้านเทคนิคการแพทย์" },
+  RAD_TECH: { 1: "ปฏิบัติหน้าที่หลักด้านรังสีการแพทย์" },
+  PHYSIO: { 1: "ปฏิบัติหน้าที่หลักด้านกายภาพบำบัด" },
+  CLIN_PSY: { 1: "ปฏิบัติหน้าที่หลักด้านจิตวิทยาคลินิก" },
+  ALLIED_OTHER: {
+    1: "ปฏิบัติหน้าที่หลัก (สหวิชาชีพอื่นๆ)"
+  }
+}
 
 interface Step4Props {
   data: RequestFormData
@@ -29,305 +68,320 @@ interface Step4Props {
 
 export function Step4Classification({ data, updateData }: Step4Props) {
   const { data: masterRates, isLoading } = useMasterRates()
-  const requestOcrMutation = useRequestAttachmentOcr()
-  const attachmentId = data.ocrResult?.attachmentId
-  const recommendAttemptRef = useRef<{ attachmentId?: number; requestId?: string | number }>({})
-  const { data: ocrData } = useAttachmentOcr(attachmentId, {
-    enabled: !!attachmentId,
-    refetchInterval: (result: unknown) => {
-      const status = (result as OcrResult | undefined)?.ocr_status
-      if (status === "PENDING" || status === "PROCESSING") return 3000
-      return false
-    },
-  })
+  const rates = (masterRates ?? []) as MasterRate[]
+
+  const selectedProfession = data.professionCode || data.classification?.professionCode || ""
+
+  const professionRates = useMemo(() =>
+    rates.filter((r) => r.profession_code === selectedProfession),
+    [rates, selectedProfession]
+  )
+
+  // 1. Groups for selected profession
+  const groups = useMemo(() =>
+    Array.from(new Set(professionRates.map((r) => r.group_no))).sort((a, b) => a - b),
+    [professionRates]
+  )
+
+  const selectedGroupNo = Number(data.classification?.groupId?.match(/\d+/)?.[0] ?? 0)
+
+  // 2. Unique Items for selected Group
+  const itemsInGroup = useMemo(() => {
+    if (!selectedGroupNo) return []
+    const rawItems = professionRates.filter((r) => r.group_no === selectedGroupNo)
+
+    // Find unique item_nos
+    const uniqueItemNos = Array.from(new Set(rawItems.map((r) => r.item_no))).sort((a, b) => {
+      if (a === null) return -1
+      if (b === null) return 1
+      return String(a).localeCompare(String(b), undefined, { numeric: true })
+    })
+
+    return uniqueItemNos.map((ino) => {
+      const itemRows = rawItems.filter((r) => r.item_no === ino)
+      const hasSubItems = itemRows.some((r) => r.sub_item_no !== null)
+
+      // If no subItems, this selection usually has a rate (unless it's a parent placeholder, but DB has amount per row)
+      // Note: In our DB, even if it's a parent, if it has an amount, it's a valid selection.
+      // But typically, if hasSubItems is true, the user MUST select a sub-item.
+
+      return {
+        id: ino === null ? "default" : String(ino),
+        label: ino === null ? "ทั่วไป/ตามตำแหน่ง" : `ข้อ ${ino}`,
+        hasSubItems,
+        desc: itemRows[0]?.condition_desc, // Use first row's desc as parent desc
+        rate: !hasSubItems ? itemRows[0] : null
+      }
+    })
+  }, [professionRates, selectedGroupNo])
+
+  const selectedItemId = data.classification?.itemId
+  const selectedItemData = useMemo(() =>
+    itemsInGroup.find(i => i.id === selectedItemId),
+    [itemsInGroup, selectedItemId]
+  )
+
+  // 3. Sub-items for selected Item
+  const subItemsInItem = useMemo(() => {
+    if (!selectedItemId || !selectedGroupNo) return []
+    const itemNo = selectedItemId === "default" ? null : selectedItemId
+    const rows = professionRates.filter(
+      (r) => r.group_no === selectedGroupNo && r.item_no === itemNo && r.sub_item_no !== null
+    )
+
+    return rows.map((r) => ({
+      id: String(r.sub_item_no),
+      label: `ข้อย่อย ${r.sub_item_no}`,
+      desc: r.condition_desc,
+      amount: r.amount,
+      rateId: r.rate_id
+    })).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
+  }, [professionRates, selectedGroupNo, selectedItemId])
+
+  const selectedSubItemId = data.classification?.subItemId as string | undefined
+  const selectedSubItemData = useMemo(() =>
+    subItemsInItem.find(si => si.id === selectedSubItemId),
+    [subItemsInItem, selectedSubItemId]
+  )
+
+  // 4. Auto-select logic
+  useEffect(() => {
+    if (!isLoading && professionRates.length > 0) {
+      // Auto-select Group if only one exists
+      if (groups.length === 1 && !data.classification?.groupId) {
+        handleGroupChange(`group${groups[0]}`)
+      }
+
+      // Auto-select Item if only one exists in the group
+      if (itemsInGroup.length === 1 && !selectedItemId && data.classification?.groupId) {
+        handleItemChange(itemsInGroup[0].id)
+      }
+
+      // Auto-select Sub-item if only one exists in the item
+      if (subItemsInItem.length === 1 && !selectedSubItemId && selectedItemId) {
+        handleSubItemChange(subItemsInItem[0].id)
+      }
+    }
+  }, [isLoading, professionRates, groups, itemsInGroup, subItemsInItem, data.classification?.groupId, selectedItemId, selectedSubItemId])
+
+  // Handlers
+  const handleProfessionChange = (value: string) => {
+    updateData("professionCode", value);
+    updateData("classification", {
+      professionCode: value,
+      groupId: "",
+      itemId: "",
+      subItemId: "",
+      amount: 0,
+      rateId: undefined,
+    })
+  }
 
   const handleGroupChange = (value: string) => {
+    // Reset lower levels
     updateData("classification", {
-        ...data.classification,
-        groupId: value,
-        itemId: "",
-        amount: 0
+      ...data.classification,
+      groupId: value,
+      itemId: "",
+      subItemId: "",
+      amount: 0,
+      rateId: undefined,
     })
   }
 
   const handleItemChange = (value: string) => {
-    const selected = itemsForGroup.find((item) => item.value === value)
-    updateData("classification", {
-      ...data.classification,
-      itemId: value,
-      amount: selected?.amount ?? 0,
-    })
+    const item = itemsInGroup.find((i) => i.id === value)
+
+    // If it has no sub-items, we can set the amount and rateId immediately
+    if (item && !item.hasSubItems && item.rate) {
+      updateData("classification", {
+        ...data.classification,
+        itemId: value,
+        subItemId: "",
+        amount: item.rate.amount,
+        rateId: item.rate.rate_id,
+      })
+    } else {
+      // Must select sub-item or just reset it
+      updateData("classification", {
+        ...data.classification,
+        itemId: value,
+        subItemId: "",
+        amount: 0,
+        rateId: undefined,
+      })
+    }
   }
 
-  const ocrResult = data.ocrResult
-  const recommended = data.recommendedClassification
-  const ocr = ocrData as OcrResult | undefined
-  const ocrStatus = ocr?.ocr_status ?? (ocrResult ? "COMPLETED" : "NONE")
-
-  const statusLabel =
-    ocrStatus === "PROCESSING"
-      ? "กำลังประมวลผล"
-      : ocrStatus === "PENDING"
-      ? "รอคิว OCR"
-      : ocrStatus === "FAILED"
-      ? "ล้มเหลว"
-      : ocrStatus === "COMPLETED"
-      ? "เสร็จแล้ว"
-      : "ยังไม่มีข้อมูล"
-
-  const rates = (masterRates ?? []) as MasterRate[]
-  const groups = Array.from(new Set(rates.map((r) => r.group_no))).sort((a, b) => a - b)
-  const selectedGroupNo = Number(data.classification?.groupId?.match(/\d+/)?.[0] ?? 0)
-  const itemsForGroup = rates
-    .filter((r) => r.group_no === selectedGroupNo)
-    .map((r) => {
-      const item = `${r.item_no}${r.sub_item_no ? `.${r.sub_item_no}` : ""}`
-      const value = r.sub_item_no ? `item${r.item_no}_${r.sub_item_no}` : `item${r.item_no}`
-      return {
-        value,
-        label: `ข้อ ${item}`,
-        amount: r.amount,
-      }
-    })
-    .sort((a, b) => a.label.localeCompare(b.label))
-
-  useEffect(() => {
-    if (!ocr) return
-    const status = ocr.ocr_status
-    if (status === "COMPLETED") {
-      updateData("ocrResult", {
-        licenseNo: ocr.license_no ?? "-",
-        expiryDate: ocr.expiry_date ?? "-",
-        confidence: ocr.confidence ?? 0,
-        attachmentId,
+  const handleSubItemChange = (value: string) => {
+    const subItem = subItemsInItem.find((si) => si.id === value)
+    if (subItem) {
+      updateData("classification", {
+        ...data.classification,
+        subItemId: value,
+        amount: subItem.amount,
+        rateId: subItem.rateId,
       })
-      if (data.id && !data.recommendedClassification) {
-        const key = `${data.id}-${attachmentId ?? "none"}`
-        if (recommendAttemptRef.current.requestId === key) return
-        recommendAttemptRef.current.requestId = key
-        getRecommendedClassification(data.id)
-          .then((recommended) => {
-            if (!recommended) return
-            updateData("recommendedClassification", {
-              groupId: `group${recommended.group_no}`,
-              itemId: recommended.sub_item_no
-                ? `item${recommended.item_no}_${recommended.sub_item_no}`
-                : `item${recommended.item_no}`,
-              amount: recommended.amount,
-              hintText: recommended.hint_text,
-            })
-            updateData("classification", {
-              groupId: `group${recommended.group_no}`,
-              itemId: recommended.sub_item_no
-                ? `item${recommended.item_no}_${recommended.sub_item_no}`
-                : `item${recommended.item_no}`,
-              amount: recommended.amount,
-            })
-          })
-          .catch(() => {
-            toast.error("ไม่สามารถดึงคำแนะนำได้");
-          })
-      }
     }
-  }, [ocr, attachmentId, updateData, data.id, data.recommendedClassification])
+  }
+
+  const selectedAmount = data.classification?.amount ?? 0
+  const currentDescription = selectedSubItemData?.desc || selectedItemData?.desc || ""
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-      {/* 1. OCR Result (Read-only) */}
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card className="bg-blue-50/50 border-blue-100">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2 text-blue-800">
-              <CheckCircle2 className="h-5 w-5" /> ผลการอ่านเอกสาร (OCR)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-             <div className="flex items-center justify-between">
-               <Label className="text-muted-foreground">สถานะ</Label>
-               <Badge variant={ocrStatus === "FAILED" ? "destructive" : "secondary"}>
-                 {statusLabel}
-               </Badge>
-             </div>
-             <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <Label className="text-muted-foreground">เลขที่ใบอนุญาต</Label>
-                  <p className="font-semibold text-lg">{ocrResult?.licenseNo || "-"}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">วันหมดอายุ</Label>
-                  <p className="font-semibold text-lg">{ocrResult?.expiryDate || "-"}</p>
-                </div>
-             </div>
-
-             {!ocrResult && (
-               <Alert className="bg-white border-blue-200 py-2">
-                 <AlertDescription className="text-xs text-blue-600">
-                   ยังไม่มีผล OCR กรุณาแนบใบอนุญาตและยืนยันเอกสารในขั้นตอนก่อนหน้า
-                 </AlertDescription>
-               </Alert>
-             )}
-
-             {recommended?.hintText && (
-               <Alert className="bg-white border-blue-200 py-2">
-                 <AlertDescription className="text-xs text-blue-600 flex items-center gap-1.5">
-                   <Info className="h-3.5 w-3.5" />
-                   <span>AI Analysis: {recommended.hintText}</span>
-                 </AlertDescription>
-               </Alert>
-             )}
-
-             {ocrStatus === "FAILED" && (
-               <Alert className="bg-white border-destructive/30 py-2">
-                 <AlertDescription className="text-xs text-destructive">
-                   OCR ไม่สำเร็จ กรุณาตรวจสอบไฟล์ใบอนุญาต (PDF/PNG/JPEG) ให้ชัดเจน แล้วกด “ลองใหม่”
-                 </AlertDescription>
-               </Alert>
-             )}
-
-             {!recommended && (
-               <div className="flex items-center justify-between gap-2">
-                 <p className="text-xs text-muted-foreground">
-                   หาก OCR ไม่สำเร็จ สามารถกดเพื่อพยายามอีกครั้ง
-                 </p>
-                 <Button
-                   size="sm"
-                   variant="outline"
-                   disabled={requestOcrMutation.isPending}
-                   onClick={async () => {
-                     const attachmentId = data.ocrResult?.attachmentId;
-                     if (!attachmentId) {
-                       toast.error("ไม่พบไฟล์ใบอนุญาตสำหรับ OCR");
-                       return;
-                     }
-                     try {
-                       await requestOcrMutation.mutateAsync(attachmentId);
-                       const ocr = await getAttachmentOcr(attachmentId);
-                       updateData("ocrResult", {
-                         licenseNo: ocr?.license_no ?? "-",
-                         expiryDate: ocr?.expiry_date ?? "-",
-                         confidence: ocr?.confidence ?? 0,
-                         attachmentId,
-                       });
-                       if (data.id) {
-                         const recommended = await getRecommendedClassification(data.id);
-                         if (recommended) {
-                           updateData("recommendedClassification", {
-                             groupId: `group${recommended.group_no}`,
-                             itemId: recommended.sub_item_no
-                               ? `item${recommended.item_no}_${recommended.sub_item_no}`
-                               : `item${recommended.item_no}`,
-                             amount: recommended.amount,
-                             hintText: recommended.hint_text,
-                           });
-                           updateData("classification", {
-                             groupId: `group${recommended.group_no}`,
-                             itemId: recommended.sub_item_no
-                               ? `item${recommended.item_no}_${recommended.sub_item_no}`
-                               : `item${recommended.item_no}`,
-                             amount: recommended.amount,
-                           });
-                         }
-                       }
-                       toast.success("ร้องขอ OCR ใหม่แล้ว");
-                     } catch {
-                       toast.error("ขอ OCR ใหม่ไม่สำเร็จ");
-                     }
-                   }}
-                 >
-                   <RefreshCw className="mr-1 h-3 w-3" /> ลองใหม่
-                 </Button>
-               </div>
-             )}
-          </CardContent>
-        </Card>
-
-        <Card className="border-primary shadow-sm">
-           <CardHeader className="pb-2 bg-primary text-primary-foreground rounded-t-lg">
-              <CardTitle className="text-base">ระบบแนะนำ (Recommended)</CardTitle>
-           </CardHeader>
-           <CardContent className="pt-6 text-center">
-              <div className="text-3xl font-bold text-primary">
-                 {recommended?.amount?.toLocaleString() || 0} <span className="text-sm font-normal text-muted-foreground">บาท</span>
-              </div>
-              <p className="text-sm text-muted-foreground mt-2">
-                 กลุ่ม {recommended?.groupId} ข้อ {recommended?.itemId}
-              </p>
-           </CardContent>
-        </Card>
+      <div className="space-y-1">
+        <h3 className="text-lg font-medium text-primary">ตรวจสอบสิทธิ พ.ต.ส.</h3>
+        <p className="text-sm text-muted-foreground">
+          เลือกกลุ่มบัญชีและรายการเบิกจ่ายตามคำสั่งมอบหมายงาน
+        </p>
       </div>
 
-      {/* 2. Selection Form (User Override) */}
-      <div className="border rounded-lg p-6 bg-white shadow-sm space-y-4">
-         <div className="flex items-center gap-2">
-            <div className="h-6 w-1 bg-primary rounded-full"></div>
-            <h4 className="font-semibold text-lg">ยืนยันข้อมูลเพื่อคำนวณเงิน</h4>
-         </div>
+      <Separator />
 
-         <div className="grid md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-               <Label>กลุ่มบัญชี</Label>
+      {/* Profession Info (Read-only context) */}
+      <div className="rounded-xl border bg-muted/30 px-4 py-3 flex items-center gap-2">
+        <ShieldCheck className="h-5 w-5 text-primary" />
+        <span className="text-sm font-medium">
+          วิชาชีพของคุณ: <span className="text-primary">{PROFESSION_LABELS[selectedProfession] || selectedProfession || "-"}</span>
+        </span>
+        <span className="text-xs text-muted-foreground ml-auto">*ดึงข้อมูลจาก HRMS</span>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-12 items-start">
+        {/* Left Column: Selections (7 cols) */}
+        <div className="md:col-span-7 space-y-6">
+          <div className="space-y-4">
+             {/* Group Select */}
+             <div className="space-y-2">
+               <Label>กลุ่มบัญชี (Group)</Label>
                {isLoading ? (
                  <Skeleton className="h-10 w-full" />
                ) : (
                  <Select
-                   value={data.classification?.groupId}
+                   value={data.classification?.groupId ?? ""}
                    onValueChange={handleGroupChange}
+                   disabled={!selectedProfession}
                  >
-                   <SelectTrigger>
+                   <SelectTrigger className="h-10">
                      <SelectValue placeholder="เลือกกลุ่มบัญชี" />
                    </SelectTrigger>
                    <SelectContent>
-                      {groups.length === 0 ? (
-                        <SelectItem value="none" disabled>ไม่พบข้อมูลกลุ่มบัญชี</SelectItem>
-                      ) : (
-                        groups.map((groupNo) => (
-                          <SelectItem key={groupNo} value={`group${groupNo}`}>
-                            กลุ่ม {groupNo}
-                          </SelectItem>
-                        ))
-                      )}
+                     {groups.map((num) => (
+                       <SelectItem key={num} value={`group${num}`}>
+                         <span className="truncate block max-w-[300px] md:max-w-md text-left">
+                           กลุ่มที่ {num} - {GROUP_SUMMARIES[selectedProfession]?.[num] || "ทั่วไป"}
+                         </span>
+                       </SelectItem>
+                     ))}
                    </SelectContent>
                  </Select>
                )}
-            </div>
+             </div>
 
-            <div className="space-y-2">
-               <Label>รายการเบิก</Label>
+             {/* Item Select */}
+             <div className="space-y-2">
+               <Label>รายการ (Item)</Label>
                {isLoading ? (
                  <Skeleton className="h-10 w-full" />
                ) : (
                  <Select
-                   value={data.classification?.itemId}
+                   value={selectedItemId ?? ""}
                    onValueChange={handleItemChange}
                    disabled={!data.classification?.groupId}
                  >
-                   <SelectTrigger>
-                      <SelectValue placeholder="เลือกรายการ" />
+                   <SelectTrigger className="h-10">
+                     <SelectValue placeholder="เลือกรายการ" />
                    </SelectTrigger>
                    <SelectContent>
-                      {itemsForGroup.length === 0 ? (
-                        <SelectItem value="none" disabled>ไม่พบรายการเบิก</SelectItem>
-                      ) : (
-                        itemsForGroup.map((item) => (
-                          <SelectItem key={`${item.value}-${item.amount}`} value={item.value}>
-                            {item.label} — {item.amount.toLocaleString()} บาท
-                          </SelectItem>
-                        ))
-                      )}
+                     {itemsInGroup.map((item) => (
+                       <SelectItem key={item.id} value={item.id}>
+                         <span className="truncate block max-w-[300px] md:max-w-md text-left">
+                           {item.label} {item.hasSubItems ? "(มีข้อย่อย)" : ""}
+                         </span>
+                       </SelectItem>
+                     ))}
                    </SelectContent>
                  </Select>
                )}
-            </div>
-            <div className="space-y-2">
-              <Label>วันที่มีผล</Label>
-              <Input
-                type="date"
-                value={data.effectiveDate}
-                onChange={(e) => updateData("effectiveDate", e.target.value)}
-              />
-            </div>
-         </div>
+             </div>
+
+             {/* Sub-item Select */}
+             {selectedItemData?.hasSubItems && (
+               <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                 <Label>ข้อย่อย (Sub-item)</Label>
+                 <Select
+                   value={selectedSubItemId ?? ""}
+                   onValueChange={handleSubItemChange}
+                 >
+                   <SelectTrigger className="h-10">
+                     <SelectValue placeholder="เลือกข้อย่อย" />
+                   </SelectTrigger>
+                   <SelectContent>
+                     {subItemsInItem.map((si) => (
+                       <SelectItem key={si.id} value={si.id}>
+                         <span className="truncate block max-w-[300px] md:max-w-md text-left">
+                            {si.label}
+                         </span>
+                       </SelectItem>
+                     ))}
+                   </SelectContent>
+                 </Select>
+               </div>
+             )}
+
+             {/* Effective Date */}
+             <div className="space-y-2 pt-2">
+                <Label>วันที่มีผล (Effective Date)</Label>
+                <div className="relative">
+                  <Input
+                    type="date"
+                    value={data.effectiveDate}
+                    onChange={(e) => updateData("effectiveDate", e.target.value)}
+                    className="h-10"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1 text-right">
+                    *ระบุวันที่เริ่มมีสิทธิตามคำสั่ง
+                  </p>
+                </div>
+             </div>
+          </div>
+        </div>
+
+        {/* Right Column: Details & Amount (5 cols) */}
+        <div className="md:col-span-5 space-y-6">
+           {/* Amount Display (Moved Top for Visibility) */}
+           <Card className={`border shadow-sm transition-colors ${selectedAmount > 0 ? "bg-primary/5 border-primary" : "bg-muted/20"}`}>
+              <CardContent className="p-6 flex flex-col items-center justify-center text-center space-y-2">
+                 <span className="text-sm text-muted-foreground font-medium uppercase tracking-wide">เงินเพิ่มพิเศษ (พ.ต.ส.)</span>
+                 <div className="flex items-baseline gap-1">
+                    <span className={`text-4xl font-bold ${selectedAmount > 0 ? "text-primary" : "text-muted-foreground"}`}>
+                       {selectedAmount.toLocaleString()}
+                    </span>
+                    <span className="text-sm text-muted-foreground">บาท/เดือน</span>
+                 </div>
+              </CardContent>
+           </Card>
+
+           {/* Description Card */}
+           <Card className="border shadow-sm">
+             <CardContent className="p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                   <Info className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                   <div className="space-y-1">
+                      <h4 className="font-medium text-sm text-foreground">รายละเอียดตามระเบียบ</h4>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                         {currentDescription || (
+                           <span className="italic opacity-70">
+                             กรุณาเลือกรายการทางด้านซ้าย<br/>เพื่อดูรายละเอียดเงื่อนไขการเบิกจ่าย
+                           </span>
+                         )}
+                      </p>
+                   </div>
+                </div>
+             </CardContent>
+           </Card>
+        </div>
       </div>
     </div>
   )

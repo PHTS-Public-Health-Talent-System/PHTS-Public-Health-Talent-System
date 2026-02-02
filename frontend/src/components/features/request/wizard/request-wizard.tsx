@@ -40,7 +40,6 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
     submitRequest,
     confirmAttachments,
     prefillOriginal,
-    isOcrPolling
   } = useRequestForm({ initialRequest })
   const { data: signatureCheck } = useCheckSignature()
 
@@ -50,12 +49,6 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
     OTHER: "เอกสารอื่นๆ",
     DIPLOMA: "วุฒิบัตร",
   }
-  const ocrTargets =
-    formData.attachments?.filter((att) => att.file_type && att.file_type !== "SIGNATURE") ?? []
-  const ocrFailed = ocrTargets.filter((att) => att.ocr_status === "FAILED")
-  const ocrPending = ocrTargets.filter((att) => att.ocr_status !== "COMPLETED")
-  const isOcrReady = ocrTargets.length > 0 && ocrPending.length === 0 && ocrFailed.length === 0
-
   const hasLicenseAttachment =
     !!formData.files?.LICENSE ||
     (formData.attachments ?? []).some((att) => att.file_type === "LICENSE")
@@ -69,28 +62,24 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
     hasLicenseAttachment &&
     !!formData.classification?.groupId &&
     !!formData.classification?.itemId &&
-    (formData.classification?.amount ?? 0) > 0 &&
-    isOcrReady
+    (formData.classification?.amount ?? 0) > 0
   const missingReasons: string[] = []
   if (!hasLicenseAttachment) missingReasons.push("ใบประกอบวิชาชีพ")
   if (!formData.classification?.groupId || !formData.classification?.itemId) missingReasons.push("กลุ่ม/รายการเบิก")
   if ((formData.classification?.amount ?? 0) <= 0) missingReasons.push("จำนวนเงิน")
   if (!hasSignature) missingReasons.push("ลายเซ็น")
-  if (!isOcrReady) missingReasons.push("รอผล OCR")
   const disabledReason = missingReasons.length > 0 ? `ยังขาด: ${missingReasons.join(", ")}` : ""
   const isStep3Valid = hasLicenseAttachment
 
   const handleNext = async () => {
     // 1. Validation Logic (Simplified for now)
 
-    // 2. Trigger OCR when leaving Step 3
+    // 2. Trigger Attachment Confirmation (No OCR)
     if (currentStep === 3) {
       try {
-         const ok = await confirmAttachments()
-         if (!ok) return
+         await confirmAttachments()
       } catch {
-         toast.error("ไม่สามารถตรวจสอบเอกสารได้")
-         return
+         // Silently fail or ignore as OCR is removed
       }
     }
 
@@ -195,34 +184,7 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
 
         <CardFooter className="flex justify-between border-t p-4 md:p-6 bg-muted/5 rounded-b-xl items-center gap-4">
 
-          {/* OCR Status - Mobile Optimized */}
-          {currentStep === steps.length && ocrTargets.length > 0 && !isOcrReady && (
-            <div className="w-full md:w-auto md:flex-1 order-last md:order-none mt-4 md:mt-0">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                <div className="flex items-start gap-2">
-                    <Loader2 className="h-3 w-3 animate-spin mt-0.5 shrink-0" />
-                    <div>
-                        <p className="font-medium mb-1">
-                            {ocrFailed.length > 0
-                            ? "OCR ล้มเหลว กรุณาตรวจสอบเอกสาร"
-                            : isOcrPolling
-                                ? `กำลังวิเคราะห์เอกสาร (${ocrPending.length}/${ocrTargets.length})`
-                                : "กำลังตรวจสอบเอกสาร..."}
-                        </p>
-                         {ocrPending.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                                {ocrPending.map((att) => (
-                                <span key={att.attachment_id} className="rounded bg-white/60 px-1.5 py-0.5 text-[10px] border border-amber-100">
-                                    {attachmentLabels[att.file_type] ?? att.file_name}
-                                </span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-              </div>
-            </div>
-          )}
+
 
           <Button variant="outline" onClick={handlePrev} disabled={currentStep === 1 || isSubmitting} className="min-w-[100px]">
             ย้อนกลับ

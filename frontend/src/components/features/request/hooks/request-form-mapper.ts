@@ -72,19 +72,11 @@ export const mapRequestToFormData = (
     missionGroup: request.main_duty ?? "",
     workAttributes: normalizeWorkAttributes(request.work_attributes),
     effectiveDate: normalizeDate(request.effective_date),
+    attachments: request.attachments ?? [],
     classification: {
       groupId: "",
       itemId: "",
       amount: request.requested_amount ?? 0,
     },
-    attachments: request.attachments ?? [],
-    ocrResult: licenseAttachment
-      ? {
-          licenseNo: "-",
-          expiryDate: "-",
-          confidence: 0,
-          attachmentId: licenseAttachment.attachment_id,
-        }
-      : null,
   }
 }

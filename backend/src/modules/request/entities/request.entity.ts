@@ -88,18 +88,7 @@ export interface RequestVerificationSnapshotEntity {
   created_at: Date;
 }
 
-// ─── req_ocr_results ─────────────────────────────────────────────────────────
-
-export interface RequestOcrResultEntity {
-  ocr_id: number;
-  attachment_id: number;
-  request_id: number;
-  status: string;
-  raw_text: string | null;
-  confidence: number;
-  provider: string;
-  processed_at: Date | null;
-}
+// RequestOcrResultEntity removed
 
 // ─── cfg_payment_rates (read-only) ───────────────────────────────────────────
 
@@ -113,19 +102,7 @@ export interface PaymentRateEntity {
   is_active: boolean;
 }
 
-// ─── cfg_classification_rules (read-only) ────────────────────────────────────
-
-export interface ClassificationRuleEntity {
-  id: number;
-  profession: string;
-  priority: number;
-  rule_condition: any; // JSON
-  target_group_no: number;
-  target_item_no: string | null;
-  target_sub_item_no: string | null;
-  description: string;
-  is_active: boolean;
-}
+// ClassificationRuleEntity removed
 
 // ─── leave_records (read-only, for adjustments) ──────────────────────────────
 

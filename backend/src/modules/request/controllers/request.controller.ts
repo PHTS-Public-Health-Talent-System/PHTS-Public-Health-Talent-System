@@ -13,12 +13,9 @@ import { requestQueryService } from "../services/query.service.js";
 import { requestCommandService } from "../services/command.service.js";
 import { requestApprovalService } from "../services/approval.service.js";
 import * as reassignService from "../reassign/reassign.service.js";
-import * as ocrService from "../ocr/ocr.service.js";
+import * as rateService from "../../master-data/services/rate.service.js";
 
 import { getUserScopesForDisplay } from "../scope/scope.service.js";
-import {
-  getAllActiveMasterRates,
-} from "../classification/classification.service.js";
 
 import { requestRepository } from "../repositories/request.repository.js";
 import {
@@ -248,79 +245,12 @@ export class RequestController {
 
   // --- OCR & ATTACHMENTS ---
 
-  getAttachmentOcr = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
-      if (!req.user) throw new AuthenticationError("Unauthorized access");
-      const attachmentId = parseInt(req.params.attachmentId);
-      if (isNaN(attachmentId)) throw new ValidationError("Invalid Attachment ID");
 
-      const attachment = await requestRepository.findAttachmentById(attachmentId);
-      if (!attachment) throw new ValidationError("Attachment not found");
-
-      const request = await requestRepository.findById(attachment.request_id);
-      if (!request) throw new ValidationError("Request not found");
-
-      const isOwner = request.user_id === req.user.userId;
-      const isPrivileged = req.user.role === "PTS_OFFICER" || req.user.role === "ADMIN";
-      if (!isOwner && !isPrivileged) {
-        throw new AuthenticationError("Unauthorized access");
-      }
-
-      const result = await ocrService.getOcrRecord(attachmentId);
-      res.json({ success: true, data: result });
-  });
-
-  requestAttachmentOcr = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
-      if (!req.user) throw new AuthenticationError("Unauthorized access");
-      const attachmentId = parseInt(req.params.attachmentId);
-      if (isNaN(attachmentId)) throw new ValidationError("Invalid Attachment ID");
-
-      const attachment = await requestRepository.findAttachmentById(attachmentId);
-      if (!attachment) throw new ValidationError("Attachment not found");
-
-      const request = await requestRepository.findById(attachment.request_id);
-      if (!request) throw new ValidationError("Request not found");
-
-      const isOwner = request.user_id === req.user.userId;
-      const isPrivileged = req.user.role === "PTS_OFFICER" || req.user.role === "ADMIN";
-      if (!isOwner && !isPrivileged) {
-        throw new AuthenticationError("Unauthorized access");
-      }
-
-      const result = await ocrService.requestOcrProcessing(attachmentId);
-      res.json({ success: true, data: result });
-  });
-
-  confirmAttachments = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
-      if (!req.user) throw new AuthenticationError("Unauthorized access");
-      const requestId = parseInt(req.params.id);
-      if (isNaN(requestId)) throw new ValidationError("Invalid Request ID");
-
-      const request = await requestQueryService.getRequestById(
-        requestId,
-        req.user.userId,
-        req.user.role,
-      );
-
-      const attachments = request.attachments ?? [];
-      const targets = attachments.filter(
-        (att) => att.file_type && att.file_type !== "SIGNATURE",
-      );
-
-      for (const att of targets) {
-        await ocrService.requestOcrProcessing(att.attachment_id);
-      }
-
-      res.json({
-        success: true,
-        message: "Attachments confirmed",
-        data: { queued: targets.map((t) => t.attachment_id) },
-      });
-  });
 
   // --- OTHER ---
 
   getMasterRates = catchAsync(async (_req: Request, res: Response<ApiResponse>) => {
-      const rates = await getAllActiveMasterRates();
+      const rates = await rateService.getMasterRates();
       res.json({ success: true, data: rates });
   });
 
@@ -347,42 +277,7 @@ export class RequestController {
       res.json({ success: true, data: scopes });
   });
 
-  getRecommendedClassification = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
-       if (!req.user) throw new AuthenticationError("Unauthorized access");
-       const requestId = parseInt(req.params.id);
 
-       // 1. Get OCR Text
-       const ocrText = await ocrService.getOcrTextForRequest(requestId);
-
-       if (!ocrText) {
-          res.json({ success: true, data: null });
-          return;
-       }
-
-       // 2. Get Request for Citizen ID
-       const request = await requestQueryService.getRequestById(requestId, req.user.userId, req.user.role);
-
-       // 3. Find Recommended Rate
-       const { findRecommendedRate } = await import("../classification/classification.service.js");
-       const result = await findRecommendedRate((request as any).citizen_id, ocrText);
-
-       if (result) {
-         const hintParts = [`กลุ่ม ${result.group_no}`, `ข้อ ${result.item_no}`];
-         if (result.sub_item_no) hintParts.push(`ข้อย่อย ${result.sub_item_no}`);
-
-         res.json({
-           success: true,
-           data: {
-             source: "OCR",
-             ...result,
-             hint_text: `มีแนวโน้มเข้าข่าย${hintParts.join(" ")}`,
-           },
-         });
-         return;
-       }
-
-       res.json({ success: true, data: result });
-  });
 
   updateClassification = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");

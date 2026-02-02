@@ -15,9 +15,6 @@ import {
   getApprovalHistory,
   getAvailableOfficers,
   confirmAttachments,
-  getAttachmentOcr,
-  requestAttachmentOcr,
-  getRecommendedClassification,
   updateClassification,
   updateVerificationChecks,
   createVerificationSnapshot,
@@ -96,20 +93,7 @@ export function useAvailableOfficers() {
   });
 }
 
-export function useAttachmentOcr(
-  attachmentId: number | string | undefined,
-  options?: {
-    enabled?: boolean;
-    refetchInterval?: number | false | ((data: unknown) => number | false);
-  },
-) {
-  return useQuery({
-    queryKey: ['attachment-ocr', attachmentId],
-    queryFn: () => getAttachmentOcr(attachmentId!),
-    enabled: options?.enabled ?? !!attachmentId,
-    refetchInterval: options?.refetchInterval,
-  });
-}
+// Removed useAttachmentOcr
 
 export function useCreateRequest() {
   const qc = useQueryClient();
@@ -159,19 +143,8 @@ export function useConfirmAttachments() {
   });
 }
 
-export function useRequestAttachmentOcr() {
-  return useMutation({
-    mutationFn: (attachmentId: number | string) => requestAttachmentOcr(attachmentId),
-  });
-}
-
-export function useRecommendedClassification(id: number | string | undefined) {
-  return useQuery({
-    queryKey: ['recommended-classification', id],
-    queryFn: () => getRecommendedClassification(id!),
-    enabled: !!id,
-  });
-}
+// Removed useRequestAttachmentOcr
+// Removed useRecommendedClassification
 
 export function useUpdateClassification() {
   return useMutation({

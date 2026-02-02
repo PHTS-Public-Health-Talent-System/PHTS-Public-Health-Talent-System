@@ -292,24 +292,7 @@ export class RequestCommandService {
         throw new Error("requested_amount is required before submit");
       }
 
-      const attachments = await requestRepository.findAttachmentsWithOcr(requestId);
-      const ocrTargets = attachments.filter(
-        (att) => att.file_type && att.file_type !== "SIGNATURE",
-      );
-      const failed = ocrTargets.filter((att) => att.ocr_status === "FAILED");
-      const pending = ocrTargets.filter(
-        (att) => att.ocr_status !== "COMPLETED",
-      );
-      if (failed.length > 0) {
-        throw new Error(
-          "OCR ล้มเหลว กรุณาอัปโหลดเอกสารใหม่และรอให้ประมวลผลเสร็จ",
-        );
-      }
-      if (pending.length > 0) {
-        throw new Error(
-          "กำลังวิเคราะห์เอกสาร กรุณารอให้ OCR เสร็จครบก่อนยื่นคำขอ",
-        );
-      }
+
 
       const stepNo = requestEntity.current_step || 1;
 
@@ -701,8 +684,7 @@ export class RequestCommandService {
       // Default profession code - in production this would be resolved from position
       const professionCode = "NURSE";
 
-      const { findRateByDetails } = await import("../classification/classification.service.js");
-      const rate = await findRateByDetails(professionCode, data.group_no, data.item_no, data.sub_item_no);
+      const rate = await requestRepository.findRateByDetails(professionCode, data.group_no, data.item_no, data.sub_item_no);
 
       if (!rate) {
         throw new Error("Invalid classification rate");

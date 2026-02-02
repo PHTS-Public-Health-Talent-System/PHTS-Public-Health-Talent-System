@@ -33,12 +33,6 @@ const parseGroupItem = (groupId: string, itemId: string) => {
   };
 };
 
-const shouldPollAttachments = (attachments: RequestFormData["attachments"]) => {
-  const targets = (attachments ?? []).filter(
-    (att) => att.file_type && att.file_type !== "SIGNATURE",
-  );
-  return targets.some((att) => att.ocr_status !== "COMPLETED");
-};
 
 export function useRequestForm(options?: { initialRequest?: RequestWithDetails }) {
   const router = useRouter();
@@ -70,8 +64,6 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
       ORDER: null,
       OTHER: null,
     },
-    ocrResult: null,
-    recommendedClassification: null,
     classification: {
       groupId: "",
       itemId: "",
@@ -84,7 +76,6 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draftRequestId, setDraftRequestId] = useState<number | null>(null);
   const [prefillOriginal, setPrefillOriginal] = useState<typeof prefill | null>(null);
-  const [isOcrPolling, setIsOcrPolling] = useState(false);
 
   const updateFormData = useCallback((key: keyof RequestFormData, value: unknown) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -117,7 +108,6 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
       classification: mapped.classification ?? prev.classification,
     }));
     setDraftRequestId(options.initialRequest.request_id);
-    setIsOcrPolling(shouldPollAttachments(mapped.attachments));
     initializedRef.current = true;
   }, [options?.initialRequest]);
 
@@ -167,6 +157,30 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
 
       updateFormData("employeeType", mapped as RequestFormData["employeeType"]);
     }
+
+    // Auto-detect Profession from Position Name
+    if (prefill.position_name && !formData.professionCode) {
+      const pos = prefill.position_name;
+      let detected: string | null = null;
+      if (pos.includes("แพทย์")) detected = "DOCTOR";
+      if (pos.includes("ทันตแพทย์")) detected = "DENTIST";
+      else if (pos.includes("พยาบาล")) detected = "NURSE";
+      else if (pos.includes("เภสัชกร")) detected = "PHARMACIST";
+      else if (pos.includes("เทคนิคการแพทย์")) detected = "MED_TECH";
+      else if (pos.includes("รังสี")) detected = "RAD_TECH";
+      else if (pos.includes("กายภาพ")) detected = "PHYSIO";
+      else if (pos.includes("จิตวิทยา")) detected = "CLIN_PSY";
+      else if (pos.includes("กิจกรรมบำบัด")) detected = "OCC_THERAPY";
+      else if (pos.includes("หัวใจและทรวงอก")) detected = "CARDIO_TECH";
+
+      if (detected) {
+        updateFormData("professionCode", detected);
+        updateFormData("classification", {
+          ...formData.classification,
+          professionCode: detected,
+        });
+      }
+    }
   }, [
     prefill,
     prefillOriginal,
@@ -181,6 +195,7 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
     formData.subDepartment,
     formData.effectiveDate,
     formData.employeeType,
+    formData.professionCode,
     updateFormData,
   ]);
 
@@ -200,35 +215,6 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
     updateFormData("effectiveDate", today);
   }, [formData.effectiveDate, updateFormData]);
 
-  useEffect(() => {
-    if (!draftRequestId) return;
-    let isActive = true;
-    let timer: ReturnType<typeof setInterval> | null = null;
-
-    const poll = async () => {
-      try {
-        const request = await getRequestById(draftRequestId);
-        if (!isActive) return;
-        updateFormData("attachments", request.attachments ?? []);
-        const polling = shouldPollAttachments(request.attachments ?? []);
-        setIsOcrPolling(polling);
-        if (!polling && timer) {
-          clearInterval(timer);
-          timer = null;
-        }
-      } catch {
-        // Silent retry; OCR can be slow
-      }
-    };
-
-    poll();
-    timer = setInterval(poll, 3000);
-
-    return () => {
-      isActive = false;
-      if (timer) clearInterval(timer);
-    };
-  }, [draftRequestId, updateFormData]);
 
   const buildFormData = (includeSignature = true): FormData => {
     const fd = new FormData();
@@ -300,19 +286,6 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
 
       if (license?.attachment_id) {
         await confirmAttachmentsApi(request.request_id);
-        updateFormData("ocrResult", {
-          licenseNo: "-",
-          expiryDate: "-",
-          confidence: 0,
-          attachmentId: license.attachment_id,
-        });
-      }
-
-      if (!license?.attachment_id) {
-        updateFormData("ocrResult", null);
-        updateFormData("recommendedClassification", null);
-        toast.warning("ไม่พบไฟล์ใบอนุญาตสำหรับ OCR");
-        return false;
       }
 
       return true;
@@ -326,28 +299,15 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
   const submitRequestFlow = async () => {
     setIsSubmitting(true);
     try {
-      const attachments = formData.attachments ?? [];
-      const ocrTargets = attachments.filter(
-        (att) => att.file_type && att.file_type !== "SIGNATURE",
-      );
-      const ocrPending = ocrTargets.filter((att) => att.ocr_status !== "COMPLETED");
-      const ocrFailed = ocrTargets.filter((att) => att.ocr_status === "FAILED");
-      if (ocrFailed.length > 0) {
-        toast.error("OCR ล้มเหลว กรุณาอัปโหลดเอกสารใหม่ก่อนยื่นคำขอ");
-        return;
-      }
-      if (ocrTargets.length > 0 && ocrPending.length > 0) {
-        toast.error("กำลังวิเคราะห์เอกสาร กรุณารอให้ OCR เสร็จครบก่อนยื่นคำขอ");
-        return;
-      }
       const form = buildFormData(true);
       const request = draftRequestId
         ? await updateRequest(draftRequestId, form)
         : await createRequest(form);
       updateFormData("attachments", request.attachments ?? []);
 
+      // Update classification with rateId if available
       const parsed = parseGroupItem(formData.classification.groupId, formData.classification.itemId);
-      if (parsed.group_no && parsed.item_no) {
+      if (parsed.group_no) {
         await updateClassification(request.request_id, {
           group_no: parsed.group_no,
           item_no: parsed.item_no,
@@ -379,6 +339,5 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
     validateStep,
     confirmAttachments,
     prefillOriginal,
-    isOcrPolling,
   };
 }

@@ -173,7 +173,7 @@ export class RequestQueryService {
     }
 
     const attachments =
-      await requestRepository.findAttachmentsWithOcr(requestId);
+      await requestRepository.findAttachmentsWithMetadata(requestId);
     const actions = await requestRepository.findApprovalsWithActor(requestId);
 
     const actionsWithActor: RequestActionWithActor[] = actions.map(
@@ -212,10 +212,7 @@ export class RequestQueryService {
         file_size: att.file_size,
         mime_type: att.mime_type,
         uploaded_at: att.uploaded_at,
-        ocr_status: att.ocr_status,
-        ocr_confidence: att.ocr_confidence,
-        ocr_provider: att.ocr_provider,
-        ocr_processed_at: att.ocr_processed_at,
+        // OCR fields removed
       })) as RequestAttachment[],
       actions: actionsWithActor,
     };

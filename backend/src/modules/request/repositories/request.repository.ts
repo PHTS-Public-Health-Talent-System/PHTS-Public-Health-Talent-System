@@ -142,18 +142,10 @@ export class RequestRepository {
     return rows as RequestSubmissionEntity[];
   }
 
-  // Fetch Attachment with OCR data
-  async findAttachmentsWithOcr(requestId: number): Promise<any[]> {
+  // Fetch Attachments (OCR joins removed)
+  async findAttachmentsWithMetadata(requestId: number): Promise<any[]> {
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT a.*,
-              o.status AS ocr_status,
-              o.confidence AS ocr_confidence,
-              o.provider AS ocr_provider,
-              o.processed_at AS ocr_processed_at
-       FROM req_attachments a
-       LEFT JOIN req_ocr_results o ON a.attachment_id = o.attachment_id
-       WHERE a.request_id = ?
-       ORDER BY a.uploaded_at DESC`,
+      `SELECT * FROM req_attachments WHERE request_id = ? ORDER BY uploaded_at DESC`,
       [requestId],
     );
     return rows;
@@ -525,47 +517,7 @@ export class RequestRepository {
     );
   }
 
-  // --- OCR Operations ---
-
-  async findOcrResult(attachmentId: number): Promise<any | null> {
-    const [rows] = await pool.query<RowDataPacket[]>(
-      "SELECT * FROM req_ocr_results WHERE attachment_id = ?",
-      [attachmentId],
-    );
-    return rows.length ? rows[0] : null;
-  }
-
-  async upsertOcrResult(
-    data: {
-      attachment_id: number;
-      request_id: number;
-      status: string;
-      raw_text: string | null;
-      confidence: number;
-      provider: string;
-    },
-    connection?: PoolConnection,
-  ): Promise<void> {
-    const db = this.getDb(connection);
-    const sql = `
-      INSERT INTO req_ocr_results (attachment_id, request_id, status, raw_text, confidence, provider, processed_at)
-      VALUES (?, ?, ?, ?, ?, ?, NOW())
-      ON DUPLICATE KEY UPDATE
-        status = VALUES(status),
-        raw_text = VALUES(raw_text),
-        confidence = VALUES(confidence),
-        provider = VALUES(provider),
-        processed_at = NOW()
-    `;
-    await db.execute(sql, [
-      data.attachment_id,
-      data.request_id,
-      data.status,
-      data.raw_text,
-      data.confidence,
-      data.provider,
-    ]);
-  }
+  // OCR Operations removed
   // --- Scope Resolution ---
 
   async findCitizenIdByUserId(userId: number): Promise<string | null> {
@@ -676,26 +628,7 @@ export class RequestRepository {
     return rows[0] ?? null;
   }
 
-  // --- Classification Rules ---
-
-  async findAllActiveRules(): Promise<RowDataPacket[]> {
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT * FROM cfg_classification_rules
-       WHERE is_active = 1
-       ORDER BY priority ASC, id ASC`,
-    );
-    return rows;
-  }
-
-  async findRulesByProfession(profession: string): Promise<RowDataPacket[]> {
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT * FROM cfg_classification_rules
-       WHERE is_active = 1 AND profession = ?
-       ORDER BY priority ASC, id ASC`,
-      [profession],
-    );
-    return rows;
-  }
+  // Classification Rules removed
 }
 
 export const requestRepository = new RequestRepository();

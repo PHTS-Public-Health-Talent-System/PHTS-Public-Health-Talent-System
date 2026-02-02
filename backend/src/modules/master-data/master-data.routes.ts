@@ -48,4 +48,8 @@ router.put(
   masterDataController.updateMasterRate,
 );
 
+// Public rates endpoints (all authenticated users can access for dropdown selection)
+router.get("/professions", masterDataController.getProfessions);
+router.get("/rates/:professionCode", masterDataController.getRatesByProfession);
+
 export default router;

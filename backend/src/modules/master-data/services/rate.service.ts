@@ -40,3 +40,30 @@ export const updateMasterRate = async (
     },
   });
 };
+
+/**
+ * Get payment rates filtered by profession code.
+ * This is used for the simplified dropdown in the request wizard.
+ */
+export const getRatesByProfession = async (
+  professionCode: string,
+): Promise<any[]> => {
+  const rates = await query<RowDataPacket[]>(
+    `SELECT rate_id, profession_code, group_no, item_no, sub_item_no, amount, condition_desc
+     FROM cfg_payment_rates
+     WHERE profession_code = ? AND is_active = 1
+     ORDER BY group_no, item_no, sub_item_no`,
+    [professionCode],
+  );
+  return rates;
+};
+
+/**
+ * Get distinct profession codes that have active rates.
+ */
+export const getProfessions = async (): Promise<string[]> => {
+  const rows = await query<RowDataPacket[]>(
+    `SELECT DISTINCT profession_code FROM cfg_payment_rates WHERE is_active = 1 ORDER BY profession_code`,
+  );
+  return rows.map((r) => r.profession_code);
+};

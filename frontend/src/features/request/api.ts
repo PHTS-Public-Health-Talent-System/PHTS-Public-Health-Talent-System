@@ -3,32 +3,18 @@ import { ApiPayload, ApiResponse } from '@/shared/api/types';
 import { RequestWithDetails } from '@/types/request.types';
 import type { DisplayScope } from '@/features/request/approver-utils';
 
-export interface RecommendedClassification {
-  group_no: number;
-  item_no: number;
-  sub_item_no?: number | null;
-  amount: number;
-  rate_id?: number;
-  hint_text?: string;
-  source?: string;
-}
+
+// Removed RecommendedClassification interface
+// Removed OcrResult interface
 
 export interface MasterRate {
-  rate_id?: number;
+  rate_id: number;
   group_no: number;
-  item_no: string | number;
+  item_no: string | number | null;
   sub_item_no?: string | number | null;
   amount: number;
-  profession_code?: string;
-  description?: string | null;
-}
-
-export interface OcrResult {
-  license_no?: string;
-  expiry_date?: string;
-  confidence?: number;
-  ocr_status?: string | null;
-  [key: string]: unknown;
+  profession_code: string;
+  condition_desc?: string | null;
 }
 
 export interface OfficerOption {
@@ -129,22 +115,9 @@ export async function confirmAttachments(id: number | string) {
   return res.data.data;
 }
 
-export async function getAttachmentOcr(attachmentId: number | string) {
-  const res = await api.get<ApiResponse<OcrResult>>(`/requests/attachments/${attachmentId}/ocr`);
-  return res.data.data;
-}
-
-export async function requestAttachmentOcr(attachmentId: number | string) {
-  const res = await api.post<ApiResponse<OcrResult>>(`/requests/attachments/${attachmentId}/ocr`);
-  return res.data.data;
-}
-
-export async function getRecommendedClassification(id: number | string) {
-  const res = await api.get<ApiResponse<RecommendedClassification | null>>(
-    `/requests/${id}/recommended-classification`,
-  );
-  return res.data.data;
-}
+// Removed getAttachmentOcr
+// Removed requestAttachmentOcr
+// Removed getRecommendedClassification
 
 export async function updateClassification(
   id: number | string,

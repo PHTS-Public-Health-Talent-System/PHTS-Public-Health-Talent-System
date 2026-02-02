@@ -7,14 +7,11 @@ import { ArrowLeft, Download, FileIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import {
-  useAttachmentOcr,
   useAvailableOfficers,
   useMasterRates,
   useProcessAction,
-  useRecommendedClassification,
   useReassignHistory,
   useReassignRequest,
-  useRequestAttachmentOcr,
   useRequestDetail,
   useCreateVerificationSnapshot,
   useUpdateClassification,
@@ -66,9 +63,9 @@ export default function PtsOfficerRequestDetailPage({
   const updateChecks = useUpdateVerificationChecks()
   const processAction = useProcessAction()
   const createSnapshot = useCreateVerificationSnapshot()
-  const requestOcr = useRequestAttachmentOcr()
+  // const requestOcr = useRequestAttachmentOcr() // Removed
   const { data: rates, isLoading: isRatesLoading } = useMasterRates()
-  const { data: recommended } = useRecommendedClassification(id)
+  // const { data: recommended } = useRecommendedClassification(id) // Removed
   const { data: availableOfficers } = useAvailableOfficers()
   const reassignMutation = useReassignRequest()
   const { data: reassignHistory } = useReassignHistory(id)
@@ -110,9 +107,7 @@ export default function PtsOfficerRequestDetailPage({
   const licenseAttachmentId = request?.attachments?.find(
     (att) => att.file_type === "LICENSE",
   )?.attachment_id
-  const { data: licenseOcr } = useAttachmentOcr(licenseAttachmentId, {
-    enabled: !!licenseAttachmentId,
-  })
+  // Removed useAttachmentOcr for license
 
   if (isLoading) {
     return (
@@ -527,7 +522,7 @@ export default function PtsOfficerRequestDetailPage({
                   <div>
                     <p className="text-sm font-medium">{att.file_name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {(att.file_size / 1024).toFixed(0)} KB · {att.ocr_status ?? "N/A"}
+                      {(att.file_size / 1024).toFixed(0)} KB
                     </p>
                   </div>
                 </div>
@@ -537,26 +532,12 @@ export default function PtsOfficerRequestDetailPage({
                       <Download className="mr-1 h-4 w-4" /> ดาวน์โหลด
                     </a>
                   </Button>
-                  {att.file_type !== "SIGNATURE" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={requestOcr.isPending}
-                      onClick={() => requestOcr.mutate(att.attachment_id)}
-                    >
-                      ขอ OCR ใหม่
-                    </Button>
-                  )}
                 </div>
               </div>
             ))
           )}
 
-          {licenseOcr && (
-            <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-              เลขที่ใบอนุญาต: {licenseOcr.license_no ?? "-"} · หมดอายุ: {licenseOcr.expiry_date ?? "-"}
-            </div>
-          )}
+          {/* License OCR Removed */}
         </CardContent>
       </Card>
 
@@ -623,31 +604,7 @@ export default function PtsOfficerRequestDetailPage({
             <div className="rounded-lg border bg-primary/5 p-4">
               จำนวนเงินที่ขอ: {displayAmount.toLocaleString()} บาท
             </div>
-            {recommended && (
-              <div className="mt-3 rounded-lg border bg-muted/30 p-3 text-sm">
-                แนะนำ: กลุ่ม {recommended.group_no} ข้อ {recommended.item_no}
-                {recommended.sub_item_no ? `.${recommended.sub_item_no}` : ""} — {recommended.amount.toLocaleString()} บาท
-                {recommended.hint_text && (
-                  <div className="text-xs text-muted-foreground mt-1">{recommended.hint_text}</div>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-2"
-                  onClick={() =>
-                    setClassification({
-                      groupId: `group${recommended.group_no}`,
-                      itemId: recommended.sub_item_no
-                        ? `item${recommended.item_no}_${recommended.sub_item_no}`
-                        : `item${recommended.item_no}`,
-                      amount: recommended.amount,
-                    })
-                  }
-                >
-                  ใช้คำแนะนำ
-                </Button>
-              </div>
-            )}
+            {/* Recommended Classification Removed */}
           </div>
           <div className="md:col-span-2 flex justify-end">
             <Button onClick={handleSaveClassification} disabled={updateClassification.isPending}>

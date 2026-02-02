@@ -42,11 +42,8 @@ router.post(
 // Master rates and recommended rate
 router.get("/master-rates", requestController.getMasterRates);
 router.get("/prefill", requestController.getPrefill);
-router.post("/:id/attachments/confirm", requestController.confirmAttachments);
-router.get(
-  "/:id/recommended-classification",
-  requestController.getRecommendedClassification,
-);
+
+
 router.post("/:id/classification", requestController.updateClassification);
 
 // Create new request with file uploads and signature
@@ -85,15 +82,7 @@ router.get(
   requestController.getPendingApprovals,
 );
 
-// OCR for attachments (PTS_OFFICER only)
-router.get(
-  "/attachments/:attachmentId/ocr",
-  requestController.getAttachmentOcr,
-);
-router.post(
-  "/attachments/:attachmentId/ocr",
-  requestController.requestAttachmentOcr,
-);
+// OCR routes removed
 
 // Get approval history for current approver
 router.get(

@@ -26,8 +26,7 @@ import {
 } from "../scope/scope.service.js";
 import { logAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
 import { requestRepository } from "../repositories/request.repository.js";
-import { findRecommendedRate } from "../classification/classification.service.js";
-import { createEligibility } from "../classification/eligibility.service.js";
+// Removed classification/eligibility service imports
 
 // ============================================================================
 // Finalization
@@ -56,13 +55,8 @@ const finalizeRequest = async (
   // 1. Try rate from submission_data
   let rateId = request.submission_data?.rate_id;
 
-  // 2. Try findRecommendedRate by citizenId
+  // 2. Fallback: match by amount + profession
   if (!rateId) {
-    const recommended = await findRecommendedRate(citizenId);
-    if (recommended && recommended.amount === Number(amount)) {
-      rateId = recommended.rate_id;
-    } else {
-      // 3. Fallback: match by amount + profession
       let profession = request.personnel_type;
       const positionName = (request as any).position_name;
       if (positionName && typeof positionName === "string") {
@@ -76,7 +70,6 @@ const finalizeRequest = async (
         profession,
         connection,
       );
-    }
   }
 
   if (!rateId) {
@@ -86,12 +79,19 @@ const finalizeRequest = async (
     return;
   }
 
-  await createEligibility(
+  // Create Eligibility (Deactivate old, Insert new)
+  await requestRepository.deactivateEligibility(
+    citizenId,
+    effectiveDateStr,
     connection,
+  );
+
+  await requestRepository.insertEligibility(
     citizenId,
     rateId,
-    effectiveDateStr,
     requestId,
+    effectiveDateStr,
+    connection,
   );
 };
 

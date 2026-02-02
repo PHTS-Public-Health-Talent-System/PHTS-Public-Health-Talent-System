@@ -34,10 +34,6 @@ export interface Attachment {
   file_path: string;
   file_type: string;
   file_size: number;
-  ocr_status?: string | null;
-  ocr_confidence?: number | null;
-  ocr_provider?: string | null;
-  ocr_processed_at?: string | null;
 }
 
 export interface ApprovalAction {
@@ -123,24 +119,13 @@ export interface RequestFormData {
   attachments?: Attachment[];
 
   // Section 6: Classification
-  ocrResult: {
-    licenseNo: string;
-    expiryDate: string;
-    confidence: number;
-    attachmentId?: number;
-  } | null;
-
-  recommendedClassification: {
-    groupId: string;
-    itemId: string;
-    amount: number;
-    hintText?: string;
-  } | null;
-
   classification: {
+    professionCode?: string;
     groupId: string;
     itemId: string;
+    subItemId?: string;
     amount: number;
+    rateId?: number;
   };
 
   // Section 7: Signature
@@ -150,6 +135,7 @@ export interface RequestFormData {
 
   // Meta
   id?: string;
+  professionCode?: string; // Derived or selected in Step 1
 }
 
 // ===== Label Maps =====

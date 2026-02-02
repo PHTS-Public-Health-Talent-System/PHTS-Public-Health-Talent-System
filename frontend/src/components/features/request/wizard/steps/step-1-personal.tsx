@@ -45,9 +45,6 @@ export function Step1PersonalInfo({ data, updateData, prefillOriginal }: Step1Pr
     <div className="space-y-6">
       <div className="space-y-1">
         <h3 className="text-lg font-medium">ข้อมูลผู้ยื่นคำขอ</h3>
-        <p className="text-sm text-muted-foreground">
-          ระบบเติมข้อมูลให้อัตโนมัติจาก HRMS แต่สามารถแก้ไขได้ตามจริง
-        </p>
       </div>
       <Separator />
 

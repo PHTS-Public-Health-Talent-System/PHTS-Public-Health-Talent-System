@@ -22,7 +22,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={true}>
       <AppSidebar />
 
       {/* พื้นที่เนื้อหาหลัก (SidebarInset) */}
@@ -56,7 +56,7 @@ export default function DashboardLayout({
         </header>
 
         {/* Content Area จริงๆ */}
-        <div className="flex flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+        <div className="flex flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
           {children}
         </div>
       </SidebarInset>

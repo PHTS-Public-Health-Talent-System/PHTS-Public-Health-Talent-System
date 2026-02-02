@@ -68,3 +68,24 @@ export const updateMasterRate = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+// Get rates filtered by profession code
+export const getRatesByProfession = async (req: Request, res: Response) => {
+  try {
+    const { professionCode } = req.params;
+    const rates = await masterDataService.getRatesByProfession(professionCode);
+    res.json({ success: true, data: rates });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Get list of professions that have active rates
+export const getProfessions = async (_req: Request, res: Response) => {
+  try {
+    const professions = await masterDataService.getProfessions();
+    res.json({ success: true, data: professions });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
