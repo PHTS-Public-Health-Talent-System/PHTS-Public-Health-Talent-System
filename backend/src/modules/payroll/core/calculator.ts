@@ -567,7 +567,7 @@ function resolveWorkPeriods(
   const periods: WorkPeriod[] = [];
   let isActive = false;
   let currentSegmentStart = -1;
-  let lastRemark = "";
+  const lastRemark = "";
 
   const exitTypes = new Set(["RESIGN", "RETIRE", "DEATH", "TRANSFER_OUT"]);
 

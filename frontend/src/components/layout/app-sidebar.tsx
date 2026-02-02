@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import {
   LayoutDashboard,
   FileText,
@@ -129,8 +130,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       {/* ส่วนหัว Sidebar: โลโก้ระบบ */}
       <SidebarHeader className="h-16 flex items-center justify-center border-b border-slate-100 bg-white">
         <div className="flex items-center gap-2 px-2 w-full">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
-            <ActivityIcon className="size-5" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+            <Image
+              src="/logo-uttaradit-hospital.png"
+              alt="Uttaradit Hospital Logo"
+              width={40}
+              height={40}
+              style={{ objectFit: "contain" }}
+            />
           </div>
           <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
             <span className="font-bold text-lg text-slate-900">PHTS</span>
@@ -227,25 +234,5 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
-  );
-}
-
-// Icon component (Mock)
-function ActivityIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-    </svg>
   );
 }

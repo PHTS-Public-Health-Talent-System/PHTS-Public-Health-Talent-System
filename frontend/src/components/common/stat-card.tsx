@@ -8,9 +8,10 @@ interface StatCardProps {
   value: number | string;
   icon: LucideIcon;
   iconClassName?: string;
+  description?: string;
 }
 
-export function StatCard({ title, value, icon: Icon, iconClassName }: StatCardProps) {
+export function StatCard({ title, value, icon: Icon, iconClassName, description }: StatCardProps) {
   return (
     <Card className="shadow-sm">
       <CardContent className="flex items-center gap-4 p-5">
@@ -20,6 +21,9 @@ export function StatCard({ title, value, icon: Icon, iconClassName }: StatCardPr
         <div>
           <p className="text-2xl font-bold">{value}</p>
           <p className="text-sm text-muted-foreground">{title}</p>
+          {description && (
+            <p className="text-xs text-muted-foreground/70 mt-0.5">{description}</p>
+          )}
         </div>
       </CardContent>
     </Card>
