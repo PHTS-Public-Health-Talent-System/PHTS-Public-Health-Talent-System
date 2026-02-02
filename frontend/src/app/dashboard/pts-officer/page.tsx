@@ -89,17 +89,17 @@ export default function PtsOfficerDashboardPage() {
         </Card>
 
         {/* Data Quality */}
-        <Card className="hover:shadow-md transition-shadow border-l-4 border-l-indigo-500">
+        <Card className="hover:shadow-md transition-shadow border-l-4 border-l-sky-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Data Quality</CardTitle>
-            <DatabaseZap className="h-4 w-4 text-indigo-500" />
+            <DatabaseZap className="h-4 w-4 text-sky-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-indigo-600">{dq.totalIssues ?? 0}</div>
+            <div className="text-3xl font-bold text-sky-600">{dq.totalIssues ?? 0}</div>
             <p className="text-xs text-muted-foreground mt-1">
                ประเด็นที่กระทบคำนวณ: <span className="font-medium text-destructive">{dq.affectingCalculation ?? 0}</span>
             </p>
-            <Button asChild size="sm" className="w-full mt-3 shadow-none bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white">
+            <Button asChild size="sm" className="w-full mt-3 shadow-none bg-sky-50 text-sky-600 hover:bg-sky-600 hover:text-white">
               <Link href="/dashboard/pts-officer/data-quality">ตรวจคุณภาพข้อมูล</Link>
             </Button>
           </CardContent>
