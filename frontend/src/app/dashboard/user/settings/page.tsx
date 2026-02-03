@@ -34,23 +34,25 @@ export default function UserSettingsPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-10">
       <div className="flex items-center gap-4">
-        <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-           <Settings className="h-7 w-7" />
+        <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
+           <Settings className="h-6 w-6" />
         </div>
         <div>
            <h1 className="text-3xl font-bold text-slate-900">ตั้งค่าระบบ</h1>
-           <p className="text-slate-500 text-lg">จัดการการตั้งค่าการใช้งานและการแจ้งเตือน</p>
+           <p className="text-slate-500 text-sm">จัดการการตั้งค่าการใช้งานและการแจ้งเตือน</p>
         </div>
       </div>
 
-      <Card className="border-slate-200 shadow-sm rounded-xl">
-        <CardHeader className="flex flex-row items-center gap-3 bg-slate-50 border-b border-slate-100">
+      <Card className="border-slate-200 shadow-sm rounded-lg">
+        <CardHeader className="flex flex-row items-center gap-3 bg-slate-50/50 border-b border-slate-100 py-4 px-6">
            <Bell className="h-5 w-5 text-primary" />
-           <CardTitle className="text-xl text-slate-800">ตั้งค่าการแจ้งเตือน</CardTitle>
+           <CardTitle className="text-lg text-slate-800 font-bold">ตั้งค่าการแจ้งเตือน</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4 px-6 p-6">
+        <CardContent className="p-6">
           {isNotifLoading ? (
-            <Skeleton className="h-20 w-full" />
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
+            </div>
           ) : (
             <div className="divide-y divide-slate-100">
                {[
@@ -58,12 +60,12 @@ export default function UserSettingsPage() {
                  { id: "sms", label: "แจ้งเตือนทาง SMS", key: "sms", desc: "ส่งข้อความเมื่อมีความเคลื่อนไหวสำคัญ (อาจมีค่าบริการ)", disabled: true },
                  { id: "email", label: "แจ้งเตือนทางอีเมล", key: "email", desc: "ส่งรายละเอียดไปยังอีเมลที่ลงทะเบียนไว้", disabled: true }
                ].map((item) => (
-                 <div key={item.id} className="flex items-start gap-3 py-4 first:pt-0 last:pb-0">
+                 <div key={item.id} className="flex items-start gap-3 py-5 first:pt-0 last:pb-0">
                     <Checkbox
                       id={item.id}
                       checked={notificationSettings[item.key as keyof NotificationSettings]}
                       disabled={item.disabled}
-                      className="mt-1 h-5 w-5 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                      className="mt-1 h-5 w-5 data-[state=checked]:bg-primary data-[state=checked]:border-primary shrink-0"
                       onCheckedChange={(val) => {
                         const next = { ...notificationSettings, [item.key]: !!val };
                         setLocalNotif(next);
@@ -74,14 +76,14 @@ export default function UserSettingsPage() {
                         });
                       }}
                     />
-                    <div className="grid gap-1.5 leading-none">
+                    <div className="grid gap-1.5 leading-snug flex-1">
                       <Label
                         htmlFor={item.id}
-                        className={`text-base font-medium ${item.disabled ? 'text-slate-400' : 'text-slate-900 cursor-pointer'}`}
+                        className={`text-sm font-semibold ${item.disabled ? 'text-slate-400' : 'text-slate-900 cursor-pointer'}`}
                       >
                         {item.label}
                       </Label>
-                      <p className="text-sm text-slate-500">{item.desc}</p>
+                      <p className={`text-xs leading-snug ${item.disabled ? 'text-slate-400' : 'text-slate-500'}`}>{item.desc}</p>
                     </div>
                  </div>
                ))}

@@ -1,28 +1,26 @@
 "use client";
 
 import { use } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, X, Download, FileIcon, Clock } from "lucide-react";
+import { ArrowLeft, Clock, Download, FileIcon, Pencil } from "lucide-react";
+
+import { useRequestDetail } from "@/features/request/hooks";
+import { StatusBadge } from "@/components/common/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import Link from "next/link";
-import { toast } from "sonner";
-import { useRequestDetail, useCancelRequest } from "@/features/request/hooks";
-import { StatusBadge } from "@/components/common/status-badge";
-import { RequestTimeline } from "@/components/common/request-timeline";
-import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  REQUEST_TYPE_LABELS,
   PERSONNEL_TYPE_LABELS,
-  WORK_ATTRIBUTE_LABELS,
+  REQUEST_TYPE_LABELS,
   STEP_LABELS,
+  WORK_ATTRIBUTE_LABELS,
   type WorkAttributes,
 } from "@/types/request.types";
 
-export default function RequestDetailPage({
+export default function UserRequestDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -30,121 +28,93 @@ export default function RequestDetailPage({
   const { id } = use(params);
   const router = useRouter();
   const { data: request, isLoading } = useRequestDetail(id);
-  const cancelMutation = useCancelRequest();
-
-  const handleCancel = () => {
-    cancelMutation.mutate(id, {
-      onSuccess: () => {
-        toast.success("ยกเลิกคำขอเรียบร้อยแล้ว");
-        router.push("/dashboard/user");
-      },
-      onError: () => toast.error("ไม่สามารถยกเลิกคำขอได้"),
-    });
-  };
 
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <Skeleton className="h-10 w-64" />
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-60 w-full" />
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-10 rounded-lg" />
+          <Skeleton className="h-8 w-48" />
+        </div>
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
 
   if (!request) {
     return (
-      <div className="text-center py-20 text-muted-foreground">
-        ไม่พบคำขอ
+      <div className="flex flex-col items-center justify-center min-h-[320px] text-muted-foreground">
+        <div className="bg-muted/30 p-4 rounded-full mb-4">
+          <FileIcon className="h-8 w-8 opacity-50" />
+        </div>
+        <p className="text-lg font-medium">ไม่พบคำขอที่ระบุ</p>
+        <Button variant="link" onClick={() => router.back()}>
+          กลับไปหน้ารายการ
+        </Button>
       </div>
     );
   }
 
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
   const canEdit = request.status === "DRAFT" || request.status === "RETURNED";
-  const canCancel =
-    request.status !== "APPROVED" &&
-    request.status !== "REJECTED" &&
-    request.status !== "CANCELLED";
-
-  const workAttrs = request.work_attributes as WorkAttributes | null;
-  const activeAttrs = workAttrs
-    ? (Object.entries(workAttrs) as [keyof WorkAttributes, boolean][])
-        .filter(([, v]) => v)
-        .map(([k]) => WORK_ATTRIBUTE_LABELS[k])
-    : [];
+  const workAttributes =
+    request.work_attributes ??
+    ({
+      operation: false,
+      planning: false,
+      coordination: false,
+      service: false,
+    } as WorkAttributes);
+  const activeAttrs = Object.entries(workAttributes)
+    .filter(([, value]) => value)
+    .map(
+      ([key]) => WORK_ATTRIBUTE_LABELS[key as keyof typeof WORK_ATTRIBUTE_LABELS],
+    );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-10">
       {/* Header */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              {REQUEST_TYPE_LABELS[request.request_type] ?? request.request_type}
-              <StatusBadge status={request.status} currentStep={request.current_step} />
+      <div className="flex flex-col md:flex-row md:items-center gap-4 border-b pb-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => router.back()}
+          className="h-10 w-10 shrink-0"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div className="flex-1">
+          <div className="flex items-center flex-wrap gap-2">
+            <h2 className="text-xl md:text-2xl font-bold tracking-tight">
+              {request.request_no ?? `#${request.request_id}`}
             </h2>
-            <p className="text-sm text-muted-foreground">
-              {request.request_no ?? `#${request.request_id}`} &middot;{" "}
-              ยื่นเมื่อ{" "}
-              {new Date(request.created_at).toLocaleDateString("th-TH", {
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
-            </p>
+            <StatusBadge status={request.status} currentStep={request.current_step} />
           </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            ประเภทคำขอ:{" "}
+            <span className="font-medium text-foreground">
+              {REQUEST_TYPE_LABELS[request.request_type] ?? request.request_type}
+            </span>
+          </p>
         </div>
-        <div className="flex gap-2">
-          {canEdit && (
-            <Link href={`/dashboard/user/requests/${id}/edit`}>
-              <Button variant="outline" size="sm">
-                <Pencil className="mr-1 h-3 w-3" /> แก้ไข
-              </Button>
-            </Link>
-          )}
-          {canCancel && (
-            <ConfirmDialog
-              trigger={
-                <Button variant="destructive" size="sm" disabled={cancelMutation.isPending}>
-                  <X className="mr-1 h-3 w-3" /> ยกเลิกคำขอ
-                </Button>
-              }
-              title="ยืนยันยกเลิกคำขอ"
-              description="เมื่อยกเลิกแล้วจะไม่สามารถกู้คืนได้ ต้องการดำเนินการต่อหรือไม่?"
-              variant="destructive"
-              confirmLabel="ยกเลิกคำขอ"
-              onConfirm={handleCancel}
-            />
-          )}
-        </div>
+        {canEdit && (
+          <Link href={`/dashboard/user/requests/${request.request_id}/edit`}>
+            <Button variant="outline" className="gap-2">
+              <Pencil className="h-4 w-4" />
+              แก้ไขคำขอ
+            </Button>
+          </Link>
+        )}
       </div>
 
-      {/* Timeline */}
-      <Card>
-        <CardContent className="py-6">
-          <RequestTimeline
-            currentStep={request.current_step}
-            status={request.status}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Tabs */}
-      <Tabs defaultValue="details">
-        <TabsList>
-          <TabsTrigger value="details">รายละเอียด</TabsTrigger>
+      <Tabs defaultValue="details" className="w-full">
+        <TabsList variant="line" className="gap-2 border-b">
+          <TabsTrigger value="details">รายละเอียดคำขอ</TabsTrigger>
           <TabsTrigger value="attachments">
-            เอกสารแนบ
-            {request.attachments.length > 0 && (
-              <Badge variant="secondary" className="ml-1 text-xs">
-                {request.attachments.length}
-              </Badge>
-            )}
+            เอกสารแนบ ({request.attachments?.length ?? 0})
           </TabsTrigger>
-          <TabsTrigger value="history">ประวัติอนุมัติ</TabsTrigger>
+          <TabsTrigger value="history">ประวัติการดำเนินการ</TabsTrigger>
         </TabsList>
 
         <TabsContent value="details" className="mt-4">
@@ -153,12 +123,15 @@ export default function RequestDetailPage({
               <div>
                 <p className="text-sm text-muted-foreground">ประเภทบุคลากร</p>
                 <p className="font-medium">
-                  {PERSONNEL_TYPE_LABELS[request.personnel_type] ?? request.personnel_type}
+                  {PERSONNEL_TYPE_LABELS[request.personnel_type] ??
+                    request.personnel_type}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">เลขที่ตำแหน่ง</p>
-                <p className="font-medium">{request.current_position_number ?? "-"}</p>
+                <p className="font-medium">
+                  {request.current_position_number ?? "-"}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">สังกัด</p>
@@ -183,7 +156,9 @@ export default function RequestDetailPage({
               <div>
                 <p className="text-sm text-muted-foreground">วันที่มีผล</p>
                 <p className="font-medium">
-                  {new Date(request.effective_date).toLocaleDateString("th-TH")}
+                  {request.effective_date
+                    ? new Date(request.effective_date).toLocaleDateString("th-TH")
+                    : "-"}
                 </p>
               </div>
               <div className="md:col-span-2">
@@ -199,13 +174,13 @@ export default function RequestDetailPage({
         <TabsContent value="attachments" className="mt-4">
           <Card>
             <CardContent className="p-6">
-              {request.attachments.length === 0 ? (
+              {(request.attachments ?? []).length === 0 ? (
                 <p className="text-center text-muted-foreground py-6">
                   ไม่มีเอกสารแนบ
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {request.attachments.map((att) => (
+                  {(request.attachments ?? []).map((att) => (
                     <div
                       key={att.attachment_id}
                       className="flex items-center justify-between rounded-lg border p-3"
@@ -221,7 +196,7 @@ export default function RequestDetailPage({
                       </div>
                       <Button variant="ghost" size="icon" asChild>
                         <a
-                          href={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api"}/${att.file_path}`}
+                          href={`${apiBase}/${att.file_path}`}
                           target="_blank"
                           rel="noopener noreferrer"
                         >
@@ -239,17 +214,17 @@ export default function RequestDetailPage({
         <TabsContent value="history" className="mt-4">
           <Card>
             <CardContent className="p-6">
-              {request.actions.length === 0 ? (
+              {(request.actions ?? []).length === 0 ? (
                 <p className="text-center text-muted-foreground py-6">
                   ยังไม่มีประวัติการดำเนินการ
                 </p>
               ) : (
                 <div className="space-y-4">
-                  {request.actions.map((action, i) => (
-                    <div key={i} className="flex gap-3">
+                  {(request.actions ?? []).map((action, i) => (
+                    <div key={`${action.action_date}-${i}`} className="flex gap-3">
                       <div className="flex flex-col items-center">
                         <Clock className="h-5 w-5 text-muted-foreground" />
-                        {i < request.actions.length - 1 && (
+                        {i < (request.actions ?? []).length - 1 && (
                           <div className="w-px flex-1 bg-border mt-1" />
                         )}
                       </div>
@@ -258,7 +233,9 @@ export default function RequestDetailPage({
                           {action.action}
                           {action.step_no != null && (
                             <span className="text-muted-foreground ml-1">
-                              — {STEP_LABELS[action.step_no] ?? `ขั้นตอน ${action.step_no}`}
+                              —{" "}
+                              {STEP_LABELS[action.step_no] ??
+                                `ขั้นตอน ${action.step_no}`}
                             </span>
                           )}
                         </p>

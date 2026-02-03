@@ -82,22 +82,22 @@ export default function UserRequestsListClient({
   return (
     <div className="space-y-8 pb-10">
       {/* Header & Title */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
            <h1 className="text-3xl font-bold text-slate-900">คำขอทั้งหมด</h1>
-           <p className="text-slate-500 mt-1">ประวัติรายการยื่นคำขอรับเงิน พ.ต.ส.</p>
+           <p className="text-slate-500 mt-1 text-sm">ประวัติรายการยื่นคำขอรับเงิน พ.ต.ส.</p>
         </div>
-        <Link href="/dashboard/user/request">
-            <Button size="lg" className="h-12 px-6 rounded-xl shadow-md shadow-primary/20 hover:shadow-primary/30 w-full md:w-auto">
+        <Link href="/dashboard/user/request" className="self-start sm:self-auto">
+            <Button size="lg" className="h-12 px-6 rounded-lg shadow-md shadow-primary/20 hover:shadow-primary/30 w-full sm:w-auto">
               <Plus className="mr-2 h-5 w-5" /> ยื่นคำขอใหม่
             </Button>
           </Link>
       </div>
 
       {/* Filters Section */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-4">
+      <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm flex flex-col gap-4 sm:flex-row sm:items-end">
           <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-3.5 h-5 w-5 text-slate-400" />
+            <Search className="absolute left-3 top-3.5 h-5 w-5 text-slate-400" />
             <Input
               value={search}
               onChange={(e) => {
@@ -105,7 +105,7 @@ export default function UserRequestsListClient({
                 setQuery({ q: e.target.value });
               }}
               placeholder="ค้นหาเลขที่คำขอ..."
-              className="pl-11 h-12 text-base border-slate-200 bg-slate-50 focus:bg-white"
+              className="pl-10 h-10 text-sm border-slate-200 bg-slate-50 focus:bg-white rounded-lg"
             />
           </div>
           <Select
@@ -115,7 +115,7 @@ export default function UserRequestsListClient({
               setQuery({ status: val });
             }}
           >
-            <SelectTrigger className="w-full sm:w-[220px] h-12 text-base border-slate-200 bg-slate-50">
+            <SelectTrigger className="w-full sm:w-48 h-10 text-sm border-slate-200 bg-slate-50 rounded-lg">
               <SelectValue placeholder="สถานะทั้งหมด" />
             </SelectTrigger>
             <SelectContent>
@@ -128,16 +128,16 @@ export default function UserRequestsListClient({
               <SelectItem value="CANCELLED">ยกเลิก</SelectItem>
             </SelectContent>
           </Select>
-          {/* Reset Button (Optional) */}
+          {/* Reset Button */}
           {(search || statusFilter !== "ALL") && (
-             <Button variant="ghost" size="icon" className="h-12 w-12" onClick={() => { setSearch(""); setStatusFilter("ALL"); setQuery({ q: "", status: "ALL" }) }}>
-                <FilterX className="h-5 w-5 text-slate-400" />
+             <Button variant="ghost" size="icon" className="h-10 w-10 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100" onClick={() => { setSearch(""); setStatusFilter("ALL"); setQuery({ q: "", status: "ALL" }) }} title="ล้างตัวกรอง">
+                <FilterX className="h-5 w-5" />
              </Button>
           )}
       </div>
 
       {/* Data Table / List */}
-      <Card className="border-slate-200 shadow-sm rounded-xl overflow-hidden">
+      <Card className="border-slate-200 shadow-sm rounded-lg overflow-hidden">
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-6 space-y-4">
@@ -147,16 +147,16 @@ export default function UserRequestsListClient({
             </div>
           ) : !requests || requests.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-              <div className="bg-slate-50 p-6 rounded-full mb-4">
-                 <FileText className="h-12 w-12 text-slate-300" />
+              <div className="bg-slate-50 p-5 rounded-full mb-4">
+                 <FileText className="h-10 w-10 text-slate-300" />
               </div>
-              <p className="text-lg font-medium text-slate-600">ยังไม่มีประวัติคำขอ</p>
+              <p className="text-base font-medium text-slate-600">ยังไม่มีประวัติคำขอ</p>
             </div>
           ) : sorted.length === 0 ? (
             <div className="text-center py-20 text-slate-400">
               <Search className="mx-auto h-12 w-12 mb-4 opacity-20" />
-              <p className="text-lg text-slate-600">ไม่พบคำขอตามเงื่อนไขที่เลือก</p>
-              <Button variant="link" onClick={() => { setSearch(""); setStatusFilter("ALL"); setQuery({ q: "", status: "ALL" }) }}>
+              <p className="text-base text-slate-600">ไม่พบคำขอตามเงื่อนไขที่เลือก</p>
+              <Button variant="link" size="sm" onClick={() => { setSearch(""); setStatusFilter("ALL"); setQuery({ q: "", status: "ALL" }) }}>
                 ล้างตัวกรอง
               </Button>
             </div>
@@ -165,50 +165,50 @@ export default function UserRequestsListClient({
               {/* Desktop View */}
               <div className="hidden md:block">
                 <Table>
-                  <TableHeader className="bg-slate-50/80">
-                    <TableRow className="hover:bg-slate-50/80 border-slate-100">
-                      <TableHead className="h-12 font-semibold text-slate-700 w-[15%]">เลขที่คำขอ</TableHead>
-                      <TableHead className="h-12 font-semibold text-slate-700 w-[20%]">ประเภท</TableHead>
-                      <TableHead className="h-12 font-semibold text-slate-700 w-[20%]">สถานะ</TableHead>
-                      <TableHead className="h-12 font-semibold text-slate-700 text-right w-[15%]">จำนวนเงิน</TableHead>
-                      <TableHead className="h-12 font-semibold text-slate-700 text-center w-[15%]">วันที่ยื่น</TableHead>
-                      <TableHead className="h-12 font-semibold text-slate-700 text-right w-[15%]">จัดการ</TableHead>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow className="hover:bg-slate-50 border-slate-100">
+                      <TableHead className="h-12 font-semibold text-slate-700 text-sm w-[15%]">เลขที่คำขอ</TableHead>
+                      <TableHead className="h-12 font-semibold text-slate-700 text-sm w-[20%]">ประเภท</TableHead>
+                      <TableHead className="h-12 font-semibold text-slate-700 text-sm w-[20%]">สถานะ</TableHead>
+                      <TableHead className="h-12 font-semibold text-slate-700 text-sm text-right w-[15%]">จำนวนเงิน</TableHead>
+                      <TableHead className="h-12 font-semibold text-slate-700 text-sm text-center w-[15%]">วันที่ยื่น</TableHead>
+                      <TableHead className="h-12 font-semibold text-slate-700 text-sm text-right w-[15%]">จัดการ</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {sorted.map((req) => (
-                      <TableRow key={req.request_id} className="h-16 hover:bg-slate-50 border-slate-100">
-                        <TableCell className="font-medium text-slate-900 text-base">
+                      <TableRow key={req.request_id} className="hover:bg-slate-50 border-slate-100">
+                        <TableCell className="py-4 font-medium text-slate-900 text-sm">
                           {req.request_no ?? <span className="text-slate-400 italic">Draft</span>}
                         </TableCell>
-                        <TableCell className="text-slate-600">
+                        <TableCell className="py-4 text-slate-600 text-sm">
                           {REQUEST_TYPE_LABELS[req.request_type] ?? req.request_type}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-4">
                           <StatusBadge status={req.status} currentStep={req.current_step} />
                         </TableCell>
-                        <TableCell className="text-right font-numbers text-base font-medium text-slate-900">
+                        <TableCell className="py-4 text-right font-numbers text-sm font-medium text-slate-900">
                           {req.requested_amount.toLocaleString()}
                         </TableCell>
-                        <TableCell className="text-center text-slate-500 text-sm">
+                        <TableCell className="py-4 text-center text-slate-500 text-xs">
                           {new Date(req.created_at).toLocaleDateString("th-TH", {
                             day: "numeric",
                             month: "short",
                             year: "2-digit",
                           })}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="py-4 text-right">
                           <div className="flex justify-end gap-2">
                             {(req.status === "DRAFT" || req.status === "RETURNED") ? (
                               <Link href={`/dashboard/user/requests/${req.request_id}/edit`}>
-                                <Button variant="outline" size="icon" className="h-9 w-9 border-slate-200 text-amber-600 hover:bg-amber-50 hover:border-amber-200" title="แก้ไข">
+                                <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg border-slate-200 text-amber-600 hover:bg-amber-50 hover:border-amber-200" title="แก้ไข">
                                   <Pencil className="h-4 w-4" />
                                 </Button>
                               </Link>
                             ) : null}
                             <Link href={`/dashboard/user/requests/${req.request_id}`}>
-                              <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-primary hover:bg-blue-50" title="ดูรายละเอียด">
-                                <Eye className="h-5 w-5" />
+                              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg text-slate-400 hover:text-primary hover:bg-blue-50" title="ดูรายละเอียด">
+                                <Eye className="h-4 w-4" />
                               </Button>
                             </Link>
                           </div>
@@ -220,21 +220,21 @@ export default function UserRequestsListClient({
               </div>
 
               {/* Mobile View */}
-              <div className="space-y-4 p-4 md:hidden bg-slate-50/30">
+              <div className="space-y-4 p-4 md:hidden">
                 {sorted.map((req) => (
                   <Link
                     key={req.request_id}
                     href={`/dashboard/user/requests/${req.request_id}`}
                     className="block"
                   >
-                    <Card className="border-slate-200 shadow-sm active:scale-[0.99] transition-transform">
-                       <CardContent className="p-5">
-                          <div className="flex justify-between items-start mb-3">
-                             <div className="flex flex-col">
-                                <span className="font-bold text-lg text-slate-900">
+                    <Card className="border-slate-200 shadow-sm active:scale-[0.99] transition-transform rounded-lg">
+                       <CardContent className="p-4">
+                          <div className="flex justify-between items-start mb-3 gap-2">
+                             <div className="flex-1">
+                                <span className="font-bold text-base text-slate-900 block">
                                    {req.request_no ?? "Draft"}
                                 </span>
-                                <span className="text-sm text-slate-500 mt-0.5">
+                                <span className="text-xs text-slate-500 mt-1 block">
                                    {new Date(req.created_at).toLocaleDateString("th-TH", { day: 'numeric', month: 'short', year: 'numeric' })}
                                 </span>
                              </div>
@@ -243,12 +243,12 @@ export default function UserRequestsListClient({
 
                           <div className="h-px bg-slate-100 my-3" />
 
-                          <div className="flex justify-between items-end">
-                             <div className="text-sm text-slate-600">
+                          <div className="flex justify-between items-end gap-2">
+                             <div className="text-xs text-slate-600">
                                 {REQUEST_TYPE_LABELS[req.request_type]}
                              </div>
-                             <div className="font-numbers text-xl font-semibold text-primary">
-                                {req.requested_amount.toLocaleString()} <span className="text-sm font-sans font-normal text-slate-400">บาท</span>
+                             <div className="font-numbers text-lg font-semibold text-primary text-right">
+                                {req.requested_amount.toLocaleString()} <span className="text-xs font-sans font-normal text-slate-400 block">บาท</span>
                              </div>
                           </div>
                        </CardContent>

@@ -44,9 +44,13 @@ export default function NotificationsPage() {
               <p>ยังไม่มีการแจ้งเตือน</p>
             </div>
           ) : (
-            notifications.map((n) => (
+            notifications.map((n, index) => {
+              const notificationKey =
+                n.notification_id ?? `${n.created_at ?? "unknown"}-${index}`
+
+              return (
               <div
-                key={n.notification_id}
+                key={notificationKey}
                 className={`flex items-start justify-between gap-4 rounded-lg border p-4 ${
                   n.is_read ? "bg-muted/30" : "bg-white"
                 }`}
@@ -61,7 +65,7 @@ export default function NotificationsPage() {
                     {new Date(n.created_at).toLocaleString("th-TH")}
                   </p>
                 </div>
-                {!n.is_read && (
+                {!n.is_read && n.notification_id != null && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -77,7 +81,8 @@ export default function NotificationsPage() {
                   </Button>
                 )}
               </div>
-            ))
+              )
+            })
           )}
         </CardContent>
       </Card>

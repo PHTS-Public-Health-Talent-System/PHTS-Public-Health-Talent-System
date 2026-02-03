@@ -4,7 +4,6 @@ import { useState } from "react"
 import { Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
-import { toast } from "sonner"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 import { useRequestForm } from "@/components/features/request/hooks/useRequestForm"
@@ -43,12 +42,6 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
   } = useRequestForm({ initialRequest })
   const { data: signatureCheck } = useCheckSignature()
 
-  const attachmentLabels: Record<string, string> = {
-    LICENSE: "ใบประกอบวิชาชีพ",
-    ORDER: "คำสั่งมอบหมายงาน",
-    OTHER: "เอกสารอื่นๆ",
-    DIPLOMA: "วุฒิบัตร",
-  }
   const hasLicenseAttachment =
     !!formData.files?.LICENSE ||
     (formData.attachments ?? []).some((att) => att.file_type === "LICENSE")

@@ -25,3 +25,25 @@ export async function updateMasterRate(rateId: number | string, payload: ApiPayl
   const res = await api.put<ApiResponse<ApiPayload>>(`/config/rates/${rateId}`, payload);
   return res.data.data;
 }
+
+// Local type definition for hierarchy response to avoid 'any'
+export interface ProfessionHierarchy {
+  id: string;
+  name: string;
+  groups: {
+    id: string;
+    name: string;
+    rate: number;
+    criteria: {
+      id: string;
+      label: string;
+      description?: string;
+      subCriteria?: { id: string; label: string; description?: string }[];
+    }[];
+  }[];
+}
+
+export async function getClassificationHierarchy() {
+  const res = await api.get<ApiResponse<ProfessionHierarchy[]>>('/config/classification-hierarchy');
+  return res.data.data;
+}

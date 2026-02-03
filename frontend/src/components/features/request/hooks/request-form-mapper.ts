@@ -48,10 +48,30 @@ const parseSubmissionData = (
 export const mapRequestToFormData = (
   request: RequestWithDetails,
 ): Partial<RequestFormData> => {
-  const licenseAttachment = request.attachments?.find(
-    (att) => att.file_type === "LICENSE",
-  )
   const submission = parseSubmissionData(request.submission_data)
+  const submissionClassification =
+    (submission.classification as Record<string, unknown>) ?? {}
+  const classification = {
+    groupId:
+      (submissionClassification.groupId as string) ??
+      (submissionClassification.group_no
+        ? String(submissionClassification.group_no)
+        : ""),
+    itemId:
+      (submissionClassification.itemId as string) ??
+      (submissionClassification.item_no as string) ??
+      "",
+    subItemId:
+      (submissionClassification.subItemId as string) ??
+      (submissionClassification.sub_item_no as string) ??
+      "",
+    amount:
+      (submissionClassification.amount as number) ??
+      request.requested_amount ??
+      0,
+    rateId: submissionClassification.rateId as number | undefined,
+    professionCode: submissionClassification.professionCode as string | undefined,
+  }
 
   return {
     id: String(request.request_id),
@@ -73,10 +93,6 @@ export const mapRequestToFormData = (
     workAttributes: normalizeWorkAttributes(request.work_attributes),
     effectiveDate: normalizeDate(request.effective_date),
     attachments: request.attachments ?? [],
-    classification: {
-      groupId: "",
-      itemId: "",
-      amount: request.requested_amount ?? 0,
-    },
+    classification,
   }
 }

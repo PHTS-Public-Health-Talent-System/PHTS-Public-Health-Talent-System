@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Download, FileIcon } from "lucide-react"
 import { toast } from "sonner"
@@ -22,6 +22,12 @@ import SignaturePad from "@/components/common/signature-pad"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { mapRequestToFormData } from "@/components/features/request/hooks/request-form-mapper"
+import {
+  PERSONNEL_TYPE_LABELS,
+  REQUEST_TYPE_LABELS,
+  WORK_ATTRIBUTE_LABELS,
+} from "@/types/request.types"
 
 export default function ApproverRequestDetailPage({
   params,
@@ -38,6 +44,34 @@ export default function ApproverRequestDetailPage({
   const [comment, setComment] = useState("")
   const [signatureMode, setSignatureMode] = useState<"SAVED" | "NEW" | null>(null)
   const [signature, setSignature] = useState("")
+  const formView = useMemo(
+    () => (request ? mapRequestToFormData(request) : null),
+    [request],
+  )
+  const workAttributes =
+    formView?.workAttributes ??
+    { operation: false, planning: false, coordination: false, service: false }
+  const workAttributeLabels = Object.entries(workAttributes)
+    .filter(([, value]) => value)
+    .map(
+      ([key]) => WORK_ATTRIBUTE_LABELS[key as keyof typeof WORK_ATTRIBUTE_LABELS],
+    )
+  const classification = formView?.classification ?? {
+    groupId: "",
+    itemId: "",
+    subItemId: "",
+    amount: request?.requested_amount ?? 0,
+  }
+  const getStringField = (value: unknown): string | null =>
+    typeof value === "string" && value.trim() ? value : null
+  const requestFields =
+    (request as Record<string, unknown> | null | undefined) ?? {}
+  const departmentGroup =
+    getStringField(requestFields.department_group) ??
+    getStringField(requestFields.current_department)
+  const positionNumber =
+    getStringField(requestFields.position_number) ??
+    getStringField(requestFields.current_position_number)
 
   if (isLoading) {
     return (
@@ -146,26 +180,96 @@ export default function ApproverRequestDetailPage({
              <CardContent className="pt-4 grid gap-4 sm:grid-cols-2 text-sm">
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">สังกัด</p>
-                 <p className="font-medium text-base">{request.current_department ?? "-"}</p>
+                 <p className="font-medium text-base">
+                   {formView.department ?? departmentGroup ?? "-"}
+                 </p>
                </div>
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">เลขที่ตำแหน่ง</p>
-                 <p className="font-medium text-base">{request.current_position_number ?? "-"}</p>
+                 <p className="font-medium text-base">
+                   {formView.positionNumber ?? positionNumber ?? "-"}
+                 </p>
+               </div>
+               <div>
+                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ตำแหน่ง</p>
+                 <p className="font-medium">{formView.positionName ?? "-"}</p>
+               </div>
+               <div>
+                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">หน่วยงาน</p>
+                 <p className="font-medium">{formView.subDepartment ?? "-"}</p>
                </div>
                <div className="sm:col-span-2">
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ภารกิจหลัก</p>
-                 <p className="font-medium">{request.main_duty ?? "-"}</p>
+                 <p className="font-medium">{formView.missionGroup ?? request.main_duty ?? "-"}</p>
                </div>
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">วันที่มีผล</p>
                  <p className="font-medium">
-                   {new Date(request.effective_date).toLocaleDateString("th-TH", { dateStyle: 'long' })}
+                   {request.effective_date
+                     ? new Date(request.effective_date).toLocaleDateString("th-TH", { dateStyle: "long" })
+                     : "-"}
                  </p>
                </div>
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ยอดเบิกจ่าย</p>
                  <p className="text-xl font-bold text-emerald-600">
-                   {request.requested_amount.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">บาท</span>
+                   {(request.requested_amount ?? 0).toLocaleString()}{" "}
+                   <span className="text-sm font-normal text-muted-foreground">บาท</span>
+                 </p>
+               </div>
+               <div>
+                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ประเภทคำขอ</p>
+                 <p className="font-medium">
+                   {REQUEST_TYPE_LABELS[request.request_type] ?? request.request_type ?? "-"}
+                 </p>
+               </div>
+               <div>
+                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ประเภทบุคลากร</p>
+                 <p className="font-medium">
+                   {PERSONNEL_TYPE_LABELS[request.personnel_type] ?? request.personnel_type ?? "-"}
+                 </p>
+               </div>
+               <div className="sm:col-span-2">
+                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ลักษณะงาน</p>
+                 {workAttributeLabels.length > 0 ? (
+                   <div className="flex flex-wrap gap-2">
+                     {workAttributeLabels.map((label) => (
+                       <span
+                         key={label}
+                         className="rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
+                       >
+                         {label}
+                       </span>
+                     ))}
+                   </div>
+                 ) : (
+                   <p className="font-medium">-</p>
+                 )}
+               </div>
+             </CardContent>
+           </Card>
+
+           <Card className="shadow-sm">
+             <CardHeader className="pb-3">
+               <CardTitle className="text-base font-semibold">ข้อมูลการจัดกลุ่ม</CardTitle>
+             </CardHeader>
+             <CardContent className="pt-4 grid gap-4 sm:grid-cols-2 text-sm">
+               <div>
+                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">กลุ่ม</p>
+                 <p className="font-medium">{classification.groupId || "-"}</p>
+               </div>
+               <div>
+                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ข้อ/รายการ</p>
+                 <p className="font-medium">{classification.itemId || "-"}</p>
+               </div>
+               <div>
+                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ข้อย่อย</p>
+                 <p className="font-medium">{classification.subItemId || "-"}</p>
+               </div>
+               <div>
+                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ยอดเงิน</p>
+                 <p className="font-medium">
+                   {(classification.amount ?? request.requested_amount ?? 0).toLocaleString()} บาท
                  </p>
                </div>
              </CardContent>
@@ -173,16 +277,18 @@ export default function ApproverRequestDetailPage({
 
            <Card className="shadow-sm">
              <CardHeader className="pb-3">
-               <CardTitle className="text-base font-semibold">เอกสารแนบ ({request.attachments.length})</CardTitle>
+               <CardTitle className="text-base font-semibold">
+                 เอกสารแนบ ({(request.attachments ?? []).length})
+               </CardTitle>
              </CardHeader>
              <CardContent>
-               {request.attachments.length === 0 ? (
+               {(request.attachments ?? []).length === 0 ? (
                  <div className="text-center text-muted-foreground py-8 bg-muted/10 rounded-lg border border-dashed">
                     ไม่พบเอกสารแนบ
                  </div>
                ) : (
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                   {request.attachments.map((att) => (
+                   {(request.attachments ?? []).map((att) => (
                      <div
                        key={att.attachment_id}
                        className="group relative flex items-center justify-between rounded-lg border bg-card p-3 hover:shadow-md transition-shadow cursor-pointer"

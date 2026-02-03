@@ -35,7 +35,6 @@ describe("mapRequestToFormData", () => {
           file_path: "uploads/license.pdf",
           file_type: "LICENSE",
           file_size: 1024,
-          ocr_status: "COMPLETED",
         },
       ],
       actions: [],
@@ -58,6 +57,5 @@ describe("mapRequestToFormData", () => {
     expect(form.classification?.amount).toBe(1500)
     expect(form.effectiveDate).toBe("2025-01-15")
     expect(form.attachments?.[0].file_type).toBe("LICENSE")
-    expect(form.ocrResult?.attachmentId).toBe(10)
   })
 })

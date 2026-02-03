@@ -8,7 +8,6 @@ import { useAuth } from "@/components/providers/auth-provider";
 import {
   createRequest,
   updateRequest,
-  getRequestById,
   submitRequest,
   updateClassification,
   confirmAttachments as confirmAttachmentsApi,
@@ -16,20 +15,21 @@ import {
 import { toast } from "sonner";
 import { mapRequestToFormData } from "./request-form-mapper";
 
-const parseGroupItem = (groupId: string, itemId: string) => {
+const parseGroupItem = (groupId: string, itemId: string, subItemId?: string) => {
   const groupMatch = groupId.match(/\d+/);
   const group_no = groupMatch ? Number(groupMatch[0]) : null;
 
-  const rawItem = itemId.replace(/^item/, "");
-  if (!rawItem) {
+  // If itemId is empty, return nulls
+  if (!itemId) {
     return { group_no, item_no: null, sub_item_no: null };
   }
 
-  const [itemPart, subPart] = rawItem.split("_");
+  // Use itemId directly (assuming it matches DB e.g. "2.1", "2.2")
+  // If subItemId is provided, use it directly (e.g. "2.2.1")
   return {
     group_no,
-    item_no: itemPart || null,
-    sub_item_no: subPart || null,
+    item_no: itemId,
+    sub_item_no: subItemId || null,
   };
 };
 
@@ -196,6 +196,7 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
     formData.effectiveDate,
     formData.employeeType,
     formData.professionCode,
+    formData.classification,
     updateFormData,
   ]);
 
@@ -235,6 +236,14 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
       department: formData.department,
       sub_department: formData.subDepartment,
       employment_region: formData.employmentRegion,
+      classification: {
+        groupId: formData.classification.groupId,
+        itemId: formData.classification.itemId,
+        subItemId: formData.classification.subItemId,
+        amount: formData.classification.amount,
+        rateId: formData.classification.rateId,
+        professionCode: formData.classification.professionCode,
+      },
     };
     fd.append("submission_data", JSON.stringify(submissionData));
     fd.append("citizen_id", formData.citizenId);
@@ -306,11 +315,15 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
       updateFormData("attachments", request.attachments ?? []);
 
       // Update classification with rateId if available
-      const parsed = parseGroupItem(formData.classification.groupId, formData.classification.itemId);
+      const parsed = parseGroupItem(
+        formData.classification.groupId,
+        formData.classification.itemId,
+        formData.classification.subItemId
+      );
       if (parsed.group_no) {
         await updateClassification(request.request_id, {
           group_no: parsed.group_no,
-          item_no: parsed.item_no,
+          item_no: parsed.item_no || "",
           sub_item_no: parsed.sub_item_no,
         });
       }

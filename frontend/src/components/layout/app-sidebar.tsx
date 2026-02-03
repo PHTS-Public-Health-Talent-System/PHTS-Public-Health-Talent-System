@@ -37,6 +37,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/auth-provider";
+import { usePrefill } from "@/features/request/hooks";
 
 interface MenuItem {
   title: string;
@@ -70,7 +71,6 @@ const roleMenus: Record<string, MenuItem[]> = {
     { title: "ยื่นคำขอ", url: "/dashboard/user/requests", icon: FileText },
     { title: "การแจ้งเตือน", url: "/dashboard/user/notifications", icon: Bell },
     { title: "โปรไฟล์", url: "/dashboard/user/profile", icon: UserCheck },
-    { title: "ตั้งค่าระบบ", url: "/dashboard/user/settings", icon: Settings },
   ],
   HEAD_WARD: [
     { title: "หน้าหลัก", url: "/dashboard/head-ward", icon: LayoutDashboard },
@@ -121,17 +121,44 @@ const roleMenus: Record<string, MenuItem[]> = {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const { data: prefill } = usePrefill();
 
   const menuItems = user?.role && roleMenus[user.role]
     ? roleMenus[user.role]
     : roleMenus.USER;
 
+  const roleLabels: Record<string, string> = {
+    USER: "ผู้ใช้งานทั่วไป",
+    HEAD_WARD: "หัวหน้าหอผู้ป่วย",
+    HEAD_DEPT: "หัวหน้ากลุ่มงาน",
+    PTS_OFFICER: "เจ้าหน้าที่ พ.ต.ส.",
+    DIRECTOR: "ผู้อำนวยการ",
+    HEAD_HR: "หัวหน้าฝ่าย HR",
+    HEAD_FINANCE: "หัวหน้าฝ่ายการเงิน",
+    FINANCE_OFFICER: "เจ้าหน้าที่การเงิน",
+    ADMIN: "ผู้ดูแลระบบ",
+  };
+
+  const displayName = prefill
+    ? `${prefill.first_name} ${prefill.last_name}`
+    : user?.firstName && user?.lastName
+      ? `${user.firstName} ${user.lastName}`
+      : user?.username || "PHTS User";
+
+  const displaySubtitle = prefill?.position_name || (user?.role ? roleLabels[user.role] : "Personnel");
+
+  const initials = prefill?.first_name
+    ? prefill.first_name.substring(0, 1).toUpperCase()
+    : user?.firstName
+      ? user.firstName.substring(0, 1).toUpperCase()
+      : user?.username?.substring(0, 1).toUpperCase() || 'U';
+
   return (
     <Sidebar collapsible="icon" className="border-r-slate-200" {...props}>
       {/* ส่วนหัว Sidebar: โลโก้ระบบ */}
-      <SidebarHeader className="h-16 flex items-center justify-center border-b border-slate-100 bg-white">
-        <div className="flex items-center gap-2 px-2 w-full">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white p-1 border border-slate-100 shadow-sm overflow-hidden text-white">
+      <SidebarHeader className="h-16 flex items-center border-b border-slate-100 bg-white px-4 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:justify-center">
+        <div className="flex items-center gap-2 w-full group-data-[collapsible=icon]:justify-center">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white p-1 border border-slate-100 shadow-sm overflow-hidden text-white">
             <Image
               src="/logo-uttaradit-hospital.png"
               alt="Hospital Logo"
@@ -167,17 +194,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         "h-12 text-base font-medium rounded-xl transition-all duration-200",
                         isActive
                           ? "bg-sky-100 text-sky-700 font-semibold"
-                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+                        "group-data-[collapsible=icon]:w-12 group-data-[collapsible=icon]:h-12 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center"
                       )}
                     >
                       <Link href={item.url}>
                         <item.icon
                           className={cn(
-                            "mr-3 h-5 w-5",
+                            "h-6 w-6 shrink-0 transition-all",
                             isActive ? "text-sky-600" : "text-slate-400"
                           )}
                         />
-                        <span>{item.title}</span>
+                        <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
                         {item.badge && (
                           <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-sky-100 text-xs font-bold text-sky-600">
                             {item.badge}
@@ -197,15 +225,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
            <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                 <SidebarMenuButton 
-                    asChild 
-                    className="h-12 text-slate-600 hover:bg-slate-50 rounded-xl"
-                 >
-                    <Link href="/dashboard/user/settings">
-                      <Settings className="mr-3 h-5 w-5 text-slate-400" />
-                      <span>ตั้งค่าระบบ</span>
-                    </Link>
-                 </SidebarMenuButton>
+                 {(() => {
+                   const isActive = pathname === "/dashboard/user/settings";
+                   return (
+                     <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        className={cn(
+                          "h-12 rounded-xl transition-all duration-200",
+                          isActive
+                            ? "bg-sky-100 text-sky-700 font-semibold"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+                          "group-data-[collapsible=icon]:w-12 group-data-[collapsible=icon]:h-12 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center"
+                        )}
+                     >
+                        <Link href="/dashboard/user/settings">
+                          <Settings className={cn(
+                             "h-6 w-6 shrink-0 transition-all",
+                             isActive ? "text-sky-600" : "text-slate-400"
+                          )} />
+                          <span className="group-data-[collapsible=icon]:hidden">ตั้งค่าระบบ</span>
+                        </Link>
+                     </SidebarMenuButton>
+                   );
+                 })()}
               </SidebarMenuItem>
             </SidebarMenu>
            </SidebarGroupContent>
@@ -218,19 +261,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground rounded-xl hover:bg-slate-50"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground rounded-xl hover:bg-slate-50 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
             >
-              <Avatar className="h-8 w-8 rounded-lg bg-sky-100 border border-sky-200 text-sky-700">
-                <AvatarFallback className="font-bold">
-                   {user?.username?.substring(0, 2).toUpperCase() || 'U'}
+              <Avatar className="h-9 w-9 shrink-0 rounded-lg bg-sky-100 border border-sky-200 text-sky-700">
+                <AvatarFallback className="font-bold text-lg">
+                   {initials}
                 </AvatarFallback>
               </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight ml-2">
+              <div className="grid flex-1 text-left text-sm leading-tight ml-2 group-data-[collapsible=icon]:hidden">
                 <span className="truncate font-semibold text-slate-900 text-base">
-                  {user?.username}
+                  {displayName}
                 </span>
                 <span className="truncate text-xs text-slate-500">
-                  {user?.role}
+                  {displaySubtitle}
                 </span>
               </div>
               <LogOut onClick={logout} className="ml-auto size-4 text-slate-400 hover:text-red-500 cursor-pointer" />

@@ -54,8 +54,15 @@ export default function LoginPage() {
 
       toast.success("เข้าสู่ระบบสำเร็จ");
     } catch (error: unknown) {
-      console.error(error);
-      const message = error instanceof Error ? error.message : "เลขบัตรประชาชนหรือรหัสผ่านไม่ถูกต้อง";
+      const errorMessage =
+        error instanceof Error ? error.message : "เลขบัตรประชาชนหรือรหัสผ่านไม่ถูกต้อง";
+      const isExpectedAuthError =
+        errorMessage === "Invalid citizen ID or password" ||
+        errorMessage === "Login failed";
+      if (!isExpectedAuthError && process.env.NODE_ENV !== "test") {
+        console.error(error);
+      }
+      const message = errorMessage;
       toast.error("เข้าสู่ระบบไม่สำเร็จ", {
         description: message,
       });

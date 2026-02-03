@@ -104,9 +104,6 @@ export default function PtsOfficerRequestDetailPage({
     remark: "",
   })
 
-  const licenseAttachmentId = request?.attachments?.find(
-    (att) => att.file_type === "LICENSE",
-  )?.attachment_id
   // Removed useAttachmentOcr for license
 
   if (isLoading) {
@@ -164,7 +161,7 @@ export default function PtsOfficerRequestDetailPage({
     .map((r) => {
       const item = `${r.item_no}${r.sub_item_no ? `.${r.sub_item_no}` : ""}`
       const value = r.sub_item_no ? `item${r.item_no}_${r.sub_item_no}` : `item${r.item_no}`
-      return { value, label: `ข้อ ${item}`, amount: r.amount }
+      return { rateId: r.rate_id, value, label: `ข้อ ${item}`, amount: r.amount }
     })
     .sort((a, b) => a.label.localeCompare(b.label))
 
@@ -592,7 +589,7 @@ export default function PtsOfficerRequestDetailPage({
                 </SelectTrigger>
                 <SelectContent>
                   {itemsForGroup.map((item) => (
-                    <SelectItem key={`${item.value}-${item.amount ?? ""}`} value={item.value}>
+                    <SelectItem key={item.rateId} value={item.value}>
                       {item.label} — {item.amount.toLocaleString()} บาท
                     </SelectItem>
                   ))}

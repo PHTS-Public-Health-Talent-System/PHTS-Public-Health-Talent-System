@@ -1,388 +1,499 @@
 "use client"
 
-import { useMemo, useEffect } from "react"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Card, CardContent } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { useState, useEffect, useMemo } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { RequestFormData } from "@/types/request.types"
-import { CheckCircle2, ShieldCheck, Info, DollarSign } from "lucide-react"
+import {
+  CheckCircle2,
+  Info,
+  AlertCircle,
+  RefreshCw,
+  FileText,
+  User,
+  Users,
+  Stethoscope,
+  Smile,
+  Pill,
+  Activity
+} from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { useMasterRates } from "@/features/request/hooks"
+import { useClassificationHierarchy } from "@/features/master-data/hooks"
 import { MasterRate } from "@/features/request/api"
+// Removed PROFESSION_DATA import
+// import { PROFESSION_DATA, ProfessionGroup, Criterion } from "@/data/classification-rules"
 
-// Profession code to Thai name mapping
-const PROFESSION_LABELS: Record<string, string> = {
-  DOCTOR: "แพทย์",
-  DENTIST: "ทันตแพทย์",
-  PHARMACIST: "เภสัชกร",
-  NURSE: "พยาบาลวิชาชีพ",
-  MED_TECH: "นักเทคนิคการแพทย์",
-  RAD_TECH: "นักรังสีการแพทย์",
-  PHYSIO: "นักกายภาพบำบัด",
-  ALLIED_OTHER: "สหวิชาชีพอื่นๆ",
+// Local interfaces matching Backend Types + Icon
+interface Criterion {
+  id: string;
+  label: string;
+  description?: string; // Optional
+  subCriteria?: Criterion[];
+  choices?: string[]; // Kept for compat, though DB might not populate it yet
 }
 
-const GROUP_SUMMARIES: Record<string, Record<number, string>> = {
-  DOCTOR: {
-    1: "ปฏิบัติหน้าที่หลักตามมาตรฐานกำหนดตำแหน่ง",
-    2: "วุฒิบัตรสาขาอื่นๆ / ปริญญาโท-เอก / พัฒนาคุณภาพ / รพช. > 4 ปี",
-    3: "วุฒิบัตรสาขาเฉพาะทาง (พยาธิ, นิติเวช, จิตเวช, ศัลย์ทรวงอก/ประสาท, ระบาด)"
-  },
-  DENTIST: {
-    1: "ปฏิบัติหน้าที่หลักตามมาตรฐานกำหนดตำแหน่ง",
-    2: "ปฏิบัติหน้าที่หลัก + ปริญญาโทหรือเอก",
-    3: "ปฏิบัติหน้าที่หลัก + วุฒิบัตรแสดงความรู้ความชำนาญ"
-  },
-  PHARMACIST: {
-    1: "ปฏิบัติหน้าที่หลักตามมาตรฐานกำหนดตำแหน่ง",
-    2: "เตรียมยาเคมีบำบัด / คลินิกโรคติดต่อร้ายแรง / คุ้มครองผู้บริโภค"
-  },
-  NURSE: {
-    1: "OPD / ครอบครัวและชุมชน / อนามัยโรงเรียน / อาจารย์พยาบาล (กลุ่ม 1)",
-    2: "ER / ห้องคลอด / ผ่าตัด / IPD / IC / ตรวจบำบัดพิเศษ / อาจารย์พยาบาล (กลุ่ม 1-2)",
-    3: "วิสัญญี / พยาบาลเวชปฏิบัติ (NP) / ICU / CCU / ติดเชื้อรุนแรง / APN / หัวหน้าทีมคุณภาพ / อาจารย์พยาบาล (กลุ่ม 1)"
-  },
-  MED_TECH: { 1: "ปฏิบัติหน้าที่หลักด้านเทคนิคการแพทย์" },
-  RAD_TECH: { 1: "ปฏิบัติหน้าที่หลักด้านรังสีการแพทย์" },
-  PHYSIO: { 1: "ปฏิบัติหน้าที่หลักด้านกายภาพบำบัด" },
-  CLIN_PSY: { 1: "ปฏิบัติหน้าที่หลักด้านจิตวิทยาคลินิก" },
-  ALLIED_OTHER: {
-    1: "ปฏิบัติหน้าที่หลัก (สหวิชาชีพอื่นๆ)"
-  }
+interface ProfessionGroup {
+  id: string;
+  name: string;
+  rate: number;
+  criteria: Criterion[];
 }
+
+interface ProfessionDef {
+  id: string;
+  name: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  groups: ProfessionGroup[];
+}
+
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  DOCTOR: Stethoscope,
+  DENTIST: Smile,
+  PHARMACIST: Pill,
+  NURSE: Activity,
+  OTHERS: Users
+};
 
 interface Step4Props {
   data: RequestFormData
   updateData: (field: keyof RequestFormData, value: unknown) => void
 }
 
+// Helper Component for the "Step" UI Pattern (Adapted from User Demo)
+const SelectionStep = ({ title, isActive, isCompleted, onEdit, children }: {
+  title: string,
+  isActive: boolean,
+  isCompleted: boolean,
+  onEdit?: () => void,
+  children: React.ReactNode
+}) => {
+  return (
+    <div className={`mb-4 border rounded-xl overflow-hidden transition-all duration-300 ${isActive ? 'border-primary/50 shadow-lg ring-1 ring-primary/10' : 'border-muted'}`}>
+      <div
+        className={`px-4 py-3 flex justify-between items-center ${isCompleted ? 'bg-muted/30 cursor-pointer hover:bg-muted/50' : isActive ? 'bg-primary/5' : 'bg-muted/10 opacity-60'}`}
+        onClick={isCompleted ? onEdit : undefined}
+      >
+        <h3 className={`font-semibold flex items-center gap-2 text-sm md:text-base ${isActive ? 'text-primary' : 'text-foreground/70'}`}>
+          {isCompleted && <CheckCircle2 className="w-5 h-5 text-green-500" />}
+          {!isCompleted && isActive && <div className="w-5 h-5 rounded-full border-2 border-primary flex items-center justify-center"><div className="w-2 h-2 bg-primary rounded-full"></div></div>}
+          {!isCompleted && !isActive && <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30"></div>}
+          {title}
+        </h3>
+        {isCompleted && onEdit && <button type="button" className="text-xs text-primary hover:underline">แก้ไข</button>}
+      </div>
+
+      {isActive && (
+        <div className="p-4 bg-card animate-in fade-in slide-in-from-top-1">
+          {children}
+        </div>
+      )}
+
+      {isCompleted && !isActive && (
+        <div className="px-4 py-2 bg-card text-sm text-muted-foreground border-t border-muted/50 flex flex-wrap items-center gap-2">
+           <span className="font-medium text-xs uppercase tracking-wide opacity-70">เลือกแล้ว:</span>
+           {children}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export function Step4Classification({ data, updateData }: Step4Props) {
-  const { data: masterRates, isLoading } = useMasterRates()
-  const rates = (masterRates ?? []) as MasterRate[]
+  const { data: masterRates, isLoading: isRatesLoading } = useMasterRates()
+  const { data: hierarchyData, isLoading: isHeirarchyLoading } = useClassificationHierarchy()
 
-  const selectedProfession = data.professionCode || data.classification?.professionCode || ""
+  const rates = useMemo(() => (masterRates ?? []) as MasterRate[], [masterRates])
+  const isLoading = isRatesLoading || isHeirarchyLoading
 
-  const professionRates = useMemo(() =>
-    rates.filter((r) => r.profession_code === selectedProfession),
-    [rates, selectedProfession]
-  )
+  // --- STATE ---
+  // We use internal state for the wizard flow, then sync to parent 'data'
+  const [selectedGroup, setSelectedGroup] = useState<ProfessionGroup | null>(null);
+  const [selectedCriteria, setSelectedCriteria] = useState<Criterion | null>(null);
+  const [selectedSubCriteria, setSelectedSubCriteria] = useState<Criterion | null>(null);
+  const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
 
-  // 1. Groups for selected profession
-  const groups = useMemo(() =>
-    Array.from(new Set(professionRates.map((r) => r.group_no))).sort((a, b) => a - b),
-    [professionRates]
-  )
+  // Derive selected profession from context (auto-detected Step 1)
+  const selectedProfCode = data.professionCode || data.classification?.professionCode || "";
 
-  const selectedGroupNo = Number(data.classification?.groupId?.match(/\d+/)?.[0] ?? 0)
+  // Find the matching Profession Data config from DYNAMIC hierarchy
+  const selectedProfData = useMemo(() => {
+    if (!hierarchyData || !selectedProfCode) return null;
 
-  // 2. Unique Items for selected Group
-  const itemsInGroup = useMemo(() => {
-    if (!selectedGroupNo) return []
-    const rawItems = professionRates.filter((r) => r.group_no === selectedGroupNo)
+    // Find matching item
+    let found = hierarchyData.find((p: ProfessionDef) => p.id === selectedProfCode);
 
-    // Find unique item_nos
-    const uniqueItemNos = Array.from(new Set(rawItems.map((r) => r.item_no))).sort((a, b) => {
-      if (a === null) return -1
-      if (b === null) return 1
-      return String(a).localeCompare(String(b), undefined, { numeric: true })
-    })
+    // Fallback to OTHERS if not found (optional logic)
+    if (!found) found = hierarchyData.find((p: ProfessionDef) => p.id === 'OTHERS');
 
-    return uniqueItemNos.map((ino) => {
-      const itemRows = rawItems.filter((r) => r.item_no === ino)
-      const hasSubItems = itemRows.some((r) => r.sub_item_no !== null)
+    if (found) {
+        // Attach Icon from Map
+        return {
+            ...found,
+            icon: ICON_MAP[found.id] || Users
+        };
+    }
+    return null;
+  }, [selectedProfCode, hierarchyData]);
 
-      // If no subItems, this selection usually has a rate (unless it's a parent placeholder, but DB has amount per row)
-      // Note: In our DB, even if it's a parent, if it has an amount, it's a valid selection.
-      // But typically, if hasSubItems is true, the user MUST select a sub-item.
-
-      return {
-        id: ino === null ? "default" : String(ino),
-        label: ino === null ? "ทั่วไป/ตามตำแหน่ง" : `ข้อ ${ino}`,
-        hasSubItems,
-        desc: itemRows[0]?.condition_desc, // Use first row's desc as parent desc
-        rate: !hasSubItems ? itemRows[0] : null
-      }
-    })
-  }, [professionRates, selectedGroupNo])
-
-  const selectedItemId = data.classification?.itemId
-  const selectedItemData = useMemo(() =>
-    itemsInGroup.find(i => i.id === selectedItemId),
-    [itemsInGroup, selectedItemId]
-  )
-
-  // 3. Sub-items for selected Item
-  const subItemsInItem = useMemo(() => {
-    if (!selectedItemId || !selectedGroupNo) return []
-    const itemNo = selectedItemId === "default" ? null : selectedItemId
-    const rows = professionRates.filter(
-      (r) => r.group_no === selectedGroupNo && r.item_no === itemNo && r.sub_item_no !== null
-    )
-
-    return rows.map((r) => ({
-      id: String(r.sub_item_no),
-      label: `ข้อย่อย ${r.sub_item_no}`,
-      desc: r.condition_desc,
-      amount: r.amount,
-      rateId: r.rate_id
-    })).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
-  }, [professionRates, selectedGroupNo, selectedItemId])
-
-  const selectedSubItemId = data.classification?.subItemId as string | undefined
-  const selectedSubItemData = useMemo(() =>
-    subItemsInItem.find(si => si.id === selectedSubItemId),
-    [subItemsInItem, selectedSubItemId]
-  )
-
-  // 4. Auto-select logic
+  // Sync initial state from existing 'data' if editing (Rehydration)
   useEffect(() => {
-    if (!isLoading && professionRates.length > 0) {
-      // Auto-select Group if only one exists
-      if (groups.length === 1 && !data.classification?.groupId) {
-        handleGroupChange(`group${groups[0]}`)
-      }
-
-      // Auto-select Item if only one exists in the group
-      if (itemsInGroup.length === 1 && !selectedItemId && data.classification?.groupId) {
-        handleItemChange(itemsInGroup[0].id)
-      }
-
-      // Auto-select Sub-item if only one exists in the item
-      if (subItemsInItem.length === 1 && !selectedSubItemId && selectedItemId) {
-        handleSubItemChange(subItemsInItem[0].id)
-      }
+    if (data.classification?.groupId && selectedProfData) {
+      // Logic to rehydrate state tree using DYNAMIC data
+      const savedGroup = selectedProfData.groups.find((g: ProfessionGroup) => g.id === data.classification?.groupId);
+      // eslint-disable-next-line
+      if (savedGroup && savedGroup.id !== selectedGroup?.id) setSelectedGroup(savedGroup);
     }
-  }, [isLoading, professionRates, groups, itemsInGroup, subItemsInItem, data.classification?.groupId, selectedItemId, selectedSubItemId])
+  }, [selectedProfData, data.classification?.groupId, selectedGroup?.id]);
 
-  // Handlers
-  const handleProfessionChange = (value: string) => {
-    updateData("professionCode", value);
+
+  // --- ACTIONS ---
+  const handleGroupSelect = (group: ProfessionGroup | null) => {
+    setSelectedGroup(group);
+    setSelectedCriteria(null);
+    setSelectedSubCriteria(null);
+    setSelectedChoice(null);
+
+    // Preliminary update (rate comes from group in this model)
+    // We need to find valid backend rateId if possible
+    syncToParent(group, null, null, null);
+  };
+
+  const handleCriteriaSelect = (criteria: Criterion | null) => {
+    setSelectedCriteria(criteria);
+    setSelectedSubCriteria(null);
+    setSelectedChoice(null);
+    syncToParent(selectedGroup, criteria, null, null);
+  };
+
+  const handleSubCriteriaSelect = (sub: Criterion | null) => {
+    setSelectedSubCriteria(sub);
+    setSelectedChoice(null);
+    syncToParent(selectedGroup, selectedCriteria, sub, null);
+  };
+
+  const handleChoiceSelect = (choice: string | null) => {
+    setSelectedChoice(choice);
+    syncToParent(selectedGroup, selectedCriteria, selectedSubCriteria, choice);
+  };
+
+  const syncToParent = (
+    group: ProfessionGroup | null,
+    cri: Criterion | null,
+    sub: Criterion | null,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _choice: string | null
+  ) => {
+    if (!group) {
+        updateData("classification", { ...data.classification, amount: 0, groupId: "", itemId: "", subItemId: "" });
+        return;
+    }
+
+    // Amount logic: Demo says rate is at Group level
+    const amount = group.rate; // Changed 'let' to 'const' and used group.rate directly
+
+    // Find matching backend rate ID if possible
+    // We look for a rate in 'rates' that matches profession + amount
+    // This is a "best effort" mapping because the frontend rules dictate the amount now.
+    const matchingBackendRate = rates.find(r =>
+        r.profession_code === selectedProfCode &&
+        r.amount === amount
+    );
+
+    // Update parent
     updateData("classification", {
-      professionCode: value,
-      groupId: "",
-      itemId: "",
-      subItemId: "",
-      amount: 0,
-      rateId: undefined,
-    })
-  }
-
-  const handleGroupChange = (value: string) => {
-    // Reset lower levels
-    updateData("classification", {
-      ...data.classification,
-      groupId: value,
-      itemId: "",
-      subItemId: "",
-      amount: 0,
-      rateId: undefined,
-    })
-  }
-
-  const handleItemChange = (value: string) => {
-    const item = itemsInGroup.find((i) => i.id === value)
-
-    // If it has no sub-items, we can set the amount and rateId immediately
-    if (item && !item.hasSubItems && item.rate) {
-      updateData("classification", {
         ...data.classification,
-        itemId: value,
-        subItemId: "",
-        amount: item.rate.amount,
-        rateId: item.rate.rate_id,
-      })
-    } else {
-      // Must select sub-item or just reset it
-      updateData("classification", {
-        ...data.classification,
-        itemId: value,
-        subItemId: "",
-        amount: 0,
-        rateId: undefined,
-      })
-    }
-  }
+        professionCode: selectedProfCode,
+        groupId: group.id,
+        itemId: cri?.id || "",
+        subItemId: sub?.id || "",
+        amount: amount,
+        rateId: matchingBackendRate?.rate_id,
+        // We can store choice/description in a JSON field if backend supports,
+        // or just rely on the IDs. For now, we assume IDs reconstruct the view.
+    });
+  };
 
-  const handleSubItemChange = (value: string) => {
-    const subItem = subItemsInItem.find((si) => si.id === value)
-    if (subItem) {
-      updateData("classification", {
-        ...data.classification,
-        subItemId: value,
-        amount: subItem.amount,
-        rateId: subItem.rateId,
-      })
-    }
-  }
+  const handleReset = () => {
+    setSelectedGroup(null);
+    setSelectedCriteria(null);
+    setSelectedSubCriteria(null);
+    setSelectedChoice(null);
+    updateData("classification", { ...data.classification, amount: 0, groupId: "", itemId: "", subItemId: "" });
+  };
 
-  const selectedAmount = data.classification?.amount ?? 0
-  const currentDescription = selectedSubItemData?.desc || selectedItemData?.desc || ""
+  const renderMoney = (amount: number) => {
+    return amount.toLocaleString() + ' บาท';
+  };
 
+  // --- RENDER ---
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="space-y-1">
-        <h3 className="text-lg font-medium text-primary">ตรวจสอบสิทธิ พ.ต.ส.</h3>
-        <p className="text-sm text-muted-foreground">
-          เลือกกลุ่มบัญชีและรายการเบิกจ่ายตามคำสั่งมอบหมายงาน
-        </p>
-      </div>
 
-      <Separator />
+        {/* HEADER */}
+        <div className="flex justify-between items-start">
+          <div className="space-y-1">
+            <h3 className="text-lg font-medium text-primary">ระบบคำนวณ พ.ต.ส.</h3>
+            <p className="text-sm text-muted-foreground">อ้างอิงตามบันทึกข้อความ (pages-35-56)</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-destructive transition-colors border px-3 py-1.5 rounded-md"
+          >
+            <RefreshCw size={14} /> ล้างค่าเริ่มต้น
+          </button>
+        </div>
 
-      {/* Profession Info (Read-only context) */}
-      <div className="rounded-xl border bg-muted/30 px-4 py-3 flex items-center gap-2">
-        <ShieldCheck className="h-5 w-5 text-primary" />
-        <span className="text-sm font-medium">
-          วิชาชีพของคุณ: <span className="text-primary">{PROFESSION_LABELS[selectedProfession] || selectedProfession || "-"}</span>
-        </span>
-        <span className="text-xs text-muted-foreground ml-auto">*ดึงข้อมูลจาก HRMS</span>
-      </div>
+        {isLoading && <Skeleton className="h-40 w-full" />}
 
-      <div className="grid gap-6 md:grid-cols-12 items-start">
-        {/* Left Column: Selections (7 cols) */}
-        <div className="md:col-span-7 space-y-6">
-          <div className="space-y-4">
-             {/* Group Select */}
-             <div className="space-y-2">
-               <Label>กลุ่มบัญชี (Group)</Label>
-               {isLoading ? (
-                 <Skeleton className="h-10 w-full" />
-               ) : (
-                 <Select
-                   value={data.classification?.groupId ?? ""}
-                   onValueChange={handleGroupChange}
-                   disabled={!selectedProfession}
-                 >
-                   <SelectTrigger className="h-10">
-                     <SelectValue placeholder="เลือกกลุ่มบัญชี" />
-                   </SelectTrigger>
-                   <SelectContent>
-                     {groups.map((num) => (
-                       <SelectItem key={num} value={`group${num}`}>
-                         <span className="truncate block max-w-[300px] md:max-w-md text-left">
-                           กลุ่มที่ {num} - {GROUP_SUMMARIES[selectedProfession]?.[num] || "ทั่วไป"}
-                         </span>
-                       </SelectItem>
-                     ))}
-                   </SelectContent>
-                 </Select>
-               )}
-             </div>
+        {!isLoading && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
-             {/* Item Select */}
-             <div className="space-y-2">
-               <Label>รายการ (Item)</Label>
-               {isLoading ? (
-                 <Skeleton className="h-10 w-full" />
-               ) : (
-                 <Select
-                   value={selectedItemId ?? ""}
-                   onValueChange={handleItemChange}
-                   disabled={!data.classification?.groupId}
-                 >
-                   <SelectTrigger className="h-10">
-                     <SelectValue placeholder="เลือกรายการ" />
-                   </SelectTrigger>
-                   <SelectContent>
-                     {itemsInGroup.map((item) => (
-                       <SelectItem key={item.id} value={item.id}>
-                         <span className="truncate block max-w-[300px] md:max-w-md text-left">
-                           {item.label} {item.hasSubItems ? "(มีข้อย่อย)" : ""}
-                         </span>
-                       </SelectItem>
-                     ))}
-                   </SelectContent>
-                 </Select>
-               )}
-             </div>
+          {/* MAIN FORM AREA */}
+          <div className="lg:col-span-2 space-y-2">
 
-             {/* Sub-item Select */}
-             {selectedItemData?.hasSubItems && (
-               <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                 <Label>ข้อย่อย (Sub-item)</Label>
-                 <Select
-                   value={selectedSubItemId ?? ""}
-                   onValueChange={handleSubItemChange}
-                 >
-                   <SelectTrigger className="h-10">
-                     <SelectValue placeholder="เลือกข้อย่อย" />
-                   </SelectTrigger>
-                   <SelectContent>
-                     {subItemsInItem.map((si) => (
-                       <SelectItem key={si.id} value={si.id}>
-                         <span className="truncate block max-w-[300px] md:max-w-md text-left">
-                            {si.label}
-                         </span>
-                       </SelectItem>
-                     ))}
-                   </SelectContent>
-                 </Select>
+            {/* STEP 1: Profession (Read Only from Context) */}
+            <SelectionStep
+              title="1. เลือกวิชาชีพ"
+              isActive={false}
+              isCompleted={true}
+            >
+               <div className="flex items-center gap-3">
+                  <div className="bg-primary/10 p-2 rounded-full text-primary">
+                    <User size={20} />
+                  </div>
+                  <span className="font-medium text-foreground">
+                    {selectedProfData?.name || selectedProfCode || "ไม่พบข้อมูลวิชาชีพ"}
+                  </span>
                </div>
-             )}
+            </SelectionStep>
 
-             {/* Effective Date */}
-             <div className="space-y-2 pt-2">
-                <Label>วันที่มีผล (Effective Date)</Label>
-                <div className="relative">
-                  <Input
-                    type="date"
-                    value={data.effectiveDate}
-                    onChange={(e) => updateData("effectiveDate", e.target.value)}
-                    className="h-10"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1 text-right">
-                    *ระบุวันที่เริ่มมีสิทธิตามคำสั่ง
-                  </p>
+            {/* STEP 2: Group */}
+            {selectedProfData && (
+              <SelectionStep
+                title="2. เลือกกลุ่มบัญชีอัตราจ้าง"
+                isActive={!selectedGroup}
+                isCompleted={!!selectedGroup}
+                onEdit={() => handleGroupSelect(null)}
+              >
+                {!selectedGroup ? (
+                  <div className="space-y-3">
+                    {selectedProfData.groups.map((group: ProfessionGroup) => (
+                      <button
+                        key={group.id}
+                        type="button"
+                        onClick={() => handleGroupSelect(group)}
+                        className="w-full flex justify-between items-center p-4 border rounded-xl hover:border-primary hover:bg-primary/5 transition-all group text-left"
+                      >
+                        <span className="font-medium text-foreground">{group.name}</span>
+                        <Badge variant="secondary" className="group-hover:bg-white text-base px-3 py-1">
+                          {renderMoney(group.rate)}
+                        </Badge>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                   <div className="flex justify-between w-full items-center">
+                     <span className="font-medium">{selectedGroup.name}</span>
+                     <span className="font-bold text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">{renderMoney(selectedGroup.rate)}</span>
+                   </div>
+                )}
+              </SelectionStep>
+            )}
+
+            {/* STEP 3: Criteria */}
+            {selectedGroup && (
+              <SelectionStep
+                title="3. เลือกเกณฑ์/เงื่อนไข"
+                isActive={!!selectedGroup && !selectedCriteria}
+                isCompleted={!!selectedCriteria}
+                onEdit={() => handleCriteriaSelect(null)}
+              >
+                {!selectedCriteria ? (
+                  <div className="space-y-2">
+                    {selectedGroup.criteria.map((cri) => (
+                      <button
+                        key={cri.id}
+                        type="button"
+                        onClick={() => handleCriteriaSelect(cri)}
+                        className="w-full text-left p-3 border rounded-lg hover:border-primary hover:bg-primary/5 transition-all group"
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                           <div>
+                                <div className="font-semibold text-sm text-foreground mb-1 group-hover:text-primary transition-colors">{cri.label}</div>
+                           </div>
+                           {cri.subCriteria && (
+                            <Badge variant="outline" className="text-[10px] shrink-0 bg-blue-50 text-blue-600 border-blue-200">
+                                มีข้อย่อย
+                            </Badge>
+                           )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-foreground">{selectedCriteria.label}</span>
+                )}
+              </SelectionStep>
+            )}
+
+            {/* STEP 4: Sub-Criteria (Conditional) */}
+            {selectedCriteria && selectedCriteria.subCriteria && selectedCriteria.subCriteria.length > 0 && (
+              <SelectionStep
+                title="4. รายละเอียดเงื่อนไขย่อย"
+                isActive={true}
+                isCompleted={!!selectedSubCriteria}
+                onEdit={() => setSelectedSubCriteria(null)}
+              >
+                {!selectedSubCriteria ? (
+                  <div className="space-y-2">
+                    {selectedCriteria.subCriteria.map((sub) => (
+                      <button
+                        key={sub.id}
+                        type="button"
+                        onClick={() => {
+                            handleSubCriteriaSelect(sub);
+                        }}
+                        className="w-full text-left p-3 border rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-sm group"
+                      >
+                        <div className="flex justify-between items-center">
+                            <span className="group-hover:text-primary transition-colors">{sub.label}</span>
+                            {sub.choices && (
+                                <span className="text-[10px] text-muted-foreground italic">(ต้องระบุงาน)</span>
+                            )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                   <span className="text-foreground">{selectedSubCriteria.label}</span>
+                )}
+              </SelectionStep>
+            )}
+
+            {/* STEP 5: Choices (Deep Nested - e.g. Nurse 2.2.2 specific jobs) */}
+            {selectedSubCriteria && selectedSubCriteria.choices && (
+                 <div className="ml-4 md:ml-8 p-4 bg-purple-50/50 rounded-lg border border-purple-100 mt-4 animate-in fade-in slide-in-from-top-2">
+                    <h4 className="text-sm font-bold text-purple-900 mb-3 flex items-center gap-2">
+                        <Info size={14} /> ระบุงานเฉพาะทาง (จำเป็น):
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {selectedSubCriteria.choices.map((choice, idx) => (
+                            <label key={idx} className={`flex items-center gap-2 p-2.5 rounded border cursor-pointer transition-all ${selectedChoice === choice ? 'bg-purple-100 border-purple-300 ring-1 ring-purple-200' : 'bg-white border-purple-100 hover:border-purple-300'}`}>
+                                <input
+                                    type="radio"
+                                    name="specific_job"
+                                    className="accent-purple-600 w-4 h-4"
+                                    onChange={() => handleChoiceSelect(choice)}
+                                />
+                                <span className="text-sm text-slate-700">{choice}</span>
+                            </label>
+                        ))}
+                    </div>
+                 </div>
+            )}
+
+            {/* Effective Date (Always Visible at bottom of form area) */}
+            {(selectedGroup || selectedProfCode) && (
+              <div className="mt-8 pt-6 border-t">
+                 <div className="max-w-xs">
+                    <label className="text-sm font-medium mb-1.5 block">วันที่มีผล (Effective Date)</label>
+                    <input
+                        type="date"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        value={data.effectiveDate}
+                        onChange={(e) => updateData("effectiveDate", e.target.value)}
+                    />
+                 </div>
+              </div>
+            )}
+
+          </div>
+
+          {/* SUMMARY & DOCS PANEL */}
+          <div className="space-y-6 lg:sticky lg:top-6">
+
+            {/* RESULT CARD */}
+            <div className="bg-card rounded-xl shadow-lg border overflow-hidden">
+                <div className="bg-slate-900 p-4 text-white flex items-center gap-2">
+                    <div className="p-1.5 bg-white/10 rounded-md">
+                        <FileText size={18} />
+                    </div>
+                    <h2 className="font-bold text-sm tracking-wide">สรุปรายการเบิก</h2>
                 </div>
-             </div>
+
+                <div className="p-6">
+                    {!selectedProfData ? (
+                        <div className="text-center py-8 text-muted-foreground/50">
+                            <Info className="w-10 h-10 mx-auto mb-2 opacity-20" />
+                            <p className="text-sm">กรุณาเลือกข้อมูลเพื่อแสดงผล</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-5">
+                            <div>
+                                <label className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">วิชาชีพ</label>
+                                <div className="font-medium text-foreground">{selectedProfData.name}</div>
+                            </div>
+
+                            {selectedGroup && (
+                                <div className="animate-in fade-in slide-in-from-top-1">
+                                    <label className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">กลุ่มอัตรา</label>
+                                    <div className="flex justify-between items-end border-b pb-2 border-border/50">
+                                        <div className="text-sm text-foreground">{selectedGroup.name}</div>
+                                        {/* Amount is conditionally shown at bottom, but demo showed it here too? No, mostly separate.
+                                            But keeping it consistent with user demo structure. */}
+                                    </div>
+                                </div>
+                            )}
+
+                            {selectedCriteria && (
+                                <div className="animate-in fade-in slide-in-from-top-1">
+                                    <label className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">เงื่อนไขอ้างอิง</label>
+                                    <div className="mt-1.5 text-sm text-muted-foreground bg-muted/30 p-3 rounded-md border border-muted/50">
+                                        <p className="font-medium text-foreground mb-1">{selectedCriteria.description || selectedCriteria.label}</p>
+
+                                        {selectedSubCriteria && (
+                                            <div className="mt-2 pt-2 border-t border-muted/50 text-primary font-medium flex items-start gap-2 text-xs">
+                                                <span className="block w-1 h-1 rounded-full bg-primary mt-1.5 shrink-0"></span>
+                                                {selectedSubCriteria.description || selectedSubCriteria.label}
+                                            </div>
+                                        )}
+                                        {selectedChoice && (
+                                            <div className="mt-1 pl-3 text-purple-600 text-xs font-semibold">
+                                                • งาน: {selectedChoice}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Validation Warning */}
+                            {selectedSubCriteria?.choices && !selectedChoice && (
+                                <div className="bg-destructive/10 text-destructive p-3 rounded-lg text-xs flex gap-2 items-start animate-in fade-in">
+                                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                                    <span>กรุณาระบุงานเฉพาะทางให้ครบถ้วน</span>
+                                </div>
+                            )}
+
+                        </div>
+                    )}
+                </div>
+
+                {/* Confirm Amount Footer */}
+                {selectedGroup && (
+                    <div className="bg-muted/20 p-4 border-t border-border text-center">
+                         <span className="text-xs text-muted-foreground uppercase font-bold block mb-1">ยอดเงินเพิ่มพิเศษสุทธิ</span>
+                         <div className="text-3xl font-bold text-primary">
+                           {renderMoney(selectedGroup.rate)}
+                         </div>
+                    </div>
+                )}
+            </div>
+
+
           </div>
         </div>
-
-        {/* Right Column: Details & Amount (5 cols) */}
-        <div className="md:col-span-5 space-y-6">
-           {/* Amount Display (Moved Top for Visibility) */}
-           <Card className={`border shadow-sm transition-colors ${selectedAmount > 0 ? "bg-primary/5 border-primary" : "bg-muted/20"}`}>
-              <CardContent className="p-6 flex flex-col items-center justify-center text-center space-y-2">
-                 <span className="text-sm text-muted-foreground font-medium uppercase tracking-wide">เงินเพิ่มพิเศษ (พ.ต.ส.)</span>
-                 <div className="flex items-baseline gap-1">
-                    <span className={`text-4xl font-bold ${selectedAmount > 0 ? "text-primary" : "text-muted-foreground"}`}>
-                       {selectedAmount.toLocaleString()}
-                    </span>
-                    <span className="text-sm text-muted-foreground">บาท/เดือน</span>
-                 </div>
-              </CardContent>
-           </Card>
-
-           {/* Description Card */}
-           <Card className="border shadow-sm">
-             <CardContent className="p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                   <Info className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-                   <div className="space-y-1">
-                      <h4 className="font-medium text-sm text-foreground">รายละเอียดตามระเบียบ</h4>
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                         {currentDescription || (
-                           <span className="italic opacity-70">
-                             กรุณาเลือกรายการทางด้านซ้าย<br/>เพื่อดูรายละเอียดเงื่อนไขการเบิกจ่าย
-                           </span>
-                         )}
-                      </p>
-                   </div>
-                </div>
-             </CardContent>
-           </Card>
-        </div>
-      </div>
+        )}
     </div>
   )
 }

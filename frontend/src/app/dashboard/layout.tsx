@@ -31,15 +31,15 @@ export default function DashboardLayout({
         {/* Header Strip ด้านบน */}
         <header className="flex h-16 shrink-0 items-center gap-2 border-b border-border bg-card px-4 shadow-soft sticky top-0 z-10">
           <div className="flex items-center gap-2 mr-auto">
-            <SidebarTrigger className="-ml-1 h-10 w-10 text-muted-foreground hover:bg-accent hover:text-primary rounded-xl" />
-            <Separator orientation="vertical" className="mr-2 h-4 bg-border" />
+            <SidebarTrigger className="-ml-1 h-10 w-10 text-slate-400 hover:bg-slate-50 hover:text-primary rounded-xl transition-all" />
+            <Separator orientation="vertical" className="mr-2 h-4 bg-slate-200" />
 
-            {/* Breadcrumb บอกตำแหน่งหน้า */}
+            {/* Breadcrumb - Can be dynamically updated later */}
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem>
-                  <BreadcrumbPage className="text-lg font-heading font-semibold text-foreground">
-                    ระบบ PHTS
+                  <BreadcrumbPage className="text-sm font-medium text-slate-500">
+                    หน้าต่างจัดการคำขอ
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
