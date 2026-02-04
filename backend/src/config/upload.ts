@@ -6,7 +6,7 @@
  * Date: 2025-12-30
  */
 
-import multer, { FileFilterCallback, StorageEngine } from "multer";
+import multer, { FileFilterCallback } from "multer";
 import { Request } from "express";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -33,13 +33,11 @@ const ALLOWED_MIME_TYPES = new Set([
   "image/png",
   "image/jpg",
 ]);
-const SIGNATURE_MIME_TYPES = new Set(["image/png", "image/jpeg"]);
 
 /**
  * Maximum file size: 5MB in bytes
  */
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-export const MAX_SIGNATURE_SIZE = 2 * 1024 * 1024; // 2MB
 
 /**
  * Configure disk storage for document file uploads
@@ -67,78 +65,6 @@ const documentStorage = multer.diskStorage({
   },
 });
 
-/**
- * Configure disk storage for signature uploads
- * Signatures are stored in uploads/signatures/ directory
- */
-const signatureStorage = multer.diskStorage({
-  destination: (_req: Request, _file: Express.Multer.File, cb) => {
-    // Store signatures in uploads/signatures/ relative to backend root
-    const uploadPath = path.join(process.cwd(), "uploads/signatures");
-    ensureDirectoryExists(uploadPath, (err) => cb(err, uploadPath));
-  },
-  filename: (req: Request, file: Express.Multer.File, cb) => {
-    // Get user ID from authenticated request
-    const userId = req.user?.userId || "anonymous";
-
-    // Preserve original extension when available for better debugging
-    const extension = path.extname(file.originalname) || ".png";
-    // Generate filename: signature_{userId}_{timestamp}{ext}
-    const timestamp = Date.now();
-    const filename = `signature_${userId}_${timestamp}${extension}`;
-
-    cb(null, filename);
-  },
-});
-
-type InternalStorageEngine = StorageEngine & {
-  _handleFile: (
-    req: Request,
-    file: Express.Multer.File,
-    cb: (error?: any, info?: Partial<Express.Multer.File>) => void,
-  ) => void;
-  _removeFile: (
-    req: Request,
-    file: Express.Multer.File,
-    cb: (error: Error | null) => void,
-  ) => void;
-};
-
-class MixedRequestStorage implements StorageEngine {
-  private readonly documentStorage: InternalStorageEngine;
-  private readonly signatureStorage: InternalStorageEngine;
-
-  constructor(documentStore: StorageEngine, signatureStore: StorageEngine) {
-    this.documentStorage = documentStore as InternalStorageEngine;
-    this.signatureStorage = signatureStore as InternalStorageEngine;
-  }
-
-  _handleFile(
-    req: Request,
-    file: Express.Multer.File,
-    cb: (error?: any, info?: Partial<Express.Multer.File>) => void,
-  ): void {
-    if (file.fieldname === "applicant_signature") {
-      this.signatureStorage._handleFile(req, file, cb);
-      return;
-    }
-
-    this.documentStorage._handleFile(req, file, cb);
-  }
-
-  _removeFile(
-    req: Request,
-    file: Express.Multer.File,
-    cb: (error: Error | null) => void,
-  ): void {
-    if (file.fieldname === "applicant_signature") {
-      this.signatureStorage._removeFile(req, file, cb);
-      return;
-    }
-
-    this.documentStorage._removeFile(req, file, cb);
-  }
-}
 
 /**
  * File filter function to validate file types
@@ -181,36 +107,8 @@ export const upload = multer({
 });
 
 /**
- * Multer upload configuration for signatures
- *
- * Features:
- * - Disk storage in uploads/signatures/
- * - Only PNG images allowed
- * - 2MB file size limit for signatures
- */
-export const signatureUpload = multer({
-  storage: signatureStorage,
-  fileFilter: (
-    _req: Request,
-    file: Express.Multer.File,
-    cb: FileFilterCallback,
-  ) => {
-    // Only allow PNG images for signatures
-    if (SIGNATURE_MIME_TYPES.has(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error("Signature must be a PNG or JPEG image"));
-    }
-  },
-  limits: {
-    fileSize: MAX_SIGNATURE_SIZE, // 2MB for signatures
-    files: 1, // Only one signature per request
-  },
-});
-
-/**
  * Combined upload middleware for request form
- * Handles both document files and signature
+ * Handles document files only (signature uploads removed)
  */
 const requestDocumentStorage = multer.diskStorage({
   destination: (req: Request, _file: Express.Multer.File, cb) => {
@@ -233,26 +131,14 @@ const requestDocumentStorage = multer.diskStorage({
   },
 });
 
-const requestSignatureStorage = multer.memoryStorage();
-
 export const requestUpload = multer({
-  storage: new MixedRequestStorage(
-    requestDocumentStorage,
-    requestSignatureStorage,
-  ),
+  storage: requestDocumentStorage,
   fileFilter: (
     _req: Request,
     file: Express.Multer.File,
     cb: FileFilterCallback,
   ) => {
-    if (file.fieldname === "applicant_signature") {
-      // Signatures only allow PNG/JPEG
-      if (SIGNATURE_MIME_TYPES.has(file.mimetype)) {
-        cb(null, true);
-      } else {
-        cb(new Error("Signature must be a PNG or JPEG image"));
-      }
-    } else if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
+    if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
       // Documents allow PDF and images
       cb(null, true);
     } else {

@@ -6,7 +6,8 @@
  * Date: 2025-12-30
  */
 
-import express, { Application, Request, Response } from "express";
+import express, { Application } from "express";
+import crypto from "node:crypto";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -28,7 +29,7 @@ import slaRoutes from "./modules/sla/sla.routes.js";
 import accessReviewRoutes from "./modules/access-review/access-review.routes.js";
 import snapshotRoutes from "./modules/snapshot/snapshot.routes.js";
 import alertsRoutes from "./modules/alerts/alerts.routes.js";
-import { ApiResponse } from "./types/auth.js";
+import healthRoutes from "./modules/health/health.routes.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 import { apiRateLimiter } from "./middlewares/rateLimiter.js";
 
@@ -84,6 +85,20 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 /**
+ * Request ID Middleware
+ */
+app.use((req, res, next) => {
+  const incomingId = req.headers["x-request-id"];
+  const requestId =
+    typeof incomingId === "string" && incomingId.trim()
+      ? incomingId
+      : crypto.randomUUID();
+  req.requestId = requestId;
+  res.setHeader("x-request-id", requestId);
+  next();
+});
+
+/**
  * Logging Middleware
  * Use 'combined' format in production, 'dev' format in development
  */
@@ -115,19 +130,9 @@ app.use(
 app.use(initializePassport());
 
 /**
- * Health Check Route
+ * Health/Readiness Routes
  */
-app.get("/health", (_req: Request, res: Response<ApiResponse>) => {
-  res.status(200).json({
-    success: true,
-    message: "PHTS API is running",
-    data: {
-      timestamp: new Date().toISOString(),
-      environment: NODE_ENV,
-      port: PORT,
-    },
-  });
-});
+app.use("/", healthRoutes);
 
 /**
  * API Routes

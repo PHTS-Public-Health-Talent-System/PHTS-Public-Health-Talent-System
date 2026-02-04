@@ -30,7 +30,7 @@ export const notFoundHandler = (req: Request, res: Response) => {
  */
 export const errorHandler = (
   err: Error | AppError,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ) => {
@@ -39,10 +39,21 @@ export const errorHandler = (
 
   if (!isOperational) {
     // Programming error - log full stack
-    console.error("[ERROR] Unexpected error:", err.stack || err);
+    console.error("[ERROR] Unexpected error:", {
+      message: err.message,
+      stack: err.stack,
+      method: req.method,
+      path: req.originalUrl,
+      requestId: req.requestId,
+    });
   } else if (process.env.NODE_ENV !== "production") {
     // Operational error in development - log for debugging
-    console.error("[ERROR]", err.message);
+    console.error("[ERROR]", {
+      message: err.message,
+      method: req.method,
+      path: req.originalUrl,
+      requestId: req.requestId,
+    });
   }
 
   // Determine status code
