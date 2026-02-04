@@ -74,9 +74,11 @@ export const triggerSync = async (_req: Request, res: Response) => {
 export const toggleMaintenanceMode = async (req: Request, res: Response) => {
   try {
     const { enabled } = req.body as ToggleMaintenanceModeBody;
+    systemService.setMaintenanceMode(Boolean(enabled));
     res.json({
       success: true,
       message: `Maintenance mode ${enabled ? "enabled" : "disabled"}`,
+      data: { enabled: Boolean(enabled) },
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });

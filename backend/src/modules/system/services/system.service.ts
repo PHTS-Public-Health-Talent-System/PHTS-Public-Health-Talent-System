@@ -7,3 +7,4 @@
 export * from "./syncService.js";
 export * from "./backupService.js";
 export * from "./roleAssignmentService.js";
+export * from "./maintenance.service.js";

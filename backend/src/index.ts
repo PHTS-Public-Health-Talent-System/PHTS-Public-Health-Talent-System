@@ -30,6 +30,7 @@ import accessReviewRoutes from "./modules/access-review/access-review.routes.js"
 import snapshotRoutes from "./modules/snapshot/snapshot.routes.js";
 import alertsRoutes from "./modules/alerts/alerts.routes.js";
 import healthRoutes from "./modules/health/health.routes.js";
+import { isMaintenanceModeEnabled } from "./modules/system/services/maintenance.service.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 import { apiRateLimiter } from "./middlewares/rateLimiter.js";
 
@@ -133,6 +134,24 @@ app.use(initializePassport());
  * Health/Readiness Routes
  */
 app.use("/", healthRoutes);
+
+/**
+ * Maintenance Mode Middleware
+ */
+app.use((req, res, next) => {
+  if (!isMaintenanceModeEnabled()) return next();
+
+  const allowPaths = ["/health", "/ready", "/api/system/maintenance"];
+  if (allowPaths.some((path) => req.path.startsWith(path))) {
+    return next();
+  }
+
+  return res.status(503).json({
+    success: false,
+    error: "MAINTENANCE_MODE",
+    message: "Service is temporarily unavailable due to maintenance",
+  });
+});
 
 /**
  * API Routes

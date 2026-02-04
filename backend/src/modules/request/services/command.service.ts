@@ -3,6 +3,7 @@
  */
 
 import { getConnection } from "../../../config/database.js";
+import { readFile } from "node:fs/promises";
 import { PoolConnection } from "mysql2/promise";
 import {
   RequestStatus,
@@ -258,7 +259,30 @@ export class RequestCommandService {
 
 
 
-      const stepNo = requestEntity.current_step || 1;
+      const stepNo =
+        requestEntity.current_step && requestEntity.current_step > 0
+          ? requestEntity.current_step
+          : 1;
+
+      // Capture signature snapshot on submit (sig_images or applicant signature)
+      let signatureSnapshot = await requestRepository.findSignatureSnapshot(
+        userId,
+        connection,
+      );
+      if (!signatureSnapshot) {
+        const signaturePath =
+          await requestRepository.findSignatureAttachmentPath(
+            requestId,
+            connection,
+          );
+        if (signaturePath) {
+          signatureSnapshot = await readFile(signaturePath);
+        }
+      }
+
+      if (!signatureSnapshot) {
+        throw new Error("ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนส่งคำขอ");
+      }
 
       // [REFACTOR] Use Repo Update
       await requestRepository.update(
@@ -278,7 +302,7 @@ export class RequestCommandService {
           step_no: stepNo,
           action: ActionType.SUBMIT,
           comment: null,
-          signature_snapshot: null,
+          signature_snapshot: signatureSnapshot,
         },
         connection,
       );
@@ -368,6 +392,34 @@ export class RequestCommandService {
         }
         if ((files && files.length > 0) || _signatureFile) {
           throw new Error("PTS_OFFICER cannot modify attachments or signature");
+        }
+
+        const hasDisallowedFields =
+          data.personnel_type !== undefined ||
+          data.position_number !== undefined ||
+          data.department_group !== undefined ||
+          data.main_duty !== undefined ||
+          data.work_attributes !== undefined ||
+          data.request_type !== undefined ||
+          data.requested_amount !== undefined ||
+          data.effective_date !== undefined ||
+          data.reason !== undefined;
+
+        if (hasDisallowedFields) {
+          throw new Error(
+            "PTS_OFFICER can only update verification checks via submission_data",
+          );
+        }
+
+        if (data.submission_data) {
+          const keys = Object.keys(data.submission_data || {});
+          const allowedKeys = new Set(["verification_checks"]);
+          const hasOther = keys.some((key) => !allowedKeys.has(key));
+          if (hasOther) {
+            throw new Error(
+              "PTS_OFFICER can only update verification_checks in submission_data",
+            );
+          }
         }
       }
 
@@ -640,12 +692,9 @@ export class RequestCommandService {
       console.log(`[DEBUG_RATE] Params: Group=${data.group_no}, Item=${data.item_no}, Sub=${data.sub_item_no}`);
 
       if (!professionCode) {
-         // Fallback/Default or Specific logic if needed
-         console.warn(`[WARN_RATE] Could not resolve profession for position: ${positionName}, defaulting to NURSE`);
-         professionCode = "NURSE"; // Keep legacy default if detection fails, or throw?
-         // For safety, let's throw if we can't detect, but to be safe for now, log or use default?
-      // The error "Invalid rate mapping" will be thrown anyway if rate not found.
-         // Let's rely on detection.
+         throw new Error(
+           `Cannot resolve profession from position: ${positionName}`,
+         );
       }
 
       const rate = await requestRepository.findRateByDetails(

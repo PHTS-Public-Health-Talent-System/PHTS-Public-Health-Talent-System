@@ -217,6 +217,23 @@ export class RequestRepository {
     return null;
   }
 
+  // Fetch applicant signature attachment path (for submit snapshot)
+  async findSignatureAttachmentPath(
+    requestId: number,
+    connection?: PoolConnection,
+  ): Promise<string | null> {
+    const db = this.getDb(connection);
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT file_path
+       FROM req_attachments
+       WHERE request_id = ? AND file_type = 'SIGNATURE'
+       ORDER BY uploaded_at DESC
+       LIMIT 1`,
+      [requestId],
+    );
+    return rows.length ? (rows[0].file_path as string) : null;
+  }
+
   // Find Master Rate
   async findMatchingRateId(
     amount: number,
