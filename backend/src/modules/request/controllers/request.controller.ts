@@ -323,7 +323,11 @@ export class RequestController {
 
   submitRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
      const requestId = parseInt(req.params.id);
-     const result = await requestCommandService.submitRequest(requestId, req.user!.userId);
+     const result = await requestCommandService.submitRequest(
+       requestId,
+       req.user!.userId,
+       req.user!.role,
+     );
      res.json({ success: true, message: "Submitted", data: result });
   });
 

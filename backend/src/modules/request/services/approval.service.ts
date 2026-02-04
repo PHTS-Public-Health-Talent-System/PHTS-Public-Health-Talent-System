@@ -141,6 +141,8 @@ export class RequestApprovalService {
         );
       }
 
+      const isSelfApproval = await isRequestOwner(actorId, request.user_id);
+
       if (actorRole === "HEAD_WARD" || actorRole === "HEAD_DEPT") {
         const hasScope = await canApproverAccessRequest(
           actorId,
@@ -149,19 +151,44 @@ export class RequestApprovalService {
           empSubDepartment,
         );
 
-        const isSelfApproval = await isRequestOwner(actorId, request.user_id);
-
         if (!hasScope && !isSelfApproval) {
           throw new Error(
             "You do not have scope access to approve this request",
           );
         }
 
-        if (
-          isSelfApproval &&
-          !canSelfApprove(actorRole, request.current_step)
-        ) {
-          throw new Error("Self-approval is not allowed at this step");
+        if (isSelfApproval && !canSelfApprove(actorRole, request.current_step)) {
+          // Self-approval disabled: allow auto-forward without signature requirement
+          await this.performApproval(
+            connection,
+            request,
+            requestId,
+            actorId,
+            "AUTO-FORWARD (self-approval disabled)",
+            null,
+            true,
+          );
+
+          await emitAuditEvent(
+            {
+              eventType: AuditEventType.REQUEST_APPROVE,
+              entityType: "request",
+              entityId: requestId,
+              actorId: actorId,
+              actorRole: actorRole,
+              actionDetail: {
+                request_no: request.request_no,
+                step: request.current_step,
+                skipped_self: true,
+              },
+            },
+            connection,
+          );
+
+          await connection.commit();
+
+          const updatedEntity = await requestRepository.findById(requestId);
+          return mapRequestRow(updatedEntity!) as PTSRequest;
         }
       }
 
@@ -181,6 +208,7 @@ export class RequestApprovalService {
         actorId,
         comment || null,
         signatureFromStore,
+        false,
       );
 
       await emitAuditEvent(
@@ -523,6 +551,7 @@ export class RequestApprovalService {
             actorId,
             comment || null,
             signatureSnapshot,
+            false,
           );
 
           await emitAuditEvent(
@@ -573,7 +602,8 @@ export class RequestApprovalService {
     requestId: number,
     actorId: number,
     comment: string | null,
-    signatureSnapshot: Buffer,
+    signatureSnapshot: Buffer | null,
+    autoForwardSelf: boolean,
   ): Promise<void> {
     const currentStep = request.current_step;
     const nextStep = currentStep + 1;
@@ -620,14 +650,51 @@ export class RequestApprovalService {
       );
 
       const nextRole = STEP_ROLE_MAP[nextStep];
-      if (nextRole) {
-        await NotificationService.notifyRole(
-          nextRole,
-          "งานรออนุมัติ",
-          `มีคำขอเลขที่ ${request.request_no} ส่งต่อมาถึงท่าน`,
-          getRequestLinkForRole(nextRole, requestId),
-          connection,
-        );
+
+      if (!autoForwardSelf && nextRole) {
+        // If next role equals requester role, auto-forward one more step
+        const requesterRole =
+          await requestRepository.findUserRoleById(request.user_id, connection);
+        if (requesterRole && requesterRole === nextRole) {
+          await requestRepository.insertApproval(
+            {
+              request_id: requestId,
+              actor_id: request.user_id,
+              step_no: nextStep,
+              action: ActionType.APPROVE,
+              comment: "AUTO-FORWARD (self-approval disabled)",
+              signature_snapshot: null,
+            },
+            connection,
+          );
+
+          await requestRepository.update(
+            requestId,
+            {
+              current_step: nextStep + 1,
+            },
+            connection,
+          );
+
+          const nextNextRole = STEP_ROLE_MAP[nextStep + 1];
+          if (nextNextRole) {
+            await NotificationService.notifyRole(
+              nextNextRole,
+              "งานรออนุมัติ",
+              `มีคำขอเลขที่ ${request.request_no} ส่งต่อมาถึงท่าน`,
+              getRequestLinkForRole(nextNextRole, requestId),
+              connection,
+            );
+          }
+        } else {
+          await NotificationService.notifyRole(
+            nextRole,
+            "งานรออนุมัติ",
+            `มีคำขอเลขที่ ${request.request_no} ส่งต่อมาถึงท่าน`,
+            getRequestLinkForRole(nextRole, requestId),
+            connection,
+          );
+        }
       }
     }
   }

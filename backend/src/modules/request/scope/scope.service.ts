@@ -219,15 +219,8 @@ export async function isRequestOwner(
  * Per docs: HEAD_WARD and HEAD_DEPT can self-approve when the request
  * is at their step and they are the owner
  */
-export function canSelfApprove(userRole: string, currentStep: number): boolean {
-  // HEAD_WARD can self-approve at step 1
-  if (userRole === "HEAD_WARD" && currentStep === 1) {
-    return true;
-  }
-  // HEAD_DEPT can self-approve at step 2
-  if (userRole === "HEAD_DEPT" && currentStep === 2) {
-    return true;
-  }
+export function canSelfApprove(_userRole: string, _currentStep: number): boolean {
+  // Self-approval is disabled; requests should auto-forward to next step.
   return false;
 }
 
