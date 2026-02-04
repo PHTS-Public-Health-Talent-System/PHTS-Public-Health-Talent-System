@@ -268,7 +268,11 @@ export class RequestCommandService {
           ? requestEntity.current_step
           : 1;
       const nextStep =
-        userRole === "HEAD_WARD" && stepNo === 1 ? 2 : stepNo;
+        userRole === "HEAD_WARD" && stepNo === 1
+          ? 2
+          : userRole === "HEAD_DEPT" && stepNo === 1
+            ? 3
+            : stepNo;
 
       // Capture signature snapshot on submit (sig_images or applicant signature)
       let signatureSnapshot = await requestRepository.findSignatureSnapshot(
