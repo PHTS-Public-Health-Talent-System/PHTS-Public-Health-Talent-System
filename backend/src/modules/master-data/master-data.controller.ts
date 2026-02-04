@@ -90,10 +90,10 @@ export const getProfessions = async (_req: Request, res: Response) => {
   }
 };
 
-// Get full classification hierarchy
-export const getClassificationHierarchy = async (_req: Request, res: Response) => {
+// Get full rate hierarchy
+export const getRateHierarchy = async (_req: Request, res: Response) => {
   try {
-    const data = await masterDataService.getClassificationHierarchy();
+    const data = await masterDataService.getRateHierarchy();
     res.json({ success: true, data });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });

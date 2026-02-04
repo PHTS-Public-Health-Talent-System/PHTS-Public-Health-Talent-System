@@ -43,7 +43,7 @@ export interface ProfessionHierarchy {
   }[];
 }
 
-export async function getClassificationHierarchy() {
-  const res = await api.get<ApiResponse<ProfessionHierarchy[]>>('/config/classification-hierarchy');
+export async function getRateHierarchy() {
+  const res = await api.get<ApiResponse<ProfessionHierarchy[]>>('/config/rate-hierarchy');
   return res.data.data;
 }

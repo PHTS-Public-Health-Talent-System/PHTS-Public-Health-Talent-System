@@ -8,7 +8,7 @@ import {
   getHolidays,
   getMasterRates,
   updateMasterRate,
-  getClassificationHierarchy,
+  getRateHierarchy,
 } from '@/features/master-data/api';
 
 export function useHolidays(params?: ApiParams) {
@@ -44,10 +44,10 @@ export function useUpdateMasterRate() {
   });
 }
 
-export function useClassificationHierarchy() {
+export function useRateHierarchy() {
   return useQuery({
-    queryKey: ['classification-hierarchy'],
-    queryFn: getClassificationHierarchy,
+    queryKey: ['rate-hierarchy'],
+    queryFn: getRateHierarchy,
     staleTime: 1000 * 60 * 60, // 1 hour (static data)
   });
 }

@@ -89,7 +89,7 @@ export interface ProfessionNode {
   groups: GroupNode[];
 }
 
-export const getClassificationHierarchy = async (): Promise<ProfessionNode[]> => {
+export const getRateHierarchy = async (): Promise<ProfessionNode[]> => {
   // Fetch active rates sorted by hierarchy
   const rows = await query<RowDataPacket[]>(
     `SELECT
