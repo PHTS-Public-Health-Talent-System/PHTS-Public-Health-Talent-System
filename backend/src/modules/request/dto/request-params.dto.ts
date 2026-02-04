@@ -12,8 +12,14 @@ export const requestRateMappingSchema = z.object({
   params: idParam,
   body: z.object({
     group_no: z.coerce.number().int().positive(),
-    item_no: z.string().optional().nullable(),
-    sub_item_no: z.string().optional().nullable(),
+    item_no: z.preprocess(
+      (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+      z.string().min(1).optional().nullable(),
+    ),
+    sub_item_no: z.preprocess(
+      (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+      z.string().min(1).optional().nullable(),
+    ),
   }),
 });
 

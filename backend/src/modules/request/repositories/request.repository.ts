@@ -643,14 +643,14 @@ export class RequestRepository {
                  AND is_active = 1`;
     const params: any[] = [professionCode, groupNo];
 
-    if (itemNo) {
+    if (itemNo !== null && itemNo !== undefined && itemNo !== "") {
       sql += " AND item_no = ?";
       params.push(itemNo);
     } else {
       sql += " AND item_no IS NULL";
     }
 
-    if (subItemNo) {
+    if (subItemNo !== null && subItemNo !== undefined && subItemNo !== "") {
       sql += " AND sub_item_no = ?";
       params.push(subItemNo);
     } else {

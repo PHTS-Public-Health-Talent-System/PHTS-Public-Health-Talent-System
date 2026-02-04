@@ -616,7 +616,7 @@ export class RequestCommandService {
     requestId: number,
     _userId: number,
     _role: string,
-    data: { group_no: number; item_no: string; sub_item_no?: string | null },
+    data: { group_no: number; item_no?: string | null; sub_item_no?: string | null },
   ): Promise<any> {
     const connection = await getConnection();
 
