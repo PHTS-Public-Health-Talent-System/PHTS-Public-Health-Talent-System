@@ -97,9 +97,8 @@ Routes live under `/dashboard/*`.
 
 ## 6) Feature Modules (Examples)
 
-- `features/request/` – request workflow APIs, approvals, attachments, OCR
+- `features/request/` – request workflow APIs, approvals, attachments
 - `features/payroll/` – periods, calculation, reports
-- `features/data-quality/` – issues dashboard and actions
 - `features/snapshot/` – freeze/unfreeze and snapshot data
 - `features/license-alerts/` – license expiry monitoring
 - `features/master-data/` – holidays and payment rates
@@ -117,4 +116,3 @@ Routes live under `/dashboard/*`.
 - Next.js App Router
 - React Query
 - Shadcn UI + Tailwind
-
