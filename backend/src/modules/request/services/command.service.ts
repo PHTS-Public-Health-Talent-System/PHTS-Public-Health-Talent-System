@@ -24,7 +24,7 @@ import {
   parseJsonField,
 } from "./helpers.js";
 import { requestQueryService } from "./query.service.js"; // Use the class instance
-import { logAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
+import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
 import { requestRepository } from "../repositories/request.repository.js"; // [NEW]
 
 type SignatureOptions = {
@@ -167,7 +167,7 @@ export class RequestCommandService {
         await this.insertAttachments(connection, requestId, [signatureFile]);
       }
 
-      await logAuditEvent(
+      await emitAuditEvent(
         {
           eventType: AuditEventType.REQUEST_CREATE,
           entityType: "request",
@@ -662,7 +662,7 @@ export class RequestCommandService {
   }
 
   // ============================================================================
-  // Update Classification (OCR-assisted)
+  // Update Classification
   // ============================================================================
 
   async updateClassification(

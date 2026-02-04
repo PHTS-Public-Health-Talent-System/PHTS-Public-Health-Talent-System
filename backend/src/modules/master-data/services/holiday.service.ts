@@ -6,7 +6,7 @@
 
 import { RowDataPacket, ResultSetHeader } from "mysql2/promise";
 import { query } from "../../../config/database.js";
-import { logAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
+import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
 
 export const getHolidays = async (year?: string | number): Promise<any[]> => {
   let sql = "SELECT * FROM cfg_holidays WHERE is_active = 1";
@@ -32,7 +32,7 @@ export const addHoliday = async (
     [date, name],
   );
 
-  await logAuditEvent({
+  await emitAuditEvent({
     eventType: AuditEventType.HOLIDAY_UPDATE,
     entityType: "holiday",
     entityId: null,
@@ -55,7 +55,7 @@ export const deleteHoliday = async (
     [date],
   );
 
-  await logAuditEvent({
+  await emitAuditEvent({
     eventType: AuditEventType.HOLIDAY_UPDATE,
     entityType: "holiday",
     entityId: null,

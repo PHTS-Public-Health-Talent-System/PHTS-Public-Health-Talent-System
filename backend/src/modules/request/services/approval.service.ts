@@ -24,7 +24,7 @@ import {
   canSelfApprove,
   isRequestOwner,
 } from "../scope/scope.service.js";
-import { logAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
+import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
 import { requestRepository } from "../repositories/request.repository.js";
 // Removed classification/eligibility service imports
 
@@ -184,7 +184,7 @@ export class RequestApprovalService {
         signatureSnapshot,
       );
 
-      await logAuditEvent(
+      await emitAuditEvent(
         {
           eventType: AuditEventType.REQUEST_APPROVE,
           entityType: "request",
@@ -300,7 +300,7 @@ export class RequestApprovalService {
         connection,
       );
 
-      await logAuditEvent(
+      await emitAuditEvent(
         {
           eventType: AuditEventType.REQUEST_REJECT,
           entityType: "request",
@@ -412,7 +412,7 @@ export class RequestApprovalService {
         connection,
       );
 
-      await logAuditEvent(
+      await emitAuditEvent(
         {
           eventType: AuditEventType.REQUEST_RETURN,
           entityType: "request",
@@ -525,7 +525,7 @@ export class RequestApprovalService {
             signatureSnapshot,
           );
 
-          await logAuditEvent(
+          await emitAuditEvent(
             {
               eventType: AuditEventType.REQUEST_APPROVE,
               entityType: "request",

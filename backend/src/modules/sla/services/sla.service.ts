@@ -12,20 +12,7 @@ import {
   RequestSLAInfo,
 } from "../entities/sla.entity.js";
 import { NotificationService } from "../../notification/services/notification.service.js";
-
-// Re-export military leave alert functions
-export * from "./military-leave-alert.service.js";
-
-// ─── Step-to-Role Mapping ─────────────────────────────────────────────────────
-
-const STEP_ROLE_MAP: Record<number, string> = {
-  1: "HEAD_WARD",
-  2: "HEAD_DEPT",
-  3: "PTS_OFFICER",
-  4: "HEAD_HR",
-  5: "HEAD_FINANCE",
-  6: "DIRECTOR",
-};
+import { STEP_ROLE_MAP } from "../../../shared/policy/request.policy.js";
 
 // ─── SLA Config Functions ─────────────────────────────────────────────────────
 

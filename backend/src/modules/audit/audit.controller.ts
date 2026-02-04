@@ -188,7 +188,7 @@ export async function exportEvents(
     const events = await auditService.getAuditEventsForExport(filter);
 
     // Log the export action
-    await auditService.logAuditEventWithRequest(req, {
+    await auditService.emitAuditEventWithRequest(req, {
       eventType: auditService.AuditEventType.DATA_EXPORT,
       entityType: "audit_events",
       actionDetail: {

@@ -15,7 +15,7 @@ import {
   JwtPayload,
 } from "../entities/auth.entity.js";
 import {
-  logAuditEvent,
+  emitAuditEvent,
   AuditEventType,
 } from "../../audit/services/audit.service.js";
 
@@ -98,7 +98,7 @@ export class AuthService {
     const userProfile = await AuthService.getUserProfile(user.user_id);
 
     // Log audit event
-    await logAuditEvent({
+    await emitAuditEvent({
       eventType: AuditEventType.LOGIN,
       entityType: "user",
       entityId: user.user_id,
@@ -156,7 +156,7 @@ export class AuthService {
     role: string,
     requestInfo?: { ipAddress: string; userAgent: string },
   ): Promise<void> {
-    await logAuditEvent({
+    await emitAuditEvent({
       eventType: AuditEventType.LOGOUT,
       entityType: "user",
       entityId: userId,

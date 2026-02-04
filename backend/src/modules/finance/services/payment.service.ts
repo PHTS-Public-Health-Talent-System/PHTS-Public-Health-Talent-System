@@ -9,7 +9,7 @@ import {
   PaymentStatus,
 } from "../entities/finance.entity.js";
 import type { PayoutWithDetails, BatchPaymentResult } from "../entities/finance.entity.js";
-import { logAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
+import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
 
 // Re-export for backward compatibility
 export { PaymentStatus } from "../entities/finance.entity.js";
@@ -52,7 +52,7 @@ export async function markPayoutAsPaid(
     );
 
     // Log audit
-    await logAuditEvent(
+    await emitAuditEvent(
       {
         eventType: AuditEventType.PAYOUT_MARK_PAID,
         entityType: "PAYOUT",
@@ -124,7 +124,7 @@ export async function batchMarkAsPaid(
     }
 
     if (result.success.length > 0) {
-      await logAuditEvent(
+      await emitAuditEvent(
         {
           eventType: AuditEventType.PAYOUT_MARK_PAID,
           entityType: "PAYOUT_BATCH",
@@ -181,7 +181,7 @@ export async function cancelPayout(
       conn,
     );
 
-    await logAuditEvent(
+    await emitAuditEvent(
       {
         eventType: AuditEventType.PAYOUT_CANCEL,
         entityType: "PAYOUT",

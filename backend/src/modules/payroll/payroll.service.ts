@@ -1,8 +1,9 @@
 import { NotificationService } from "../notification/services/notification.service.js";
 import { payrollService as calculator } from "./core/calculator.js";
 import { calculateRetroactive } from "./core/retroactive.js";
-import { logAuditEvent, AuditEventType } from "../audit/services/audit.service.js";
+import { emitAuditEvent, AuditEventType } from "../audit/services/audit.service.js";
 import { PayPeriod, PeriodStatus } from "./entities/payroll.entity.js";
+import { resolveNextStatus } from "../../shared/policy/payroll.policy.js";
 import { PayrollRepository } from "./repositories/payroll.repository.js";
 
 export { PeriodStatus } from "./entities/payroll.entity.js";
@@ -24,7 +25,7 @@ export class PayrollService {
       PeriodStatus.OPEN,
     );
 
-    await logAuditEvent({
+    await emitAuditEvent({
       eventType: AuditEventType.PERIOD_CREATE,
       entityType: "period",
       entityId: insertId,
@@ -247,7 +248,7 @@ export class PayrollService {
         auditEventType = AuditEventType.PERIOD_REJECT;
       }
 
-      await logAuditEvent({
+      await emitAuditEvent({
         eventType: auditEventType,
         entityType: "period",
         entityId: periodId,
@@ -264,7 +265,7 @@ export class PayrollService {
       });
 
       if (action === "SUBMIT") {
-        await logAuditEvent({
+        await emitAuditEvent({
           eventType: AuditEventType.PERIOD_FREEZE,
           entityType: "period",
           entityId: periodId,
@@ -275,7 +276,7 @@ export class PayrollService {
             period_year: year,
           },
         });
-        await logAuditEvent({
+        await emitAuditEvent({
           eventType: AuditEventType.PERIOD_SUBMIT,
           entityType: "period",
           entityId: periodId,
@@ -382,7 +383,7 @@ export class PayrollService {
 
       await conn.commit();
 
-      await logAuditEvent({
+      await emitAuditEvent({
         eventType: AuditEventType.PERIOD_ITEM_ADD,
         entityType: "period",
         entityId: periodId,
@@ -420,7 +421,7 @@ export class PayrollService {
 
       await conn.commit();
 
-      await logAuditEvent({
+      await emitAuditEvent({
         eventType: AuditEventType.PERIOD_ITEM_REMOVE,
         entityType: "period",
         entityId: periodId,
@@ -542,8 +543,9 @@ export class PayrollService {
     const leaveRecord =
       await PayrollRepository.findLeaveRecordById(leaveRecordId);
     if (!leaveRecord) throw new Error("Leave record not found");
-    if (leaveRecord.leave_type !== "education") {
-      throw new Error("Return report is only allowed for education leave");
+    const allowedTypes = new Set(["education", "ordain", "military"]);
+    if (!allowedTypes.has(String(leaveRecord.leave_type))) {
+      throw new Error("Return report is only allowed for education/ordain/military leave");
     }
 
     const citizenId = leaveRecord.citizen_id as string;
@@ -591,34 +593,6 @@ function buildSingleMap(rows: any[]): Map<string, any> {
     map.set(row.citizen_id, row);
   }
   return map;
-}
-
-function resolveNextStatus(
-  action: string,
-  currentStatus: PeriodStatus,
-): PeriodStatus {
-  if (action === "SUBMIT" && currentStatus === PeriodStatus.OPEN) {
-    return PeriodStatus.WAITING_HR;
-  }
-  if (action === "APPROVE_HR" && currentStatus === PeriodStatus.WAITING_HR) {
-    return PeriodStatus.WAITING_HEAD_FINANCE;
-  }
-  if (
-    action === "APPROVE_HEAD_FINANCE" &&
-    currentStatus === PeriodStatus.WAITING_HEAD_FINANCE
-  ) {
-    return PeriodStatus.WAITING_DIRECTOR;
-  }
-  if (
-    action === "APPROVE_DIRECTOR" &&
-    currentStatus === PeriodStatus.WAITING_DIRECTOR
-  ) {
-    return PeriodStatus.CLOSED;
-  }
-  if (action === "REJECT") {
-    return PeriodStatus.OPEN;
-  }
-  throw new Error(`Invalid action '${action}' for status '${currentStatus}'`);
 }
 
 async function sendWorkflowNotification(

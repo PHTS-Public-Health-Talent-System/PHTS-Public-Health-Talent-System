@@ -32,6 +32,27 @@ export async function logAuditEvent(
 }
 
 /**
+ * Standardized audit logger (normalizes optional fields)
+ */
+export async function emitAuditEvent(
+  dto: CreateAuditEventInput,
+  connection?: PoolConnection,
+): Promise<number> {
+  return logAuditEvent(
+    {
+      ...dto,
+      entityId: dto.entityId ?? null,
+      actorId: dto.actorId ?? null,
+      actorRole: dto.actorRole ?? null,
+      actionDetail: dto.actionDetail ?? null,
+      ipAddress: dto.ipAddress ?? null,
+      userAgent: dto.userAgent ?? null,
+    },
+    connection,
+  );
+}
+
+/**
  * Search audit events with filters
  */
 export async function searchAuditEvents(
@@ -122,4 +143,18 @@ export async function logAuditEventWithRequest(
     },
     connection,
   );
+}
+
+/**
+ * Standardized audit logger with request context
+ */
+export async function emitAuditEventWithRequest(
+  req: any,
+  dto: Omit<
+    CreateAuditEventInput,
+    "ipAddress" | "userAgent" | "actorId" | "actorRole"
+  >,
+  connection?: PoolConnection,
+): Promise<number> {
+  return logAuditEventWithRequest(req, dto, connection);
 }

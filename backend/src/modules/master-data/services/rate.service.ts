@@ -6,7 +6,7 @@
 
 import { RowDataPacket, ResultSetHeader } from "mysql2/promise";
 import { query } from "../../../config/database.js";
-import { logAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
+import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
 
 export const getMasterRates = async (): Promise<any[]> => {
   const rates = await query<RowDataPacket[]>(
@@ -27,7 +27,7 @@ export const updateMasterRate = async (
     [amount, condition_desc, is_active, rateId],
   );
 
-  await logAuditEvent({
+  await emitAuditEvent({
     eventType: AuditEventType.MASTER_RATE_UPDATE,
     entityType: "payment_rate",
     entityId: rateId,

@@ -10,7 +10,7 @@
 import { RowDataPacket } from "mysql2/promise";
 import { query, getConnection } from "../../../config/database.js";
 import { NotificationService } from "../../notification/services/notification.service.js";
-import { logAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
+import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
 
 /**
  * Review cycle status
@@ -178,7 +178,7 @@ export async function createReviewCycle(): Promise<ReviewCycle> {
     await connection.commit();
 
     // Log audit event
-    await logAuditEvent(
+    await emitAuditEvent(
       {
         eventType: AuditEventType.ACCESS_REVIEW_CREATE,
         entityType: "access_review_cycle",
@@ -327,7 +327,7 @@ export async function updateReviewItem(
       );
 
       // Log audit
-      await logAuditEvent(
+      await emitAuditEvent(
         {
           eventType: AuditEventType.USER_DISABLE,
           entityType: "users",
@@ -398,7 +398,7 @@ export async function completeReviewCycle(
     await connection.commit();
 
     // Log audit
-    await logAuditEvent(
+    await emitAuditEvent(
       {
         eventType: AuditEventType.ACCESS_REVIEW_COMPLETE,
         entityType: "access_review_cycle",
@@ -473,7 +473,7 @@ export async function autoDisableTerminatedUsers(): Promise<{
         );
 
         // Log audit
-        await logAuditEvent(
+        await emitAuditEvent(
           {
             eventType: AuditEventType.USER_DISABLE,
             entityType: "users",

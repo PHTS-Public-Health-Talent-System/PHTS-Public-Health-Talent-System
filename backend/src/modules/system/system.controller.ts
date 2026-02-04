@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { query } from "../../config/database.js";
 import * as systemService from "./services/system.service.js";
-import { logAuditEvent, AuditEventType } from "../audit/services/audit.service.js";
+import { emitAuditEvent, AuditEventType } from "../audit/services/audit.service.js";
 import type {
   SearchUsersQuery,
   UpdateUserRoleParams,
@@ -45,7 +45,7 @@ export const updateUserRole = async (req: Request, res: Response) => {
       ]);
     }
 
-    await logAuditEvent(
+    await emitAuditEvent(
       {
         eventType: AuditEventType.USER_ROLE_CHANGE,
         entityType: "USER",

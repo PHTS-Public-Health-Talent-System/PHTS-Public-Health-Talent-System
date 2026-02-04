@@ -201,7 +201,7 @@ router.delete(
   deleteLeavePayException,
 );
 
-// Leave return reports (education leave) (PTS_OFFICER only)
+// Leave return reports (education/ordain/military) (PTS_OFFICER only)
 router.post(
   "/leave-return-reports",
   protect,

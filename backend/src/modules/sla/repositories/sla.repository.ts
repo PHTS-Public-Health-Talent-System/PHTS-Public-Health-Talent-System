@@ -142,7 +142,7 @@ export class SLARepository {
   ): Promise<boolean> {
     const executor = conn ?? db;
     const [rows] = await executor.query<RowDataPacket[]>(
-      `SELECT 1 FROM sla_reminder_logs
+      `SELECT 1 FROM wf_sla_reminders
        WHERE request_id = ? AND step_no = ? AND reminder_type = ?
        AND DATE(sent_at) = CURDATE()`,
       [requestId, stepNo, reminderType],
@@ -160,7 +160,7 @@ export class SLARepository {
   ): Promise<void> {
     const executor = conn ?? db;
     await executor.execute(
-      `INSERT INTO sla_reminder_logs (request_id, step_no, target_user_id, reminder_type, sent_via)
+      `INSERT INTO wf_sla_reminders (request_id, step_no, target_user_id, reminder_type, sent_via)
        VALUES (?, ?, ?, ?, ?)`,
       [requestId, stepNo, targetUserId, reminderType, sentVia],
     );
