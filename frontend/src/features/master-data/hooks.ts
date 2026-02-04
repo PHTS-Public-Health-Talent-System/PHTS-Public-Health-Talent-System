@@ -7,7 +7,9 @@ import {
   deleteHoliday,
   getHolidays,
   getMasterRates,
+  getProfessions,
   updateMasterRate,
+  createMasterRate,
   getClassificationHierarchy,
 } from '@/features/master-data/api';
 
@@ -34,6 +36,19 @@ export function useMasterRatesConfig() {
   return useQuery({
     queryKey: ['master-rates-config'],
     queryFn: getMasterRates,
+  });
+}
+
+export function useProfessions() {
+  return useQuery({
+    queryKey: ['professions'],
+    queryFn: getProfessions,
+  });
+}
+
+export function useCreateMasterRate() {
+  return useMutation({
+    mutationFn: (payload: ApiPayload) => createMasterRate(payload),
   });
 }
 
