@@ -14,7 +14,7 @@ import {
   useReassignRequest,
   useRequestDetail,
   useCreateVerificationSnapshot,
-  useUpdateClassification,
+  useUpdateRateMapping,
   useUpdateRequest,
   useUpdateVerificationChecks,
   useAdjustLeaveRequest,
@@ -22,9 +22,8 @@ import {
 import {
   useCheckSignature,
   useMySignature,
-  useUploadSignatureBase64,
 } from "@/features/signature/hooks"
-import { findRateIdForSelection, parseClassificationSelection } from "@/features/request/pts-utils"
+import { findRateIdForSelection, parseRateMappingSelection } from "@/features/request/pts-utils"
 import { formatRequesterName, isSignatureReadyForApproval } from "@/features/request/approver-utils"
 import { StatusBadge } from "@/components/common/status-badge"
 import { RequestTimeline } from "@/components/common/request-timeline"
@@ -59,19 +58,17 @@ export default function PtsOfficerRequestDetailPage({
   const router = useRouter()
   const { data: request, isLoading } = useRequestDetail(id)
   const updateRequest = useUpdateRequest()
-  const updateClassification = useUpdateClassification()
+  const updateRateMapping = useUpdateRateMapping()
   const updateChecks = useUpdateVerificationChecks()
   const processAction = useProcessAction()
   const createSnapshot = useCreateVerificationSnapshot()
   const { data: rates, isLoading: isRatesLoading } = useMasterRates()
-  // const { data: recommended } = useRecommendedClassification(id) // Removed
   const { data: availableOfficers } = useAvailableOfficers()
   const reassignMutation = useReassignRequest()
   const { data: reassignHistory } = useReassignHistory(id)
   const adjustLeave = useAdjustLeaveRequest()
   const { data: signatureCheck } = useCheckSignature()
   const { data: signatureData } = useMySignature()
-  const uploadSignature = useUploadSignatureBase64()
 
   const [comment, setComment] = useState("")
   const [signatureMode, setSignatureMode] = useState<"SAVED" | "NEW" | null>(null)
@@ -89,7 +86,7 @@ export default function PtsOfficerRequestDetailPage({
     qualification_ok: false,
     evidence_ok: false,
   })
-  const [classification, setClassification] = useState({
+  const [rateMapping, setRateMapping] = useState({
     groupId: "",
     itemId: "",
     amount: 0,
@@ -153,7 +150,7 @@ export default function PtsOfficerRequestDetailPage({
   const groups = Array.from(new Set((rates ?? []).map((r) => r.group_no))).sort(
     (a, b) => a - b,
   )
-  const selectedGroupNo = Number(classification.groupId.match(/\d+/)?.[0] ?? 0)
+  const selectedGroupNo = Number(rateMapping.groupId.match(/\d+/)?.[0] ?? 0)
   const itemsForGroup = (rates ?? [])
     .filter((r) => r.group_no === selectedGroupNo)
     .map((r) => {
@@ -185,10 +182,10 @@ export default function PtsOfficerRequestDetailPage({
     )
   }
 
-  const handleSaveClassification = async () => {
-    const parsed = parseClassificationSelection(
-      classification.groupId,
-      classification.itemId,
+  const handleSaveRateMapping = async () => {
+    const parsed = parseRateMappingSelection(
+      rateMapping.groupId,
+      rateMapping.itemId,
     )
     if (!parsed.group_no || !parsed.item_no) {
       toast.error("กรุณาเลือกกลุ่มและรายการ")
@@ -199,7 +196,7 @@ export default function PtsOfficerRequestDetailPage({
       item_no: parsed.item_no,
       sub_item_no: parsed.sub_item_no ?? null,
     }
-    updateClassification.mutate(
+    updateRateMapping.mutate(
       { id, payload },
       {
         onSuccess: (result) => {
@@ -207,8 +204,8 @@ export default function PtsOfficerRequestDetailPage({
           const amount =
             typeof payload?.amount === "number"
               ? payload.amount
-              : classification.amount
-          setClassification((prev) => ({ ...prev, amount }))
+              : rateMapping.amount
+          setRateMapping((prev) => ({ ...prev, amount }))
           toast.success("อัปเดตกลุ่ม/อัตราเรียบร้อยแล้ว")
         },
         onError: (error: unknown) => {
@@ -220,7 +217,7 @@ export default function PtsOfficerRequestDetailPage({
   }
 
   const displayAmount =
-    classification.amount || request.requested_amount || 0
+    rateMapping.amount || request.requested_amount || 0
 
   const handleSaveChecks = async () => {
     updateChecks.mutate(
@@ -244,14 +241,10 @@ export default function PtsOfficerRequestDetailPage({
     }
 
     try {
-      if (action === "APPROVE" && effectiveSignatureMode === "NEW") {
-        await uploadSignature.mutateAsync(signature)
-      }
-
       if (action === "APPROVE") {
-        const parsed = parseClassificationSelection(
-          classification.groupId,
-          classification.itemId,
+        const parsed = parseRateMappingSelection(
+          rateMapping.groupId,
+          rateMapping.itemId,
         )
         if (!parsed.group_no || !parsed.item_no) {
           toast.error("กรุณาเลือกกลุ่ม/ข้อก่อนอนุมัติ")
@@ -303,7 +296,17 @@ export default function PtsOfficerRequestDetailPage({
       }
 
       processAction.mutate(
-        { id, payload: { action, comment: comment || undefined } },
+        {
+          id,
+          payload: {
+            action,
+            comment: comment || undefined,
+            signature_base64:
+              action === "APPROVE" && effectiveSignatureMode === "NEW"
+                ? signature
+                : undefined,
+          },
+        },
         {
           onSuccess: () => {
             toast.success("บันทึกการอนุมัติแล้ว")
@@ -546,9 +549,9 @@ export default function PtsOfficerRequestDetailPage({
               <Skeleton className="h-10 w-full" />
             ) : (
               <Select
-                value={classification.groupId}
+                value={rateMapping.groupId}
                 onValueChange={(val) =>
-                  setClassification((prev) => ({ ...prev, groupId: val, itemId: "" }))
+                  setRateMapping((prev) => ({ ...prev, groupId: val, itemId: "" }))
                 }
               >
                 <SelectTrigger>
@@ -570,16 +573,16 @@ export default function PtsOfficerRequestDetailPage({
               <Skeleton className="h-10 w-full" />
             ) : (
               <Select
-                value={classification.itemId}
+                value={rateMapping.itemId}
                 onValueChange={(val) => {
                   const item = itemsForGroup.find((i) => i.value === val)
-                  setClassification((prev) => ({
+                  setRateMapping((prev) => ({
                     ...prev,
                     itemId: val,
                     amount: item?.amount ?? 0,
                   }))
                 }}
-                disabled={!classification.groupId}
+                disabled={!rateMapping.groupId}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="เลือกรายการ" />
@@ -601,7 +604,7 @@ export default function PtsOfficerRequestDetailPage({
             {/* Recommended Classification Removed */}
           </div>
           <div className="md:col-span-2 flex justify-end">
-            <Button onClick={handleSaveClassification} disabled={updateClassification.isPending}>
+            <Button onClick={handleSaveRateMapping} disabled={updateRateMapping.isPending}>
               บันทึกกลุ่ม/อัตรา
             </Button>
           </div>
@@ -798,7 +801,7 @@ export default function PtsOfficerRequestDetailPage({
                 onChange={() => setSignatureMode("SAVED")}
                 disabled={!hasSavedSignature}
               />
-              ใช้ลายเซ็นที่บันทึกไว้
+              ใช้ลายเซ็นจาก HRMS
               {!hasSavedSignature && " (ยังไม่มีลายเซ็นในระบบ)"}
             </label>
             <label className="flex items-center gap-2 text-sm">
@@ -808,8 +811,9 @@ export default function PtsOfficerRequestDetailPage({
                 value="NEW"
                 checked={effectiveSignatureMode === "NEW"}
                 onChange={() => setSignatureMode("NEW")}
+                disabled={hasSavedSignature}
               />
-              ลงลายเซ็นใหม่
+              ลงลายเซ็นใหม่ (เฉพาะกรณีไม่มีลายเซ็นใน HRMS)
             </label>
           </div>
 

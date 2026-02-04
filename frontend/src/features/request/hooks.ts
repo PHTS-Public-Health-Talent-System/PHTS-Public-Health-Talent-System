@@ -15,7 +15,7 @@ import {
   getApprovalHistory,
   getAvailableOfficers,
   confirmAttachments,
-  updateClassification,
+  updateRateMapping,
   updateVerificationChecks,
   createVerificationSnapshot,
   processAction,
@@ -142,12 +142,10 @@ export function useConfirmAttachments() {
   });
 }
 
-// Removed useRecommendedClassification
-
-export function useUpdateClassification() {
+export function useUpdateRateMapping() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: number | string; payload: { group_no: number; item_no: string | null; sub_item_no?: string | null } }) =>
-      updateClassification(id, payload),
+      updateRateMapping(id, payload),
   });
 }
 
@@ -168,7 +166,7 @@ export function useCreateVerificationSnapshot() {
 export function useProcessAction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, payload }: { id: number | string; payload: { action: 'APPROVE' | 'REJECT' | 'RETURN'; comment?: string } }) =>
+    mutationFn: ({ id, payload }: { id: number | string; payload: { action: 'APPROVE' | 'REJECT' | 'RETURN'; comment?: string; signature_base64?: string } }) =>
       processAction(id, payload),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['pending-approvals'] });
@@ -179,8 +177,8 @@ export function useProcessAction() {
 
 export function useApproveRequest() {
   return useMutation({
-    mutationFn: ({ id, comment }: { id: number | string; comment?: string }) =>
-      approveRequest(id, comment),
+    mutationFn: ({ id, comment, signature_base64 }: { id: number | string; comment?: string; signature_base64?: string }) =>
+      approveRequest(id, comment, signature_base64),
   });
 }
 

@@ -118,8 +118,8 @@ export interface RequestFormData {
   };
   attachments?: Attachment[];
 
-  // Section 6: Classification
-  classification: {
+  // Section 6: Rate Mapping
+  rateMapping: {
     professionCode?: string;
     groupId: string;
     itemId: string;
@@ -131,7 +131,6 @@ export interface RequestFormData {
   // Section 7: Signature
   signature?: string;
   signatureMode?: 'SAVED' | 'NEW';
-  saveSignature?: boolean;
 
   // Meta
   id?: string;

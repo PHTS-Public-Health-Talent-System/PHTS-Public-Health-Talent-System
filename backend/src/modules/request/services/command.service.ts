@@ -15,7 +15,6 @@ import {
 } from "../request.types.js";
 import { CreateRequestDTO, UpdateRequestDTO } from "../dto/index.js";
 import { NotificationService } from "../../notification/services/notification.service.js";
-import { saveSignature } from "../../signature/services/signature.service.js";
 import {
   generateRequestNoFromId,
   normalizeDateToYMD,
@@ -27,37 +26,8 @@ import { requestQueryService } from "./query.service.js"; // Use the class insta
 import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
 import { requestRepository } from "../repositories/request.repository.js"; // [NEW]
 
-type SignatureOptions = {
-  saveSignature?: boolean;
-};
-
 export class RequestCommandService {
   // --- Helpers (Internal) ---
-
-  private async resolveSignatureId(
-    connection: PoolConnection,
-    userId: number,
-    signatureFile?: Express.Multer.File,
-    shouldSaveSignature: boolean = true,
-  ): Promise<number | null> {
-    if (signatureFile) {
-      if (!shouldSaveSignature) {
-        return null;
-      }
-      if (!signatureFile.buffer || signatureFile.buffer.length === 0) {
-        throw new Error("Signature upload is missing data");
-      }
-      // saveSignature service MUST accept connection to be transactional
-      return await saveSignature(userId, signatureFile.buffer, connection);
-    }
-
-    const signatureId = await requestRepository.findSignatureIdByUserId(userId, connection);
-
-    if (!signatureId) {
-      throw new Error("ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนยื่นคำขอ");
-    }
-    return signatureId;
-  }
 
   private buildSubmissionDataJson(data: CreateRequestDTO): string | null {
     if (data.submission_data) {
@@ -85,7 +55,6 @@ export class RequestCommandService {
       if (file.fieldname === "license_file") fileType = FileType.LICENSE;
       if (file.fieldname === "applicant_signature")
         fileType = FileType.SIGNATURE;
-
       await requestRepository.insertAttachment(
         {
           request_id: requestId,
@@ -106,8 +75,7 @@ export class RequestCommandService {
     userId: number,
     data: CreateRequestDTO,
     files?: Express.Multer.File[],
-    signatureFile?: Express.Multer.File,
-    options?: SignatureOptions,
+    _signatureFile?: Express.Multer.File,
   ): Promise<RequestWithDetails> {
     const connection = await getConnection();
 
@@ -119,15 +87,13 @@ export class RequestCommandService {
         throw new Error("User not found");
       }
 
-      const shouldSaveSignature = options?.saveSignature !== false;
-      const signatureId = signatureFile
-        ? await this.resolveSignatureId(
-            connection,
-            userId,
-            signatureFile,
-            shouldSaveSignature,
-          )
-        : await this.resolveSignatureId(connection, userId);
+      const signatureId = await requestRepository.findSignatureIdByUserId(
+        userId,
+        connection,
+      );
+      if (!signatureId && !_signatureFile) {
+        throw new Error("ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนยื่นคำขอ");
+      }
 
       const requestedAmount = data.requested_amount ?? 0;
       // Rate validation skipped - allowing any amount for testing
@@ -145,7 +111,7 @@ export class RequestCommandService {
           current_position_number: data.position_number || null,
           current_department: data.department_group || null,
           work_attributes: data.work_attributes, // Repo handles JSON.stringify
-          applicant_signature_id: signatureId,
+          applicant_signature_id: signatureId ?? null,
           request_type: data.request_type,
           requested_amount: requestedAmount,
           effective_date: new Date(effectiveDateStr),
@@ -162,10 +128,6 @@ export class RequestCommandService {
       await requestRepository.updateRequestNo(requestId, requestNo, connection);
 
       await this.insertAttachments(connection, requestId, files);
-
-      if (signatureFile && !shouldSaveSignature) {
-        await this.insertAttachments(connection, requestId, [signatureFile]);
-      }
 
       await emitAuditEvent(
         {
@@ -353,8 +315,7 @@ export class RequestCommandService {
     userRole: string,
     data: UpdateRequestDTO,
     files?: Express.Multer.File[],
-    signatureFile?: Express.Multer.File,
-    options?: SignatureOptions,
+    _signatureFile?: Express.Multer.File,
   ): Promise<RequestWithDetails> {
     const connection = await getConnection();
 
@@ -405,7 +366,7 @@ export class RequestCommandService {
         ) {
           throw new Error("คำขอนี้ถูกมอบหมายให้เจ้าหน้าที่ท่านอื่นแล้ว");
         }
-        if ((files && files.length > 0) || signatureFile) {
+        if ((files && files.length > 0) || _signatureFile) {
           throw new Error("PTS_OFFICER cannot modify attachments or signature");
         }
       }
@@ -442,17 +403,6 @@ export class RequestCommandService {
         updateData.submission_data = data.submission_data;
       }
 
-      if (signatureFile) {
-        const shouldSaveSignature = options?.saveSignature !== false;
-        const signatureId = await this.resolveSignatureId(
-          connection,
-          userId,
-          signatureFile,
-          shouldSaveSignature,
-        );
-        updateData.applicant_signature_id = signatureId;
-      }
-
       // Reset status if RETURNED -> DRAFT
       if (isOwner && requestEntity.status === RequestStatus.RETURNED) {
         updateData.status = RequestStatus.DRAFT;
@@ -465,9 +415,6 @@ export class RequestCommandService {
 
       // Insert new files
       await this.insertAttachments(connection, requestId, files);
-      if (signatureFile && options?.saveSignature === false) {
-        await this.insertAttachments(connection, requestId, [signatureFile]);
-      }
 
       await connection.commit();
       return await requestQueryService.getRequestDetails(requestId);
@@ -662,10 +609,10 @@ export class RequestCommandService {
   }
 
   // ============================================================================
-  // Update Classification
+  // Update Rate Mapping
   // ============================================================================
 
-  async updateClassification(
+  async updateRateMapping(
     requestId: number,
     _userId: number,
     _role: string,
@@ -680,31 +627,31 @@ export class RequestCommandService {
       if (!request) throw new Error("Request not found");
 
       if (request.status !== RequestStatus.PENDING && request.status !== RequestStatus.DRAFT) {
-        throw new Error("Cannot update classification of processed request");
+        throw new Error("Cannot update rate mapping of processed request");
       }
 
       // Resolve profession from position name (joined field) or fallback
       const positionName = request.position_name || "";
       let professionCode = this.resolveProfessionCode(positionName);
 
-      console.log(`[DEBUG_CLASS] RequestId=${requestId}`);
-      console.log(`[DEBUG_CLASS] Position="${positionName}"`);
-      console.log(`[DEBUG_CLASS] ResolvedCode="${professionCode}"`);
-      console.log(`[DEBUG_CLASS] Params: Group=${data.group_no}, Item=${data.item_no}, Sub=${data.sub_item_no}`);
+      console.log(`[DEBUG_RATE] RequestId=${requestId}`);
+      console.log(`[DEBUG_RATE] Position="${positionName}"`);
+      console.log(`[DEBUG_RATE] ResolvedCode="${professionCode}"`);
+      console.log(`[DEBUG_RATE] Params: Group=${data.group_no}, Item=${data.item_no}, Sub=${data.sub_item_no}`);
 
       if (!professionCode) {
          // Fallback/Default or Specific logic if needed
-         console.warn(`[WARN_CLASS] Could not resolve profession for position: ${positionName}, defaulting to NURSE`);
+         console.warn(`[WARN_RATE] Could not resolve profession for position: ${positionName}, defaulting to NURSE`);
          professionCode = "NURSE"; // Keep legacy default if detection fails, or throw?
          // For safety, let's throw if we can't detect, but to be safe for now, log or use default?
-         // The error "Invalid classification rate" will be thrown anyway if rate not found.
+      // The error "Invalid rate mapping" will be thrown anyway if rate not found.
          // Let's rely on detection.
       }
 
       const rate = await requestRepository.findRateByDetails(professionCode!, data.group_no, data.item_no, data.sub_item_no);
 
       if (!rate) {
-        throw new Error("Invalid classification rate");
+        throw new Error("Invalid rate mapping");
       }
 
       const submissionData =
@@ -712,10 +659,12 @@ export class RequestCommandService {
           request.submission_data,
           "submission_data",
         ) || {};
+      const existingRateMapping =
+        (submissionData as any).rate_mapping || (submissionData as any).classification;
       const nextSubmissionData = {
         ...submissionData,
-        classification: {
-          ...(submissionData as any).classification,
+        rate_mapping: {
+          ...(existingRateMapping || {}),
           group_no: rate.group_no,
           item_no: rate.item_no,
           sub_item_no: rate.sub_item_no ?? null,

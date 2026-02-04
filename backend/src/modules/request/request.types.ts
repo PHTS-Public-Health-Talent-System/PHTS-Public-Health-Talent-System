@@ -7,7 +7,7 @@
  */
 
 /**
- * Personnel type classification for Thai hospital staff
+ * Personnel type category for Thai hospital staff
  */
 export enum PersonnelType {
   CIVIL_SERVANT = "CIVIL_SERVANT",

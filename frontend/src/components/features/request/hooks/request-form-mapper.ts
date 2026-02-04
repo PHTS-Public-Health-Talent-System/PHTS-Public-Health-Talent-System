@@ -49,28 +49,30 @@ export const mapRequestToFormData = (
   request: RequestWithDetails,
 ): Partial<RequestFormData> => {
   const submission = parseSubmissionData(request.submission_data)
-  const submissionClassification =
-    (submission.classification as Record<string, unknown>) ?? {}
-  const classification = {
+  const submissionRateMapping =
+    (submission.rate_mapping as Record<string, unknown>) ??
+    (submission.classification as Record<string, unknown>) ??
+    {}
+  const rateMapping = {
     groupId:
-      (submissionClassification.groupId as string) ??
-      (submissionClassification.group_no
-        ? String(submissionClassification.group_no)
+      (submissionRateMapping.groupId as string) ??
+      (submissionRateMapping.group_no
+        ? String(submissionRateMapping.group_no)
         : ""),
     itemId:
-      (submissionClassification.itemId as string) ??
-      (submissionClassification.item_no as string) ??
+      (submissionRateMapping.itemId as string) ??
+      (submissionRateMapping.item_no as string) ??
       "",
     subItemId:
-      (submissionClassification.subItemId as string) ??
-      (submissionClassification.sub_item_no as string) ??
+      (submissionRateMapping.subItemId as string) ??
+      (submissionRateMapping.sub_item_no as string) ??
       "",
     amount:
-      (submissionClassification.amount as number) ??
+      (submissionRateMapping.amount as number) ??
       request.requested_amount ??
       0,
-    rateId: submissionClassification.rateId as number | undefined,
-    professionCode: submissionClassification.professionCode as string | undefined,
+    rateId: submissionRateMapping.rateId as number | undefined,
+    professionCode: submissionRateMapping.professionCode as string | undefined,
   }
 
   return {
@@ -93,6 +95,6 @@ export const mapRequestToFormData = (
     workAttributes: normalizeWorkAttributes(request.work_attributes),
     effectiveDate: normalizeDate(request.effective_date),
     attachments: request.attachments ?? [],
-    classification,
+    rateMapping,
   }
 }

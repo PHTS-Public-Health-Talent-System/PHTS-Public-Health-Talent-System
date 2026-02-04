@@ -9,7 +9,7 @@ import {
   createRequest,
   updateRequest,
   submitRequest,
-  updateClassification,
+  updateRateMapping,
   confirmAttachments as confirmAttachmentsApi,
 } from "@/features/request/api";
 import { toast } from "sonner";
@@ -64,13 +64,12 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
       ORDER: null,
       OTHER: null,
     },
-    classification: {
+    rateMapping: {
       groupId: "",
       itemId: "",
       amount: 0,
     },
     signatureMode: undefined,
-    saveSignature: true,
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -105,7 +104,7 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
       ...prev,
       ...mapped,
       workAttributes: mapped.workAttributes ?? prev.workAttributes,
-      classification: mapped.classification ?? prev.classification,
+      rateMapping: mapped.rateMapping ?? prev.rateMapping,
     }));
     setDraftRequestId(options.initialRequest.request_id);
     initializedRef.current = true;
@@ -175,8 +174,8 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
 
       if (detected) {
         updateFormData("professionCode", detected);
-        updateFormData("classification", {
-          ...formData.classification,
+        updateFormData("rateMapping", {
+          ...formData.rateMapping,
           professionCode: detected,
         });
       }
@@ -196,7 +195,7 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
     formData.effectiveDate,
     formData.employeeType,
     formData.professionCode,
-    formData.classification,
+    formData.rateMapping,
     updateFormData,
   ]);
 
@@ -236,13 +235,13 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
       department: formData.department,
       sub_department: formData.subDepartment,
       employment_region: formData.employmentRegion,
-      classification: {
-        groupId: formData.classification.groupId,
-        itemId: formData.classification.itemId,
-        subItemId: formData.classification.subItemId,
-        amount: formData.classification.amount,
-        rateId: formData.classification.rateId,
-        professionCode: formData.classification.professionCode,
+      rate_mapping: {
+        groupId: formData.rateMapping.groupId,
+        itemId: formData.rateMapping.itemId,
+        subItemId: formData.rateMapping.subItemId,
+        amount: formData.rateMapping.amount,
+        rateId: formData.rateMapping.rateId,
+        professionCode: formData.rateMapping.professionCode,
       },
     };
     fd.append("submission_data", JSON.stringify(submissionData));
@@ -250,7 +249,7 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
     fd.append("position_number", formData.positionNumber);
     fd.append("department_group", formData.department);
     fd.append("main_duty", formData.missionGroup);
-    fd.append("requested_amount", String(formData.classification.amount ?? 0));
+    fd.append("requested_amount", String(formData.rateMapping.amount ?? 0));
     fd.append(
       "effective_date",
       formData.effectiveDate || new Date().toISOString().split("T")[0]
@@ -270,9 +269,6 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
       }
       const blob = new Blob([ab], { type: "image/png" });
       fd.append("applicant_signature", blob, `signature_${Date.now()}.png`);
-      if (formData.saveSignature === false) {
-        fd.append("save_signature", "false");
-      }
     }
 
     return fd;
@@ -314,14 +310,14 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
         : await createRequest(form);
       updateFormData("attachments", request.attachments ?? []);
 
-      // Update classification with rateId if available
+      // Update rate mapping with rateId if available
       const parsed = parseGroupItem(
-        formData.classification.groupId,
-        formData.classification.itemId,
-        formData.classification.subItemId
+        formData.rateMapping.groupId,
+        formData.rateMapping.itemId,
+        formData.rateMapping.subItemId
       );
       if (parsed.group_no) {
-        await updateClassification(request.request_id, {
+        await updateRateMapping(request.request_id, {
           group_no: parsed.group_no,
           item_no: parsed.item_no || "",
           sub_item_no: parsed.sub_item_no,

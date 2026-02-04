@@ -32,6 +32,13 @@ import {
   ValidationError,
 } from "../../../shared/utils/errors.js";
 
+const decodeSignatureBase64 = (payload?: string): Buffer | null => {
+  if (!payload || typeof payload !== "string") return null;
+  const base64 = payload.includes(",") ? payload.split(",")[1] : payload;
+  if (!base64) return null;
+  return Buffer.from(base64, "base64");
+};
+
 export class RequestController {
 
   // --- READ Operations ---
@@ -156,11 +163,18 @@ export class RequestController {
   processAction = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
       const requestId = parseInt(req.params.id);
-      const { action, comment } = req.body;
+      const { action, comment, signature_base64 } = req.body;
 
       let result;
       if (action === 'APPROVE') {
-          result = await requestApprovalService.approveRequest(requestId, req.user.userId, req.user.role, comment);
+          const signatureSnapshot = decodeSignatureBase64(signature_base64);
+          result = await requestApprovalService.approveRequest(
+            requestId,
+            req.user.userId,
+            req.user.role,
+            comment,
+            signatureSnapshot,
+          );
       } else if (action === 'REJECT') {
           result = await requestApprovalService.rejectRequest(requestId, req.user.userId, req.user.role, comment);
       } else if (action === 'RETURN') {
@@ -175,8 +189,15 @@ export class RequestController {
   approveRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
       const requestId = parseInt(req.params.id);
-      const { comment } = req.body;
-      const result = await requestApprovalService.approveRequest(requestId, req.user.userId, req.user.role, comment);
+      const { comment, signature_base64 } = req.body;
+      const signatureSnapshot = decodeSignatureBase64(signature_base64);
+      const result = await requestApprovalService.approveRequest(
+        requestId,
+        req.user.userId,
+        req.user.role,
+        comment,
+        signatureSnapshot,
+      );
       res.json({ success: true, data: result });
   });
 
@@ -275,12 +296,12 @@ export class RequestController {
 
 
 
-  updateClassification = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+  updateRateMapping = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
       const requestId = parseInt(req.params.id);
       const { group_no, item_no, sub_item_no } = req.body;
 
-      const result = await requestCommandService.updateClassification(
+      const result = await requestCommandService.updateRateMapping(
           requestId,
           req.user.userId,
           req.user.role,

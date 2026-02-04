@@ -10,7 +10,7 @@ import { useRequestForm } from "@/components/features/request/hooks/useRequestFo
 import { Step1PersonalInfo } from "./steps/step-1-personal"
 import { Step2WorkInfo } from "./steps/step-2-work-info"
 import { Step3Attachments } from "./steps/step-3-attachments"
-import { Step4Classification } from "./steps/step-4-classification"
+import { Step4RateMapping } from "./steps/step-4-rate-mapping"
 import { Step5Review } from "./steps/step-5-review"
 import { useCheckSignature } from "@/features/signature/hooks"
 import type { RequestWithDetails } from "@/types/request.types"
@@ -53,13 +53,13 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
   const isReadyToSubmit =
     hasSignature &&
     hasLicenseAttachment &&
-    !!formData.classification?.groupId &&
-    !!formData.classification?.itemId &&
-    (formData.classification?.amount ?? 0) > 0
+    !!formData.rateMapping?.groupId &&
+    !!formData.rateMapping?.itemId &&
+    (formData.rateMapping?.amount ?? 0) > 0
   const missingReasons: string[] = []
   if (!hasLicenseAttachment) missingReasons.push("ใบประกอบวิชาชีพ")
-  if (!formData.classification?.groupId || !formData.classification?.itemId) missingReasons.push("กลุ่ม/รายการเบิก")
-  if ((formData.classification?.amount ?? 0) <= 0) missingReasons.push("จำนวนเงิน")
+  if (!formData.rateMapping?.groupId || !formData.rateMapping?.itemId) missingReasons.push("กลุ่ม/รายการเบิก")
+  if ((formData.rateMapping?.amount ?? 0) <= 0) missingReasons.push("จำนวนเงิน")
   if (!hasSignature) missingReasons.push("ลายเซ็น")
   const disabledReason = missingReasons.length > 0 ? `ยังขาด: ${missingReasons.join(", ")}` : ""
   const isStep3Valid = hasLicenseAttachment
@@ -159,7 +159,7 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
           )}
 
           {currentStep === 4 && (
-             <Step4Classification
+             <Step4RateMapping
                data={formData}
                updateData={updateFormData}
              />

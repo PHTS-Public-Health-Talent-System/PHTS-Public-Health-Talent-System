@@ -201,7 +201,7 @@ export class RequestRepository {
     return rows;
   }
 
-  // Fetch Approver Signature
+  // Fetch Approver Signature (read-only from sig_images)
   async findSignatureSnapshot(
     userId: number,
     connection?: PoolConnection,

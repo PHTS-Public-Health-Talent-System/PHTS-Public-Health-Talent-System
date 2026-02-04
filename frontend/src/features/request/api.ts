@@ -3,9 +3,6 @@ import { ApiPayload, ApiResponse } from '@/shared/api/types';
 import { RequestWithDetails } from '@/types/request.types';
 import type { DisplayScope } from '@/features/request/approver-utils';
 
-
-// Removed RecommendedClassification interface
-
 export interface MasterRate {
   rate_id: number;
   group_no: number;
@@ -114,13 +111,11 @@ export async function confirmAttachments(id: number | string) {
   return res.data.data;
 }
 
-// Removed getRecommendedClassification
-
-export async function updateClassification(
+export async function updateRateMapping(
   id: number | string,
   payload: { group_no: number; item_no: string | null; sub_item_no?: string | null },
 ) {
-  const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/classification`, payload);
+  const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/rate-mapping`, payload);
   return res.data.data;
 }
 
@@ -147,14 +142,14 @@ export async function createVerificationSnapshot(
 
 export async function processAction(
   id: number | string,
-  payload: { action: 'APPROVE' | 'REJECT' | 'RETURN'; comment?: string },
+  payload: { action: 'APPROVE' | 'REJECT' | 'RETURN'; comment?: string; signature_base64?: string },
 ) {
   const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/action`, payload);
   return res.data.data;
 }
 
-export async function approveRequest(id: number | string, comment?: string) {
-  const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/approve`, { comment });
+export async function approveRequest(id: number | string, comment?: string, signature_base64?: string) {
+  const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/approve`, { comment, signature_base64 });
   return res.data.data;
 }
 

@@ -44,7 +44,7 @@ export function Step5Review({ data, updateData, onGoToStep, prefillOriginal }: S
     !!data.files?.LICENSE ||
     (data.attachments ?? []).some((att) => att.file_type === "LICENSE")
   if (!hasLicense) missing.push({ label: "ใบประกอบวิชาชีพ", step: 3 })
-  if (!data.classification?.groupId || !data.classification?.itemId) {
+  if (!data.rateMapping?.groupId || !data.rateMapping?.itemId) {
     missing.push({ label: "กลุ่ม/รายการเบิก", step: 4 })
   }
   const signatureOk = data.signatureMode === "SAVED" ? hasSavedSignature : !!data.signature
@@ -73,11 +73,11 @@ export function Step5Review({ data, updateData, onGoToStep, prefillOriginal }: S
   const subDepartment = data.subDepartment || "-"
   const department = data.department || "-"
   const employeeType = data.employeeType || "-"
-  const groupDisplay = data.classification?.groupId
-    ? (data.classification.groupId.match(/\d+/)?.[0] ?? data.classification.groupId)
+  const groupDisplay = data.rateMapping?.groupId
+    ? (data.rateMapping.groupId.match(/\d+/)?.[0] ?? data.rateMapping.groupId)
     : "-"
-  const itemDisplay = data.classification?.itemId
-    ? data.classification.itemId.replace("item", "").replace("_", ".")
+  const itemDisplay = data.rateMapping?.itemId
+    ? data.rateMapping.itemId.replace("item", "").replace("_", ".")
     : "-"
 
   return (
@@ -208,7 +208,7 @@ export function Step5Review({ data, updateData, onGoToStep, prefillOriginal }: S
             <div className="bg-primary/5 p-4 rounded-lg border border-primary/20">
                <div className="text-center">
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">จำนวนเงินสุทธิ</p>
-                  <p className="text-3xl font-bold text-primary">{data.classification?.amount?.toLocaleString() || 0} บาท</p>
+                  <p className="text-3xl font-bold text-primary">{data.rateMapping?.amount?.toLocaleString() || 0} บาท</p>
                   <p className="text-xs text-muted-foreground mt-2">
                     กลุ่ม {groupDisplay} | ข้อ {itemDisplay}
                   </p>
@@ -235,13 +235,13 @@ export function Step5Review({ data, updateData, onGoToStep, prefillOriginal }: S
               <div className="flex items-center space-x-2 border p-3 rounded-lg">
                 <RadioGroupItem value="SAVED" id="sig-saved" disabled={!signatureCheck?.has_signature} />
                 <Label htmlFor="sig-saved">
-                  ใช้ลายเซ็นที่บันทึกไว้
+                  ใช้ลายเซ็นจาก HRMS
                   {!signatureCheck?.has_signature && " (ยังไม่มีลายเซ็นในระบบ)"}
                 </Label>
               </div>
               <div className="flex items-center space-x-2 border p-3 rounded-lg">
-                <RadioGroupItem value="NEW" id="sig-new" />
-                <Label htmlFor="sig-new">ลงลายเซ็นใหม่สำหรับคำขอนี้</Label>
+                <RadioGroupItem value="NEW" id="sig-new" disabled={!!signatureCheck?.has_signature} />
+                <Label htmlFor="sig-new">ลงลายเซ็นใหม่สำหรับคำขอนี้ (เฉพาะกรณีไม่มีลายเซ็นใน HRMS)</Label>
               </div>
             </RadioGroup>
 
@@ -266,19 +266,6 @@ export function Step5Review({ data, updateData, onGoToStep, prefillOriginal }: S
                    />
                 </CardContent>
               </Card>
-            )}
-
-            {data.signatureMode !== "SAVED" && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  id="saveSignature"
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={data.saveSignature ?? true}
-                  onChange={(e) => updateData("saveSignature", e.target.checked)}
-                />
-                <Label htmlFor="saveSignature">บันทึกลายเซ็นนี้ไว้ใช้ครั้งถัดไป</Label>
-              </div>
             )}
           </div>
 

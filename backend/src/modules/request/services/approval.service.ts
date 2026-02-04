@@ -26,7 +26,6 @@ import {
 } from "../scope/scope.service.js";
 import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
 import { requestRepository } from "../repositories/request.repository.js";
-// Removed classification/eligibility service imports
 
 // ============================================================================
 // Finalization
@@ -109,6 +108,7 @@ export class RequestApprovalService {
     actorId: number,
     actorRole: string,
     comment?: string,
+    signatureSnapshot?: Buffer | null,
   ): Promise<PTSRequest> {
     const connection = await getConnection();
 
@@ -165,11 +165,10 @@ export class RequestApprovalService {
         }
       }
 
-      const signatureSnapshot = await requestRepository.findSignatureSnapshot(
-        actorId,
-        connection,
-      );
-      if (!signatureSnapshot) {
+      const signatureFromStore =
+        signatureSnapshot ??
+        (await requestRepository.findSignatureSnapshot(actorId, connection));
+      if (!signatureFromStore) {
         throw new Error(
           "Approver signature is required. Please set your signature before approving.",
         );
@@ -181,7 +180,7 @@ export class RequestApprovalService {
         requestId,
         actorId,
         comment || null,
-        signatureSnapshot,
+        signatureFromStore,
       );
 
       await emitAuditEvent(

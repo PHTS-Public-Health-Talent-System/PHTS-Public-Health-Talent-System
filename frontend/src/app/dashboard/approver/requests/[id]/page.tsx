@@ -8,7 +8,6 @@ import { toast } from "sonner"
 import {
   useCheckSignature,
   useMySignature,
-  useUploadSignatureBase64,
 } from "@/features/signature/hooks"
 import { useProcessAction, useRequestDetail } from "@/features/request/hooks"
 import {
@@ -40,7 +39,6 @@ export default function ApproverRequestDetailPage({
   const processAction = useProcessAction()
   const { data: signatureCheck } = useCheckSignature()
   const { data: signatureData } = useMySignature()
-  const uploadSignature = useUploadSignatureBase64()
   const [comment, setComment] = useState("")
   const [signatureMode, setSignatureMode] = useState<"SAVED" | "NEW" | null>(null)
   const [signature, setSignature] = useState("")
@@ -56,7 +54,7 @@ export default function ApproverRequestDetailPage({
     .map(
       ([key]) => WORK_ATTRIBUTE_LABELS[key as keyof typeof WORK_ATTRIBUTE_LABELS],
     )
-  const classification = formView?.classification ?? {
+  const rateMapping = formView?.rateMapping ?? {
     groupId: "",
     itemId: "",
     subItemId: "",
@@ -124,12 +122,18 @@ export default function ApproverRequestDetailPage({
     }
 
     try {
-      if (action === "APPROVE" && effectiveSignatureMode === "NEW") {
-        await uploadSignature.mutateAsync(signature)
-      }
-
       processAction.mutate(
-        { id, payload: { action, comment: comment || undefined } },
+        {
+          id,
+          payload: {
+            action,
+            comment: comment || undefined,
+            signature_base64:
+              action === "APPROVE" && effectiveSignatureMode === "NEW"
+                ? signature
+                : undefined,
+          },
+        },
         {
           onSuccess: () => {
             toast.success("บันทึกการอนุมัติแล้ว")
@@ -256,20 +260,20 @@ export default function ApproverRequestDetailPage({
              <CardContent className="pt-4 grid gap-4 sm:grid-cols-2 text-sm">
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">กลุ่ม</p>
-                 <p className="font-medium">{classification.groupId || "-"}</p>
+                 <p className="font-medium">{rateMapping.groupId || "-"}</p>
                </div>
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ข้อ/รายการ</p>
-                 <p className="font-medium">{classification.itemId || "-"}</p>
+                 <p className="font-medium">{rateMapping.itemId || "-"}</p>
                </div>
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ข้อย่อย</p>
-                 <p className="font-medium">{classification.subItemId || "-"}</p>
+                 <p className="font-medium">{rateMapping.subItemId || "-"}</p>
                </div>
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ยอดเงิน</p>
                  <p className="font-medium">
-                   {(classification.amount ?? request.requested_amount ?? 0).toLocaleString()} บาท
+                   {(rateMapping.amount ?? request.requested_amount ?? 0).toLocaleString()} บาท
                  </p>
                </div>
              </CardContent>
@@ -352,7 +356,7 @@ export default function ApproverRequestDetailPage({
                                         className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
                                     />
                                     <span>
-                                        ใช้ลายเซ็นเดิม
+                                        ใช้ลายเซ็นจาก HRMS
                                         {!hasSavedSignature && <span className="text-xs text-muted-foreground ml-1">(ไม่มี)</span>}
                                     </span>
                                 </label>
@@ -363,9 +367,10 @@ export default function ApproverRequestDetailPage({
                                         value="NEW"
                                         checked={effectiveSignatureMode === "NEW"}
                                         onChange={() => setSignatureMode("NEW")}
+                                        disabled={hasSavedSignature}
                                         className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
                                     />
-                                    <span>เซ็นชื่อใหม่</span>
+                                    <span>เซ็นชื่อใหม่ (เฉพาะกรณีไม่มีลายเซ็นใน HRMS)</span>
                                 </label>
                             </div>
 

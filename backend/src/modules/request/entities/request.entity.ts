@@ -4,7 +4,7 @@
  * Core request tables: req_submissions, req_approvals, req_attachments
  * Related tables: req_eligibility
  * External tables (read-only joins): users, emp_profiles, emp_support_staff,
- *   sig_images, cfg_payment_rates, cfg_classification_rules, leave_records
+ *   sig_images, cfg_payment_rates, legacy cfg_classification_rules, leave_records
  */
 
 // ─── req_submissions ─────────────────────────────────────────────────────────

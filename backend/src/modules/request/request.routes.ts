@@ -13,6 +13,13 @@ import { requestController } from "./controllers/request.controller.js"; // Impo
 import { validate } from "../../shared/validate.middleware.js";
 import { actionSchema, verificationSchema } from "./dto/update-status.dto.js"; // Use correct DTO file
 import { verificationSnapshotSchema } from "./dto/verification-snapshot.dto.js";
+import {
+  requestAdjustLeaveSchema,
+  requestApproveBatchSchema,
+  requestIdParamSchema,
+  requestRateMappingSchema,
+  requestReassignSchema,
+} from "./dto/request-params.dto.js";
 import { UserRole } from "../../types/auth.js";
 // Note: createRequestSchema is used inside controller manually for file upload handling, or added here if middleware used.
 // Current controller implementation handles validation manually after file upload.
@@ -31,6 +38,7 @@ router.use(protect);
 router.post(
   "/batch-approve",
   restrictTo(UserRole.DIRECTOR),
+  validate(requestApproveBatchSchema),
   requestController.approveBatch,
 );
 
@@ -44,7 +52,11 @@ router.get("/master-rates", requestController.getMasterRates);
 router.get("/prefill", requestController.getPrefill);
 
 
-router.post("/:id/classification", requestController.updateClassification);
+router.post(
+  "/:id/rate-mapping",
+  validate(requestRateMappingSchema),
+  requestController.updateRateMapping,
+);
 
 // Create new request with file uploads and signature
 router.post(
@@ -106,11 +118,12 @@ router.get(
 );
 
 // Get request details by ID
-router.get("/:id", requestController.getRequestById);
+router.get("/:id", validate(requestIdParamSchema), requestController.getRequestById);
 
 // Update a request (Owner only, DRAFT or RETURNED status)
 router.put(
   "/:id",
+  validate(requestIdParamSchema),
   requestUpload.fields([
     { name: "files", maxCount: 10 },
     { name: "license_file", maxCount: 1 },
@@ -123,18 +136,20 @@ router.put(
 router.put(
   "/:id/verification",
   restrictTo(UserRole.PTS_OFFICER, UserRole.HEAD_HR),
+  validate(requestIdParamSchema),
   validate(verificationSchema),
   requestController.updateVerificationChecks,
 );
 router.post(
   "/:id/verification-snapshot",
   restrictTo(UserRole.PTS_OFFICER, UserRole.HEAD_HR),
+  validate(requestIdParamSchema),
   validate(verificationSnapshotSchema),
   requestController.createVerificationSnapshot,
 );
 
 // Cancel a request (Owner only, before APPROVED)
-router.post("/:id/cancel", requestController.cancelRequest);
+router.post("/:id/cancel", validate(requestIdParamSchema), requestController.cancelRequest);
 
 // Unified action endpoint (APPROVE / REJECT / RETURN)
 router.post(
@@ -147,12 +162,13 @@ router.post(
     UserRole.DIRECTOR,
     UserRole.HEAD_FINANCE,
   ),
+  validate(requestIdParamSchema),
   validate(actionSchema),
   requestController.processAction,
 );
 
 // Submit a draft request
-router.post("/:id/submit", requestController.submitRequest);
+router.post("/:id/submit", validate(requestIdParamSchema), requestController.submitRequest);
 
 /**
  * Approver Routes
@@ -170,6 +186,7 @@ router.post(
     UserRole.DIRECTOR,
     UserRole.HEAD_FINANCE,
   ),
+  validate(requestIdParamSchema),
   requestController.approveRequest,
 );
 
@@ -184,6 +201,7 @@ router.post(
     UserRole.DIRECTOR,
     UserRole.HEAD_FINANCE,
   ),
+  validate(requestIdParamSchema),
   requestController.rejectRequest,
 );
 
@@ -198,6 +216,7 @@ router.post(
     UserRole.DIRECTOR,
     UserRole.HEAD_FINANCE,
   ),
+  validate(requestIdParamSchema),
   requestController.returnRequest,
 );
 
@@ -210,15 +229,17 @@ router.post(
 router.post(
   "/:id/reassign",
   restrictTo(UserRole.PTS_OFFICER),
+  validate(requestReassignSchema),
   requestController.reassignRequest,
 );
 
 // Get reassignment history for a request
-router.get("/:id/reassign-history", requestController.getReassignHistory);
+router.get("/:id/reassign-history", validate(requestIdParamSchema), requestController.getReassignHistory);
 // Adjust leave details (PTS_OFFICER only)
 router.put(
   "/:id/adjust-leave",
   restrictTo(UserRole.PTS_OFFICER),
+  validate(requestAdjustLeaveSchema),
   requestController.adjustLeaveRequest,
 );
 

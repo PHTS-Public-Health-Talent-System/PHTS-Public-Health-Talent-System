@@ -1,4 +1,4 @@
-export const parseClassificationSelection = (
+export const parseRateMappingSelection = (
   groupId: string,
   itemId: string,
 ) => {
