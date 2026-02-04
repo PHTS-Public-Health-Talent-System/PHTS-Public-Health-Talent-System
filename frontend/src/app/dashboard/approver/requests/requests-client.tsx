@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Eye, Search } from "lucide-react"
@@ -41,31 +41,35 @@ export default function ApproverRequestsClient() {
   const [batchComment, setBatchComment] = useState("")
   const [selectedIds, setSelectedIds] = useState<number[]>([])
 
-  const pendingScope = scopeFilter === "ALL" ? undefined : scopeFilter
-  const { data: requests, isLoading } = usePendingApprovals(pendingScope)
-
   const scopeOptions = useMemo(() => buildScopeOptions(scopes ?? []), [scopes])
+  const validScopes = useMemo(
+    () => new Set(scopeOptions.map((scope) => scope.value)),
+    [scopeOptions],
+  )
+  const effectiveScopeFilter = validScopes.has(scopeFilter) ? scopeFilter : "ALL"
 
-  useEffect(() => {
-    if (scopeFilter === "ALL") return
-    const validScopes = new Set(scopeOptions.map((scope) => scope.value))
-    if (!validScopes.has(scopeFilter)) {
-      setScopeFilter("ALL")
-      updateQuery({ scope: "ALL" })
-    }
-  }, [scopeFilter, scopeOptions])
-
-  const updateQuery = (next: { q?: string; scope?: string }) => {
+  const updateQuery = useCallback((next: { q?: string; scope?: string }) => {
     const params = new URLSearchParams()
     const nextQ = next.q !== undefined ? next.q : search
-    const nextScope = next.scope !== undefined ? next.scope : scopeFilter
+    const nextScope = next.scope !== undefined ? next.scope : effectiveScopeFilter
 
     if (nextQ) params.set("q", nextQ)
     if (nextScope && nextScope !== "ALL") params.set("scope", nextScope)
 
     const query = params.toString()
     router.replace(query ? `?${query}` : "/dashboard/approver/requests")
-  }
+  }, [router, effectiveScopeFilter, search])
+
+  const pendingScope =
+    effectiveScopeFilter === "ALL" ? undefined : effectiveScopeFilter
+  const { data: requests, isLoading } = usePendingApprovals(pendingScope)
+
+  useEffect(() => {
+    if (scopeFilter === "ALL") return
+    if (!validScopes.has(scopeFilter)) {
+      updateQuery({ scope: "ALL" })
+    }
+  }, [scopeFilter, updateQuery, validScopes])
 
   const filtered = useMemo(() => {
     if (!requests) return []
@@ -134,7 +138,7 @@ export default function ApproverRequestsClient() {
               />
             </div>
             <Select
-              value={scopeFilter}
+              value={effectiveScopeFilter}
               onValueChange={(val: string) => {
                 setScopeFilter(val)
                 updateQuery({ scope: val })
