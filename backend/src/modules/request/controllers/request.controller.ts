@@ -326,6 +326,7 @@ export class RequestController {
      const result = await requestCommandService.submitRequest(
        requestId,
        req.user!.userId,
+       req.user!.role,
      );
      res.json({ success: true, message: "Submitted", data: result });
   });

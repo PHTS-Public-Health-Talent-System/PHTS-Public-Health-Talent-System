@@ -223,7 +223,11 @@ export class RequestCommandService {
   // Submit Request
   // ============================================================================
 
-  async submitRequest(requestId: number, userId: number): Promise<PTSRequest> {
+  async submitRequest(
+    requestId: number,
+    userId: number,
+    userRole: string,
+  ): Promise<PTSRequest> {
     const connection = await getConnection();
 
     try {
@@ -263,6 +267,8 @@ export class RequestCommandService {
         requestEntity.current_step && requestEntity.current_step > 0
           ? requestEntity.current_step
           : 1;
+      const nextStep =
+        userRole === "HEAD_WARD" && stepNo === 1 ? 2 : stepNo;
 
       // Capture signature snapshot on submit (sig_images or applicant signature)
       let signatureSnapshot = await requestRepository.findSignatureSnapshot(
@@ -289,7 +295,7 @@ export class RequestCommandService {
         requestId,
         {
           status: RequestStatus.PENDING,
-          current_step: stepNo,
+          current_step: nextStep,
         },
         connection,
       );
@@ -311,7 +317,7 @@ export class RequestCommandService {
       await connection.commit();
 
       // Notification (After commit)
-      const nextRole = STEP_ROLE_MAP[stepNo] || "HEAD_WARD";
+      const nextRole = STEP_ROLE_MAP[nextStep] || "HEAD_WARD";
       await NotificationService.notifyRole(
         nextRole,
         "มีคำขอใหม่รออนุมัติ",
