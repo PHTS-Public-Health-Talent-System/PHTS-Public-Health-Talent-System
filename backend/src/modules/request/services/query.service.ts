@@ -13,6 +13,7 @@ import {
   getScopeFilterForApprover,
   getScopeFilterForSelectedScope,
   canApproverAccessRequest,
+  getApproverScopes,
 } from "../scope/scope.service.js";
 import { requestRepository } from "../repositories/request.repository.js"; // [NEW]
 
@@ -89,7 +90,52 @@ export class RequestQueryService {
   // Approval History
   // ============================================================================
 
-  async getApprovalHistory(actorId: number): Promise<RequestWithDetails[]> {
+  async getApprovalHistory(
+    actorId: number,
+    actorRole: string,
+  ): Promise<RequestWithDetails[]> {
+    if (actorRole === "HEAD_WARD" || actorRole === "HEAD_DEPT") {
+      const approverScopes = await getApproverScopes(actorId, actorRole);
+      const scopeTypes =
+        actorRole === "HEAD_DEPT"
+          ? (["DEPT"] as const)
+          : (["UNIT", "DEPT"] as const);
+      const scopeNames = [
+        ...approverScopes.wardScopes,
+        ...approverScopes.deptScopes,
+      ];
+      const peerIds = await requestRepository.findPeerUserIdsByScope(
+        actorRole,
+        [...scopeTypes],
+        scopeNames,
+      );
+      const actorIds = Array.from(new Set([actorId, ...peerIds]));
+      const historyIds =
+        await requestRepository.findApprovalHistoryIdsForActors(actorIds);
+
+      if (historyIds.length === 0) return [];
+      const requestIds = historyIds.map((row) => row.request_id);
+      const fullRequests = await requestRepository.findByIds(requestIds);
+      return await hydrateRequests(fullRequests as any[]);
+    }
+
+    if (
+      actorRole === "PTS_OFFICER" ||
+      actorRole === "HEAD_HR" ||
+      actorRole === "HEAD_FINANCE" ||
+      actorRole === "DIRECTOR"
+    ) {
+      const peerIds = await requestRepository.findUserIdsByRole(actorRole);
+      const actorIds = Array.from(new Set([actorId, ...peerIds]));
+      const historyIds =
+        await requestRepository.findApprovalHistoryIdsForActors(actorIds);
+
+      if (historyIds.length === 0) return [];
+      const requestIds = historyIds.map((row) => row.request_id);
+      const fullRequests = await requestRepository.findByIds(requestIds);
+      return await hydrateRequests(fullRequests as any[]);
+    }
+
     const historyIds = await requestRepository.findApprovalHistoryIds(actorId);
 
     if (historyIds.length === 0) return [];

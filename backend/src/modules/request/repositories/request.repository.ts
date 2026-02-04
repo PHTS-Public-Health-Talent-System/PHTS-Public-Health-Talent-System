@@ -62,6 +62,43 @@ export class RequestRepository {
     return rows as { scope_type: string; scope_name: string }[];
   }
 
+  async findPeerUserIdsByScope(
+    role: string,
+    scopeTypes: Array<"UNIT" | "DEPT">,
+    scopeNames: string[],
+  ): Promise<number[]> {
+    if (!scopeTypes.length || !scopeNames.length) {
+      return [];
+    }
+
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `
+        SELECT DISTINCT u.id
+        FROM users u
+        JOIN special_position_scope_map m
+          ON u.citizen_id = m.citizen_id
+        WHERE u.role = ?
+          AND m.role = ?
+          AND m.is_active = 1
+          AND m.scope_type IN (?)
+          AND m.scope_name IN (?)
+      `,
+      [role, role, scopeTypes, scopeNames],
+    );
+    return rows.map((row) => row.id as number).filter((id) => Boolean(id));
+  }
+
+  async findUserIdsByRole(role: string): Promise<number[]> {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT id
+       FROM users
+       WHERE role = ?
+         AND is_active = 1`,
+      [role],
+    );
+    return rows.map((row) => row.id as number).filter((id) => Boolean(id));
+  }
+
   async disableScopeMappings(
     citizenId: string,
     role: string,
@@ -200,6 +237,19 @@ export class RequestRepository {
       [requestId],
     );
     return rows as RequestApprovalEntity[];
+  }
+
+  async findApprovalHistoryIdsForActors(
+    actorIds: number[],
+  ): Promise<{ request_id: number }[]> {
+    if (!actorIds.length) return [];
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT DISTINCT request_id
+       FROM req_approvals
+       WHERE actor_id IN (?)`,
+      [actorIds],
+    );
+    return rows as { request_id: number }[];
   }
 
   // --- Advanced Reads for Query Service ---
@@ -606,6 +656,36 @@ export class RequestRepository {
     `;
     const [rows] = await pool.query<RowDataPacket[]>(sql, [excludeUserId]);
     return rows as any[];
+  }
+
+  async countActiveOfficers(): Promise<number> {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total
+       FROM users
+       WHERE role = 'PTS_OFFICER'
+         AND is_active = 1`,
+    );
+    return rows.length ? Number(rows[0].total) : 0;
+  }
+
+  async findLeastLoadedOfficer(): Promise<number | null> {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `
+      SELECT u.id,
+             (
+               SELECT COUNT(*)
+               FROM req_submissions r
+               WHERE r.assigned_officer_id = u.id
+                 AND r.status = 'PENDING'
+             ) AS workload_count
+      FROM users u
+      WHERE u.role = 'PTS_OFFICER'
+        AND u.is_active = 1
+      ORDER BY workload_count ASC, u.id ASC
+      LIMIT 1
+      `,
+    );
+    return rows.length ? (rows[0].id as number) : null;
   }
 
   async updateAssignedOfficer(

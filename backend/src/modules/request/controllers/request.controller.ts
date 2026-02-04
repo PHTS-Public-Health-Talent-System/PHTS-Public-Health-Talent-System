@@ -65,7 +65,10 @@ export class RequestController {
 
   getHistory = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
-      const history = await requestQueryService.getApprovalHistory(req.user.userId);
+      const history = await requestQueryService.getApprovalHistory(
+          req.user.userId,
+          req.user.role,
+      );
       res.json({ success: true, data: history });
   });
 

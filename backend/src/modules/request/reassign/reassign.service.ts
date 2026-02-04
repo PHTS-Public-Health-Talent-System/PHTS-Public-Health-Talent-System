@@ -47,6 +47,11 @@ export async function reassignRequest(
       throw new Error('Request not found');
     }
 
+    const officerCount = await requestRepository.countActiveOfficers();
+    if (officerCount < 2) {
+      throw new Error('Reassign requires at least 2 active PTS_OFFICER');
+    }
+
     if (requestEntity.status !== RequestStatus.PENDING) {
       throw new Error(`Cannot reassign request with status: ${requestEntity.status}`);
     }

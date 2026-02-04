@@ -616,6 +616,23 @@ export class RequestApprovalService {
       );
 
       const nextRole = STEP_ROLE_MAP[nextStep];
+      if (nextRole === "PTS_OFFICER") {
+        try {
+          const officerCount = await requestRepository.countActiveOfficers();
+          if (officerCount > 0) {
+            const officerId = await requestRepository.findLeastLoadedOfficer();
+            if (officerId) {
+              await requestRepository.updateAssignedOfficer(
+                requestId,
+                officerId,
+                connection,
+              );
+            }
+          }
+        } catch (err) {
+          console.error("[Approval] Auto-assign PTS_OFFICER failed:", err);
+        }
+      }
       if (nextRole) {
         await NotificationService.notifyRole(
           nextRole,
