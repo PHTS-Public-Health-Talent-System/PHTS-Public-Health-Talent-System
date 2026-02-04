@@ -57,7 +57,7 @@ export const createMasterRate = async (
 
   const rateId = result.insertId;
 
-  await logAuditEvent({
+  await emitAuditEvent({
     eventType: AuditEventType.MASTER_RATE_UPDATE,
     entityType: "payment_rate",
     entityId: rateId,

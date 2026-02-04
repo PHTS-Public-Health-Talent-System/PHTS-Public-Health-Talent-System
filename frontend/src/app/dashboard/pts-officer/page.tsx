@@ -34,7 +34,7 @@ export default function PtsOfficerDashboardPage() {
   const openPeriod = periods?.find((p: PayPeriod) => p.status === 'OPEN');
   
   // 3. License Alerts
-  const licenseAlerts = (licenseSummary?.expired_count ?? 0) + (licenseSummary?.expiring_soon_count ?? 0);
+  const licenseAlerts = licenseSummary?.total ?? 0;
 
   const isLoading = isRequestsLoading || isPeriodsLoading || isLicenseLoading;
 
