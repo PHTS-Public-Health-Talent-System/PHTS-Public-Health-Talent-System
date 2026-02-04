@@ -32,13 +32,22 @@ import {
   rejectPeriodSchema,
   leavePayExceptionSchema,
   leaveReturnReportSchema,
+  periodIdParamSchema,
+  periodItemParamSchema,
+  leavePayExceptionIdSchema,
+  leaveReturnReportIdSchema,
 } from "./payroll.schema.js";
 import { UserRole } from "../../types/auth.js";
 
 const router = Router();
 
 // View period status (authenticated dashboard users)
-router.get("/period/:periodId/payouts", protect, getPeriodPayouts);
+router.get(
+  "/period/:periodId/payouts",
+  protect,
+  validate(periodIdParamSchema),
+  getPeriodPayouts,
+);
 router.get(
   "/payouts/search",
   protect,
@@ -73,6 +82,7 @@ router.get(
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
+  validate(periodIdParamSchema),
   getPeriodDetail,
 );
 router.get(
@@ -85,12 +95,14 @@ router.get(
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
+  validate(periodIdParamSchema),
   getPeriodReport,
 );
 router.get(
   "/period/:periodId/summary-by-profession",
   protect,
   restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  validate(periodIdParamSchema),
   getPeriodSummaryByProfession,
 );
 
@@ -106,6 +118,7 @@ router.post(
   "/period/:periodId/items",
   protect,
   restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  validate(periodIdParamSchema),
   validate(addPeriodItemsSchema),
   addPeriodItems,
 );
@@ -113,6 +126,7 @@ router.delete(
   "/period/:periodId/items/:itemId",
   protect,
   restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  validate(periodItemParamSchema),
   removePeriodItem,
 );
 
@@ -136,6 +150,7 @@ router.post(
   "/period/:periodId/calculate",
   protect,
   restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  validate(periodIdParamSchema),
   calculatePeriod,
 );
 
@@ -144,6 +159,7 @@ router.post(
   "/period/:periodId/submit",
   protect,
   restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  validate(periodIdParamSchema),
   submitToHR,
 );
 
@@ -152,6 +168,7 @@ router.post(
   "/period/:periodId/approve-hr",
   protect,
   restrictTo(UserRole.HEAD_HR, UserRole.ADMIN),
+  validate(periodIdParamSchema),
   approveByHR,
 );
 
@@ -160,6 +177,7 @@ router.post(
   "/period/:periodId/approve-director",
   protect,
   restrictTo(UserRole.DIRECTOR, UserRole.ADMIN),
+  validate(periodIdParamSchema),
   approveByDirector,
 );
 
@@ -168,6 +186,7 @@ router.post(
   "/period/:periodId/approve-head-finance",
   protect,
   restrictTo(UserRole.HEAD_FINANCE, UserRole.ADMIN),
+  validate(periodIdParamSchema),
   approveByHeadFinance,
 );
 
@@ -176,6 +195,7 @@ router.post(
   "/period/:periodId/reject",
   protect,
   restrictTo(UserRole.HEAD_HR, UserRole.DIRECTOR, UserRole.ADMIN),
+  validate(periodIdParamSchema),
   validate(rejectPeriodSchema),
   rejectPeriod,
 );
@@ -198,6 +218,7 @@ router.delete(
   "/leave-pay-exceptions/:id",
   protect,
   restrictTo(UserRole.PTS_OFFICER),
+  validate(leavePayExceptionIdSchema),
   deleteLeavePayException,
 );
 
@@ -219,6 +240,7 @@ router.delete(
   "/leave-return-reports/:id",
   protect,
   restrictTo(UserRole.PTS_OFFICER),
+  validate(leaveReturnReportIdSchema),
   deleteLeaveReturnReport,
 );
 

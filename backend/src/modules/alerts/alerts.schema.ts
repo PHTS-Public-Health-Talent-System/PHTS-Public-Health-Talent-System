@@ -1,11 +1,35 @@
 import { z } from "zod";
 
-export const retirementSchema = z.object({
-  body: z.object({
-    citizen_id: z.string().min(1),
-    retire_date: z.string().min(1),
-    note: z.string().optional(),
+const isValidDate = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime());
+};
+
+const retirementBodySchema = z.object({
+  citizen_id: z.string().min(1),
+  retire_date: z
+    .string()
+    .min(1)
+    .refine(isValidDate, { message: "Invalid retire_date format" }),
+  note: z.string().optional(),
+});
+
+export const retirementCreateSchema = z.object({
+  body: retirementBodySchema,
+});
+
+export const retirementUpdateSchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
+  }),
+  body: retirementBodySchema,
+});
+
+export const retirementIdSchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
   }),
 });
 
-export type RetirementInput = z.infer<typeof retirementSchema>["body"];
+export type RetirementInput = z.infer<typeof retirementCreateSchema>["body"];

@@ -12,7 +12,11 @@ import {
   getLicenseList,
   getLicenseSummary,
 } from "./license-alerts.controller.js";
-import { retirementSchema } from "./alerts.schema.js";
+import {
+  retirementCreateSchema,
+  retirementIdSchema,
+  retirementUpdateSchema,
+} from "./alerts.schema.js";
 
 const router = Router();
 
@@ -27,7 +31,7 @@ router.post(
   "/retirements",
   protect,
   restrictTo(UserRole.PTS_OFFICER),
-  validate(retirementSchema),
+  validate(retirementCreateSchema),
   postRetirement,
 );
 
@@ -35,7 +39,7 @@ router.put(
   "/retirements/:id",
   protect,
   restrictTo(UserRole.PTS_OFFICER),
-  validate(retirementSchema),
+  validate(retirementUpdateSchema),
   putRetirement,
 );
 
@@ -43,6 +47,7 @@ router.delete(
   "/retirements/:id",
   protect,
   restrictTo(UserRole.PTS_OFFICER),
+  validate(retirementIdSchema),
   removeRetirement,
 );
 

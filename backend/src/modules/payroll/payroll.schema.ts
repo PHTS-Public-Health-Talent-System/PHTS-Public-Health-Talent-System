@@ -29,6 +29,34 @@ export const rejectPeriodSchema = z.object({
   }),
 });
 
+const periodIdParam = z.object({
+  periodId: z.string().regex(/^\d+$/, "periodId ต้องเป็นตัวเลข"),
+});
+
+const itemIdParam = z.object({
+  itemId: z.string().regex(/^\d+$/, "itemId ต้องเป็นตัวเลข"),
+});
+
+export const periodIdParamSchema = z.object({
+  params: periodIdParam,
+});
+
+export const periodItemParamSchema = z.object({
+  params: periodIdParam.merge(itemIdParam),
+});
+
+export const leavePayExceptionIdSchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
+  }),
+});
+
+export const leaveReturnReportIdSchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
+  }),
+});
+
 export type CalculateOnDemandInput = z.infer<
   typeof calculateOnDemandSchema
 >["body"];
@@ -74,7 +102,13 @@ export type LeavePayExceptionInput = z.infer<
 export const leaveReturnReportSchema = z.object({
   body: z.object({
     leave_record_id: z.number().int(),
-    return_date: z.string().min(1),
+    return_date: z
+      .string()
+      .min(1)
+      .refine(
+        (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(value).getTime()),
+        { message: "Invalid return_date format" },
+      ),
     remark: z.string().optional(),
   }),
 });
