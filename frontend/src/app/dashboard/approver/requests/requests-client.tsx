@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Eye, Search } from "lucide-react"
@@ -45,6 +45,15 @@ export default function ApproverRequestsClient() {
   const { data: requests, isLoading } = usePendingApprovals(pendingScope)
 
   const scopeOptions = useMemo(() => buildScopeOptions(scopes ?? []), [scopes])
+
+  useEffect(() => {
+    if (scopeFilter === "ALL") return
+    const validScopes = new Set(scopeOptions.map((scope) => scope.value))
+    if (!validScopes.has(scopeFilter)) {
+      setScopeFilter("ALL")
+      updateQuery({ scope: "ALL" })
+    }
+  }, [scopeFilter, scopeOptions])
 
   const updateQuery = (next: { q?: string; scope?: string }) => {
     const params = new URLSearchParams()

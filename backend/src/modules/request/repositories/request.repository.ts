@@ -46,6 +46,65 @@ export class RequestRepository {
     return rows as RequestSubmissionEntity[];
   }
 
+  async getScopeMappings(
+    citizenId: string,
+    role: string,
+    connection?: PoolConnection,
+  ): Promise<{ scope_type: string; scope_name: string }[]> {
+    const db = this.getDb(connection);
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT scope_type, scope_name
+       FROM special_position_scope_map
+       WHERE citizen_id = ? AND role = ? AND is_active = 1
+       ORDER BY scope_type, scope_name`,
+      [citizenId, role],
+    );
+    return rows as { scope_type: string; scope_name: string }[];
+  }
+
+  async disableScopeMappings(
+    citizenId: string,
+    role: string,
+    connection?: PoolConnection,
+  ): Promise<void> {
+    const db = this.getDb(connection);
+    await db.query(
+      `UPDATE special_position_scope_map
+       SET is_active = 0, updated_at = NOW()
+       WHERE citizen_id = ? AND role = ?`,
+      [citizenId, role],
+    );
+  }
+
+  async insertScopeMappings(
+    inputs: Array<{
+      citizen_id: string;
+      role: string;
+      scope_type: "UNIT" | "DEPT";
+      scope_name: string;
+      source: "AUTO" | "MANUAL";
+      created_by?: number | null;
+    }>,
+    connection?: PoolConnection,
+  ): Promise<void> {
+    if (!inputs.length) return;
+    const db = this.getDb(connection);
+    const values = inputs.map((i) => [
+      i.citizen_id,
+      i.role,
+      i.scope_type,
+      i.scope_name,
+      i.source,
+      i.created_by ?? null,
+    ]);
+    await db.query(
+      `INSERT IGNORE INTO special_position_scope_map
+       (citizen_id, role, scope_type, scope_name, source, created_by)
+       VALUES ?`,
+      [values],
+    );
+  }
+
   async findPendingByStep(
     stepNo: number,
     userId?: number,

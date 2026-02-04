@@ -16,8 +16,6 @@ import {
 } from "./utils.js";
 
 const SCOPE_CACHE_TTL_SECONDS = 6 * 60 * 60;
-const WARD_PREFIX_RE = /^(งาน|หอ|หน่วย|ศูนย์)/;
-const DEPT_PREFIX_RE = /^(กลุ่มงาน|ภารกิจ)/;
 
 /**
  * Cache for approver scopes (in-memory, cleared on restart)
@@ -70,6 +68,23 @@ export async function getApproverScopes(
     return emptyScopes;
   }
 
+  const mappings = await requestRepository.getScopeMappings(
+    citizenId,
+    userRole,
+  );
+  if (mappings.length > 0) {
+    const wardScopes = mappings
+      .filter((m) => m.scope_type === "UNIT")
+      .map((m) => m.scope_name);
+    const deptScopes = mappings
+      .filter((m) => m.scope_type === "DEPT")
+      .map((m) => m.scope_name);
+    const scopes = { wardScopes, deptScopes };
+    scopeCache.set(cacheKey, scopes);
+    await setJsonCache(redisKey, scopes, SCOPE_CACHE_TTL_SECONDS);
+    return scopes;
+  }
+
   const specialPosition = await requestRepository.findSpecialPosition(citizenId);
   const scopes = parseAndClassifyScopes(specialPosition);
   scopeCache.set(cacheKey, scopes);
@@ -100,6 +115,9 @@ function parseAndClassifyScopes(
     if (isWardScope(scope)) {
       const scopeName = extractScopeName(scope);
       pushScope(wardScopes, scopeName);
+      if (inferScopeType(scopeName) === "DEPT") {
+        pushScope(deptScopes, scopeName);
+      }
       continue;
     }
     if (isDeptScope(scope)) {
@@ -281,19 +299,11 @@ export async function getScopeFilterForSelectedScope(
 }
 
 function isWardScope(scope: string): boolean {
-  return (
-    scope.includes("หัวหน้าตึก") ||
-    scope.includes("หัวหน้างาน-") ||
-    Boolean(WARD_PREFIX_RE.exec(scope))
-  );
+  return scope.includes("หัวหน้าตึก") || scope.includes("หัวหน้างาน-");
 }
 
 function isDeptScope(scope: string): boolean {
-  return (
-    scope.includes("หัวหน้ากลุ่มงาน") ||
-    scope.includes("หัวหน้ากลุ่มภารกิจ") ||
-    Boolean(DEPT_PREFIX_RE.exec(scope))
-  );
+  return scope.includes("หัวหน้ากลุ่มงาน");
 }
 
 function extractScopeName(scope: string): string {
@@ -334,9 +344,7 @@ function buildWardConditions(scopes: string[]): {
 
   for (const scope of scopes) {
     if (inferScopeType(scope) === "DEPT") {
-      conditions.push(
-        "(e.sub_department IS NULL AND LOWER(e.department) = LOWER(?))",
-      );
+      conditions.push("(LOWER(e.department) = LOWER(?))");
       params.push(scope);
     }
   }

@@ -4,6 +4,12 @@ import db from "../../../config/database.js";
 import redis from "../../../config/redis.js";
 import { assignRoles } from "./roleAssignmentService.js";
 import { clearScopeCache } from "../../request/scope/scope.service.js";
+import { requestRepository } from "../../request/repositories/request.repository.js";
+import {
+  parseSpecialPositionScopes,
+  removeOverlaps,
+  inferScopeType,
+} from "../../request/scope/utils.js";
 
 const SALT_ROUNDS = 10;
 const SYNC_LOCK_KEY = "system:sync:lock";
@@ -36,6 +42,11 @@ const toDateOnly = (value: any): string | null => {
   const month = `${parsed.getMonth() + 1}`.padStart(2, "0");
   const day = `${parsed.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+
+const isActiveOriginalStatus = (status: string | null): boolean => {
+  if (!status) return false;
+  return status.trim().startsWith("ปฏิบัติงาน");
 };
 
 // Detect value change with support for dates and nullish values.
@@ -375,9 +386,21 @@ const syncLicensesAndQuotas = async (
 
 const syncLeaves = async (conn: PoolConnection, stats: SyncStats) => {
   console.log("[SyncService] Processing leave requests...");
-  const [existingLeaves] = await conn.query<RowDataPacket[]>(
-    "SELECT ref_id, status, start_date, end_date, is_no_pay FROM leave_records WHERE ref_id IS NOT NULL",
+  const [statusCols] = await conn.query<RowDataPacket[]>(
+    `SELECT 1
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'leave_records'
+       AND COLUMN_NAME = 'status'
+     LIMIT 1`,
   );
+  const hasStatusColumn = statusCols.length > 0;
+
+  const existingSelect = hasStatusColumn
+    ? "SELECT ref_id, status, start_date, end_date, is_no_pay FROM leave_records WHERE ref_id IS NOT NULL"
+    : "SELECT ref_id, start_date, end_date, is_no_pay FROM leave_records WHERE ref_id IS NOT NULL";
+
+  const [existingLeaves] = await conn.query<RowDataPacket[]>(existingSelect);
   const leaveMap = new Map(existingLeaves.map((l) => [l.ref_id, l]));
 
   const [viewLeaves] = await conn.query<RowDataPacket[]>(
@@ -395,7 +418,9 @@ const syncLeaves = async (conn: PoolConnection, stats: SyncStats) => {
       const dateChanged =
         isChanged(dbLeave.start_date, vLeave.start_date) ||
         isChanged(dbLeave.end_date, vLeave.end_date);
-      const statusChanged = isChanged(dbLeave.status, vLeave.status);
+      const statusChanged = hasStatusColumn
+        ? isChanged(dbLeave.status, vLeave.status)
+        : false;
       const noPayChanged = isChanged(dbLeave.is_no_pay, vLeave.is_no_pay);
       if (!dateChanged && !statusChanged && !noPayChanged) {
         stats.leaves.skipped++;
@@ -403,33 +428,61 @@ const syncLeaves = async (conn: PoolConnection, stats: SyncStats) => {
       }
     }
 
-    await conn.execute(
-      `
-          INSERT INTO leave_records (
-            ref_id, citizen_id, leave_type, start_date, end_date,
-            duration_days, fiscal_year, remark, status, is_no_pay, synced_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-          ON DUPLICATE KEY UPDATE
-            status = VALUES(status),
-            start_date = VALUES(start_date),
-            end_date = VALUES(end_date),
-            duration_days = VALUES(duration_days),
-            is_no_pay = VALUES(is_no_pay),
-            synced_at = NOW()
-        `,
-      [
-        toNull(vLeave.ref_id),
-        toNull(vLeave.citizen_id),
-        toNull(vLeave.leave_type),
-        toNull(vLeave.start_date),
-        toNull(vLeave.end_date),
-        toNull(vLeave.duration_days),
-        toNull(vLeave.fiscal_year),
-        toNull(vLeave.remark),
-        toNull(vLeave.status),
-        toNull(vLeave.is_no_pay ?? 0),
-      ],
-    );
+    if (hasStatusColumn) {
+      await conn.execute(
+        `
+            INSERT INTO leave_records (
+              ref_id, citizen_id, leave_type, start_date, end_date,
+              duration_days, fiscal_year, remark, status, is_no_pay, synced_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE
+              status = VALUES(status),
+              start_date = VALUES(start_date),
+              end_date = VALUES(end_date),
+              duration_days = VALUES(duration_days),
+              is_no_pay = VALUES(is_no_pay),
+              synced_at = NOW()
+          `,
+        [
+          toNull(vLeave.ref_id),
+          toNull(vLeave.citizen_id),
+          toNull(vLeave.leave_type),
+          toNull(vLeave.start_date),
+          toNull(vLeave.end_date),
+          toNull(vLeave.duration_days),
+          toNull(vLeave.fiscal_year),
+          toNull(vLeave.remark),
+          toNull(vLeave.status),
+          toNull(vLeave.is_no_pay ?? 0),
+        ],
+      );
+    } else {
+      await conn.execute(
+        `
+            INSERT INTO leave_records (
+              ref_id, citizen_id, leave_type, start_date, end_date,
+              duration_days, fiscal_year, remark, is_no_pay, synced_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE
+              start_date = VALUES(start_date),
+              end_date = VALUES(end_date),
+              duration_days = VALUES(duration_days),
+              is_no_pay = VALUES(is_no_pay),
+              synced_at = NOW()
+          `,
+        [
+          toNull(vLeave.ref_id),
+          toNull(vLeave.citizen_id),
+          toNull(vLeave.leave_type),
+          toNull(vLeave.start_date),
+          toNull(vLeave.end_date),
+          toNull(vLeave.duration_days),
+          toNull(vLeave.fiscal_year),
+          toNull(vLeave.remark),
+          toNull(vLeave.is_no_pay ?? 0),
+        ],
+      );
+    }
     stats.leaves.upserted++;
   }
 };
@@ -447,6 +500,118 @@ const syncMovements = async (conn: PoolConnection, _stats: SyncStats) => {
           remark = VALUES(remark),
           synced_at = NOW()
       `);
+};
+
+const buildScopesFromSpecialPosition = (specialPosition: string | null) => {
+  if (!specialPosition) return { wardScopes: [], deptScopes: [] };
+  const allScopes = parseSpecialPositionScopes(specialPosition);
+  const wardScopes: string[] = [];
+  const deptScopes: string[] = [];
+
+  for (const scope of allScopes) {
+    const isHeadWard =
+      scope.includes("หัวหน้าตึก") || scope.includes("หัวหน้างาน-");
+    const isHeadDept = scope.includes("หัวหน้ากลุ่มงาน");
+
+    if (isHeadWard) {
+      const parts = scope.split("-");
+      const scopeName =
+        parts.length > 1 ? parts.slice(1).join("-").trim() : scope.trim();
+      if (scopeName && inferScopeType(scopeName) !== "IGNORE") {
+        wardScopes.push(scopeName);
+        if (inferScopeType(scopeName) === "DEPT") {
+          deptScopes.push(scopeName);
+        }
+      }
+      continue;
+    }
+
+    if (isHeadDept) {
+      const parts = scope.split("-");
+      const scopeName =
+        parts.length > 1 ? parts.slice(1).join("-").trim() : scope.trim();
+      if (scopeName && inferScopeType(scopeName) !== "IGNORE") {
+        deptScopes.push(scopeName);
+      }
+      continue;
+    }
+  }
+
+  const cleanedWardScopes = removeOverlaps(wardScopes, deptScopes);
+  const uniqWard = Array.from(new Set(cleanedWardScopes.map((s) => s.trim())));
+  const uniqDept = Array.from(new Set(deptScopes.map((s) => s.trim())));
+  return { wardScopes: uniqWard, deptScopes: uniqDept };
+};
+
+const syncSpecialPositionScopes = async (conn: PoolConnection) => {
+  console.log("[SyncService] Processing special_position scope mapping...");
+
+  const [rows] = await conn.query<RowDataPacket[]>(
+    `
+      SELECT u.id AS user_id,
+             u.citizen_id,
+             u.role,
+             e.special_position,
+             e.original_status,
+             s.is_currently_active AS support_active
+      FROM users u
+      LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
+      LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
+      WHERE u.role IN ('HEAD_WARD','HEAD_DEPT')
+    `,
+  );
+
+  for (const row of rows) {
+    const citizenId = row.citizen_id as string;
+    const role = row.role as string;
+    const specialPosition = row.special_position as string | null;
+    const originalStatus = row.original_status as string | null;
+    const supportActive = row.support_active as number | null;
+
+    const isActive =
+      isActiveOriginalStatus(originalStatus) ||
+      Number(supportActive) === 1;
+
+    if (!isActive) {
+      await requestRepository.disableScopeMappings(citizenId, role, conn);
+      continue;
+    }
+
+    const scopes = buildScopesFromSpecialPosition(specialPosition);
+
+    await requestRepository.disableScopeMappings(citizenId, role, conn);
+
+    if (scopes.wardScopes.length === 0 && scopes.deptScopes.length === 0) {
+      console.warn(
+        `[SyncService] special_position parse failed: citizen_id=${citizenId}, role=${role}, special_position="${specialPosition ?? ""}"`,
+      );
+      continue;
+    }
+
+    const inputs = [
+      ...scopes.wardScopes.map((scopeName) => ({
+        citizen_id: citizenId,
+        role,
+        scope_type: "UNIT" as const,
+        scope_name: scopeName,
+        source: "AUTO" as const,
+      })),
+      ...scopes.deptScopes.map((scopeName) => ({
+        citizen_id: citizenId,
+        role,
+        scope_type: "DEPT" as const,
+        scope_name: scopeName,
+        source: "AUTO" as const,
+      })),
+    ];
+
+    await requestRepository.insertScopeMappings(inputs, conn);
+
+    const userId = row.user_id as number;
+    if (userId) {
+      clearScopeCache(userId);
+    }
+  }
 };
 
 export class SyncService {
@@ -510,6 +675,7 @@ export class SyncService {
       await syncLicensesAndQuotas(conn, stats);
       await syncLeaves(conn, stats);
       await syncMovements(conn, stats);
+      await syncSpecialPositionScopes(conn);
 
       await conn.commit();
 
