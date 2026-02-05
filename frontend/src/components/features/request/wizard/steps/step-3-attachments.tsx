@@ -5,8 +5,8 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { AttachmentPreviewDialog } from "@/components/common/attachment-preview-dialog"
 
 import { RequestFormData } from "@/types/request.types"
 
@@ -37,9 +37,6 @@ export function Step3Attachments({ data, onUpload, onRemove }: Step3Props) {
     setPreviewName(name)
     setPreviewOpen(true)
   }
-
-  const isImage = (name: string) => /\.(jpg|jpeg|png|gif|webp)$/i.test(name)
-  const isPdf = (name: string) => /\.pdf$/i.test(name)
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api"
 
@@ -150,29 +147,12 @@ export function Step3Attachments({ data, onUpload, onRemove }: Step3Props) {
       </div>
 
       {/* Preview Dialog */}
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh]">
-          <DialogHeader>
-            <DialogTitle>{previewName}</DialogTitle>
-          </DialogHeader>
-          <div className="overflow-auto max-h-[70vh] flex justify-center bg-slate-100 rounded-lg p-4">
-            {isImage(previewName) && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={previewUrl} alt={previewName} className="max-w-full h-auto object-contain" />
-            )}
-            {isPdf(previewName) && (
-              <iframe src={previewUrl} className="w-full h-[70vh]" title={previewName} />
-            )}
-            {!isImage(previewName) && !isPdf(previewName) && (
-               <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
-                  <FileText className="h-12 w-12 mb-2" />
-                  <p>ไม่สามารถแสดงตัวอย่างไฟล์นี้ได้</p>
-               </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AttachmentPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        previewUrl={previewUrl}
+        previewName={previewName}
+      />
     </div>
   )
 }
-

@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AnnouncementBanner } from "@/components/common/announcement-banner";
+import { SupportWidget } from "@/components/common/support-widget";
 
 export default function DashboardLayout({
   children,
@@ -57,9 +59,11 @@ export default function DashboardLayout({
 
         {/* Content Area จริงๆ */}
         <div className="flex flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
+          <AnnouncementBanner />
           {children}
         </div>
       </SidebarInset>
+      <SupportWidget />
     </SidebarProvider>
   );
 }

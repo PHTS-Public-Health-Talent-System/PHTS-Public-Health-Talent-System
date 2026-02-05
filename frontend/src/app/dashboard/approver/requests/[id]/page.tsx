@@ -2,7 +2,7 @@
 
 import { use, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Download, FileIcon } from "lucide-react"
+import { ArrowLeft, Download, Eye, FileIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -18,6 +18,7 @@ import { StatusBadge } from "@/components/common/status-badge"
 import { RequestTimeline } from "@/components/common/request-timeline"
 import { ConfirmDialog } from "@/components/common/confirm-dialog"
 import SignaturePad from "@/components/common/signature-pad"
+import { AttachmentPreviewDialog } from "@/components/common/attachment-preview-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -42,6 +43,9 @@ export default function ApproverRequestDetailPage({
   const [comment, setComment] = useState("")
   const [signatureMode, setSignatureMode] = useState<"SAVED" | "NEW" | null>(null)
   const [signature, setSignature] = useState("")
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState("")
+  const [previewName, setPreviewName] = useState("")
   const formView = useMemo(
     () => (request ? mapRequestToFormData(request) : null),
     [request],
@@ -108,6 +112,12 @@ export default function ApproverRequestDetailPage({
     hasSavedSignature,
     hasNewSignature,
   )
+
+  const handlePreview = (url: string, name: string) => {
+    setPreviewUrl(url)
+    setPreviewName(name)
+    setPreviewOpen(true)
+  }
 
 
   const handleAction = async (action: "APPROVE" | "RETURN" | "REJECT") => {
@@ -296,7 +306,7 @@ export default function ApproverRequestDetailPage({
                      <div
                        key={att.attachment_id}
                        className="group relative flex items-center justify-between rounded-lg border bg-card p-3 hover:shadow-md transition-shadow cursor-pointer"
-                       onClick={() => window.open(`${apiBase}/${att.file_path}`, '_blank')}
+                       onClick={() => handlePreview(`${apiBase}/${att.file_path}`, att.file_name)}
                      >
                        <div className="flex items-center gap-3 overflow-hidden">
                          <div className="h-10 w-10 flex items-center justify-center rounded bg-primary/10 text-primary shrink-0">
@@ -309,9 +319,28 @@ export default function ApproverRequestDetailPage({
                            </p>
                          </div>
                        </div>
-                       <Button variant="ghost" size="icon" className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Download className="h-4 w-4" />
-                       </Button>
+                       <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <Button
+                           variant="ghost"
+                           size="icon"
+                           onClick={(event) => {
+                             event.stopPropagation()
+                             handlePreview(`${apiBase}/${att.file_path}`, att.file_name)
+                           }}
+                         >
+                           <Eye className="h-4 w-4" />
+                         </Button>
+                         <Button
+                           variant="ghost"
+                           size="icon"
+                           onClick={(event) => {
+                             event.stopPropagation()
+                             window.open(`${apiBase}/${att.file_path}`, "_blank")
+                           }}
+                         >
+                           <Download className="h-4 w-4" />
+                         </Button>
+                       </div>
                      </div>
                    ))}
                  </div>
@@ -462,6 +491,12 @@ export default function ApproverRequestDetailPage({
              </div>
           </div>
       )}
+      <AttachmentPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        previewUrl={previewUrl}
+        previewName={previewName}
+      />
     </div>
   )
 }
