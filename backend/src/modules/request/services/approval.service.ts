@@ -639,6 +639,7 @@ export class RequestApprovalService {
           "งานรออนุมัติ",
           `มีคำขอเลขที่ ${request.request_no} ส่งต่อมาถึงท่าน`,
           getRequestLinkForRole(nextRole, requestId),
+          undefined,
           connection,
         );
       }

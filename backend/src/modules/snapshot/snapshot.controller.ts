@@ -5,7 +5,7 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from '@types/auth.js';
+import { ApiResponse } from '@/types/auth.js';
 import * as snapshotService from '@/modules/snapshot/services/snapshot.service.js';
 import { SnapshotType } from '@/modules/snapshot/services/snapshot.service.js';
 

@@ -20,7 +20,7 @@ import {
   requestRateMappingSchema,
   requestReassignSchema,
 } from '@/modules/request/dto/request-params.dto.js';
-import { UserRole } from '@types/auth.js';
+import { UserRole } from '@/types/auth.js';
 // Note: createRequestSchema is used inside controller manually for file upload handling, or added here if middleware used.
 // Current controller implementation handles validation manually after file upload.
 

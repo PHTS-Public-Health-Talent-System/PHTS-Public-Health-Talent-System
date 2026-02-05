@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { ApiResponse } from '@types/auth.js';
+import { ApiResponse } from '@/types/auth.js';
 import * as signatureService from '@/modules/signature/services/signature.service.js';
 
 export const getMySignature = async (

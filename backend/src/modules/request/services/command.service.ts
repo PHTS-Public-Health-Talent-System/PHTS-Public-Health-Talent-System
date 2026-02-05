@@ -296,6 +296,7 @@ export class RequestCommandService {
         'มีคำขอใหม่รออนุมัติ',
         `มีคำขอเลขที่ ${requestEntity.request_no} รอการตรวจสอบจากท่าน`,
         getRequestLinkForRole(nextRole, requestId),
+        undefined,
         connection,
       );
 

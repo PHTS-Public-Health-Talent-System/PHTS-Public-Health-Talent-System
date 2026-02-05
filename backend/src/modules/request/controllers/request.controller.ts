@@ -6,7 +6,7 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from '@types/auth.js';
+import { ApiResponse } from '@/types/auth.js';
 
 // Services
 import { requestQueryService } from '@/modules/request/services/query.service.js';
