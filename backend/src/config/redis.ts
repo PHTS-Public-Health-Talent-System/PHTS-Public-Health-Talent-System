@@ -1,5 +1,5 @@
 import { Redis } from "ioredis";
-import { loadEnv } from "./env.js";
+import { loadEnv } from '@config/env.js';
 
 loadEnv();
 

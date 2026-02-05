@@ -7,7 +7,7 @@
  */
 
 import mysql from "mysql2/promise";
-import { loadEnv } from "./env.js";
+import { loadEnv } from '@config/env.js';
 
 // Load environment variables
 loadEnv();
