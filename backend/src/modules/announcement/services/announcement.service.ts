@@ -1,10 +1,8 @@
 import { getConnection } from '@config/database.js';
-import {
-  AnnouncementPriority,
-} from '@/entities/announcement.entity.js';
-import { announcementRepository } from '@/repositories/announcement.repository.js';
-import { NotificationService } from '@/modules/notification/services/notification.service.js';
-import { NotificationType } from '@/modules/notification/entities/notification.entity.js';
+import { AnnouncementPriority } from "../entities/announcement.entity.js";
+import { announcementRepository } from "../repositories/announcement.repository.js";
+import { NotificationService } from "../../notification/services/notification.service.js";
+import { NotificationType } from "../../notification/entities/notification.entity.js";
 
 const priorityToNotificationType: Record<AnnouncementPriority, NotificationType> = {
   LOW: NotificationType.INFO,

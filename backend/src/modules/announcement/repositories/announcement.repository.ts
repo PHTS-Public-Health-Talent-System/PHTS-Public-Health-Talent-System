@@ -1,6 +1,9 @@
 import { PoolConnection, RowDataPacket, ResultSetHeader } from "mysql2/promise";
 import pool from '@config/database.js';
-import type { Announcement, AnnouncementPriority } from '@/entities/announcement.entity.js';
+import type {
+  Announcement,
+  AnnouncementPriority,
+} from "../entities/announcement.entity.js";
 
 export class AnnouncementRepository {
   private getDb(connection?: PoolConnection) {
