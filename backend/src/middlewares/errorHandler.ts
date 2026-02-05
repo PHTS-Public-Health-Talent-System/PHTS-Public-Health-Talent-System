@@ -9,7 +9,7 @@ import {
   AppError,
   buildErrorResponse,
   isOperationalError,
-} from "../shared/utils/errors.js";
+} from '@shared/utils/errors.js';
 
 /**
  * Handle 404 Not Found routes
