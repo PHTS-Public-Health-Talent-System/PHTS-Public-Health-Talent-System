@@ -5,7 +5,7 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from '@types/auth.js';
+import { ApiResponse } from '@/types/auth.js';
 import * as accessReviewService from '@/modules/access-review/services/access-review.service.js';
 import { ReviewResult } from '@/modules/access-review/services/access-review.service.js';
 

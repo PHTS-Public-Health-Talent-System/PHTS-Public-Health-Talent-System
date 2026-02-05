@@ -48,6 +48,7 @@ export class NotificationService {
     title: string,
     message: string,
     link: string = "#",
+    type: NotificationType = NotificationType.INFO,
     connection?: PoolConnection,
   ): Promise<number> {
     return NotificationOutboxService.enqueue(
@@ -57,7 +58,7 @@ export class NotificationService {
         title,
         message,
         link,
-        type: NotificationType.INFO,
+        type,
       },
       connection,
     );

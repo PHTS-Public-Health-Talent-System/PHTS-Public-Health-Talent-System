@@ -5,7 +5,7 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from '@types/auth.js';
+import { ApiResponse } from '@/types/auth.js';
 import * as auditService from '@/modules/audit/services/audit.service.js';
 import { AuditEventType, AuditSearchFilter } from '@/modules/audit/services/audit.service.js';
 

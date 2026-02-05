@@ -1,7 +1,7 @@
 import { Router, Response, Request } from "express";
 import { query } from '@config/database.js';
 import redisClient from '@config/redis.js';
-import { ApiResponse } from '@types/auth.js';
+import { ApiResponse } from '@/types/auth.js';
 
 const router = Router();
 

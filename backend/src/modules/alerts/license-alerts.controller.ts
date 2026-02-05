@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { ApiResponse } from '@types/auth.js';
+import { ApiResponse } from '@/types/auth.js';
 import {
   AlertBucket,
   getLicenseAlertList,

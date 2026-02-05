@@ -7,7 +7,7 @@
 
 import { Router } from "express";
 import { protect, restrictTo } from '@middlewares/authMiddleware.js';
-import { UserRole } from '@types/auth.js';
+import { UserRole } from '@/types/auth.js';
 import * as auditController from '@/modules/audit/audit.controller.js';
 
 const router = Router();

@@ -11,7 +11,7 @@ import {
   LoginResponse,
   ApiResponse,
   UserProfile,
-} from '@types/auth.js';
+} from '@/types/auth.js';
 import { extractRequestInfo } from '@/modules/audit/services/audit.service.js';
 import { LoginSchema } from '@/modules/auth/auth.schema.js';
 import {

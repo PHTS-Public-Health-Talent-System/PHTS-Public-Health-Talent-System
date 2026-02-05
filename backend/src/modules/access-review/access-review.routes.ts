@@ -8,7 +8,7 @@
 import { Router } from "express";
 import { protect, restrictTo } from '@middlewares/authMiddleware.js';
 import { validate } from '@shared/validate.middleware.js';
-import { UserRole } from '@types/auth.js';
+import { UserRole } from '@/types/auth.js';
 import * as accessReviewController from '@/modules/access-review/access-review.controller.js';
 import {
   getCyclesSchema,
