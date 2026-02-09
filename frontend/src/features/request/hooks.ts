@@ -26,10 +26,10 @@ import {
   reassignRequest,
   getReassignHistory,
   adjustLeaveRequest,
-} from '@/features/request/api';
-import type { MasterRate, OfficerOption, PrefillProfile, ReassignHistoryItem } from '@/features/request/api';
+} from './api';
+import type { MasterRate, OfficerOption, PrefillProfile, ReassignHistoryItem } from './api';
 import type { RequestWithDetails } from '@/types/request.types';
-import type { DisplayScope } from '@/features/request/approver-utils';
+import type { DisplayScope } from './utils';
 
 export function useMyRequests() {
   return useQuery({
@@ -40,7 +40,7 @@ export function useMyRequests() {
 
 export function useRequestDetail(id: number | string | undefined) {
   return useQuery({
-    queryKey: ['request', id],
+    queryKey: ['request', id !== undefined ? String(id) : undefined],
     queryFn: () => getRequestById(id!),
     enabled: !!id,
   });
@@ -109,7 +109,7 @@ export function useUpdateRequest() {
       updateRequest(id, formData),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['my-requests'] });
-      qc.invalidateQueries({ queryKey: ['request', variables.id] });
+      qc.invalidateQueries({ queryKey: ['request', String(variables.id)] });
     },
   });
 }
@@ -120,7 +120,7 @@ export function useSubmitRequest() {
     mutationFn: (id: number | string) => submitRequest(id),
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ['my-requests'] });
-      qc.invalidateQueries({ queryKey: ['request', id] });
+      qc.invalidateQueries({ queryKey: ['request', String(id)] });
     },
   });
 }
@@ -131,7 +131,7 @@ export function useCancelRequest() {
     mutationFn: (id: number | string) => cancelRequest(id),
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ['my-requests'] });
-      qc.invalidateQueries({ queryKey: ['request', id] });
+      qc.invalidateQueries({ queryKey: ['request', String(id)] });
     },
   });
 }
@@ -170,7 +170,7 @@ export function useProcessAction() {
       processAction(id, payload),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['pending-approvals'] });
-      qc.invalidateQueries({ queryKey: ['request', variables.id] });
+      qc.invalidateQueries({ queryKey: ['request', String(variables.id)] });
     },
   });
 }

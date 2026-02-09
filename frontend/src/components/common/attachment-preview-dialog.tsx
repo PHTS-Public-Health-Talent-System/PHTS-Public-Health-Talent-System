@@ -1,7 +1,10 @@
 "use client"
 
-import { FileText } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
+import { ExternalLink } from "lucide-react"
+import Image from "next/image"
 
 interface AttachmentPreviewDialogProps {
   open: boolean
@@ -10,8 +13,26 @@ interface AttachmentPreviewDialogProps {
   previewName: string
 }
 
-const isImage = (name: string) => /\.(jpg|jpeg|png|gif|webp)$/i.test(name)
-const isPdf = (name: string) => /\.pdf$/i.test(name)
+const isPdfFile = (url: string, name: string) => {
+  const lowerUrl = url.toLowerCase()
+  const lowerName = name.toLowerCase()
+  return (
+    lowerUrl.endsWith(".pdf") ||
+    lowerName.endsWith(".pdf") ||
+    lowerUrl.startsWith("data:application/pdf")
+  )
+}
+
+const isImageFile = (url: string, name: string) => {
+  const lowerUrl = url.toLowerCase()
+  const lowerName = name.toLowerCase()
+  return (
+    lowerUrl.startsWith("data:image") ||
+    [".png", ".jpg", ".jpeg", ".gif", ".webp"].some((ext) =>
+      lowerUrl.endsWith(ext) || lowerName.endsWith(ext),
+    )
+  )
+}
 
 export function AttachmentPreviewDialog({
   open,
@@ -19,26 +40,58 @@ export function AttachmentPreviewDialog({
   previewUrl,
   previewName,
 }: AttachmentPreviewDialogProps) {
+  if (!previewUrl) return null
+
+  const isPdf = isPdfFile(previewUrl, previewName)
+  const isImage = isImageFile(previewUrl, previewName)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh]">
-        <DialogHeader>
-          <DialogTitle>{previewName}</DialogTitle>
+      <DialogContent className="max-w-4xl p-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-6">
+          <DialogTitle className="text-base font-semibold">
+            {previewName || "ตัวอย่างไฟล์"}
+          </DialogTitle>
         </DialogHeader>
-        <div className="overflow-auto max-h-[70vh] flex justify-center bg-slate-100 rounded-lg p-4">
-          {isImage(previewName) && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={previewUrl} alt={previewName} className="max-w-full h-auto object-contain" />
-          )}
-          {isPdf(previewName) && (
-            <iframe src={previewUrl} className="w-full h-[70vh]" title={previewName} />
-          )}
-          {!isImage(previewName) && !isPdf(previewName) && (
-            <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
-              <FileText className="h-12 w-12 mb-2" />
-              <p>ไม่สามารถแสดงตัวอย่างไฟล์นี้ได้</p>
+        <Separator className="mt-4" />
+        <div className="px-6 py-4">
+          {isPdf && (
+            <div className="h-[70vh] w-full overflow-hidden rounded-lg border bg-muted/20">
+              <iframe
+                title={previewName}
+                src={previewUrl}
+                className="h-full w-full"
+              />
             </div>
           )}
+
+          {isImage && (
+            <div className="flex items-center justify-center rounded-lg border bg-muted/20 p-4">
+              <Image
+                src={previewUrl}
+                alt={previewName}
+                width={1200}
+                height={900}
+                className="max-h-[70vh] w-auto object-contain"
+                unoptimized
+              />
+            </div>
+          )}
+
+          {!isPdf && !isImage && (
+            <div className="flex h-[40vh] items-center justify-center rounded-lg border bg-muted/20">
+              <p className="text-sm text-muted-foreground">ไม่สามารถแสดงตัวอย่างไฟล์นี้ได้</p>
+            </div>
+          )}
+        </div>
+        <Separator />
+        <div className="flex items-center justify-end gap-2 px-6 py-4">
+          <Button asChild variant="outline" size="sm">
+            <a href={previewUrl} target="_blank" rel="noreferrer">
+              <ExternalLink className="mr-2 h-4 w-4" />
+              เปิดในแท็บใหม่
+            </a>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

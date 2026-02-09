@@ -1,7 +1,7 @@
 import api from '@/shared/api/axios';
 import { ApiPayload, ApiResponse } from '@/shared/api/types';
 import { RequestWithDetails } from '@/types/request.types';
-import type { DisplayScope } from '@/features/request/approver-utils';
+import type { DisplayScope } from './utils';
 
 export interface MasterRate {
   rate_id: number;
