@@ -79,7 +79,15 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
   const handleUploadFile = (file: File) => {
     setFormData((prev) => ({
       ...prev,
-      files: [...prev.files, file],
+      // Prevent duplicate selections in the same client session.
+      files: prev.files.some(
+        (existing) =>
+          existing.name === file.name &&
+          existing.size === file.size &&
+          existing.lastModified === file.lastModified,
+      )
+        ? prev.files
+        : [...prev.files, file],
     }));
   };
 
@@ -293,6 +301,7 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
       if (!draftRequestId) setDraftRequestId(request.request_id);
       updateFormData("id", String(request.request_id));
       updateFormData("attachments", request.attachments ?? []);
+      updateFormData("files", []);
 
       const attachments = request.attachments ?? [];
       const license = attachments.find((att) => att.file_type === "LICENSE");
@@ -317,6 +326,7 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
         ? await updateRequest(draftRequestId, form)
         : await createRequest(form);
       updateFormData("attachments", request.attachments ?? []);
+      updateFormData("files", []);
 
       // Update rate mapping with rateId if available
       const parsed = parseGroupItem(

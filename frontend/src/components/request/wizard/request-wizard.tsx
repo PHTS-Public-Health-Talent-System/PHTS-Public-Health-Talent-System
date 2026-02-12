@@ -166,6 +166,7 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
                data={formData}
                onUpload={handleUploadFile}
                onRemove={removeFile}
+               showExistingAttachments={Boolean(initialRequest)}
              />
           )}
 

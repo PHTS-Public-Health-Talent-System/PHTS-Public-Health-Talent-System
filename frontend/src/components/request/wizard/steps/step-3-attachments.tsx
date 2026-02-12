@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { AttachmentPreviewDialog } from "@/components/common/attachment-preview-dialog"
+import { toast } from "sonner"
 
 import { RequestFormData } from "@/types/request.types"
 
@@ -14,19 +15,36 @@ interface Step3Props {
   data: RequestFormData
   onUpload: (file: File) => void
   onRemove: (index: number) => void
+  showExistingAttachments?: boolean
 }
 
-export function Step3Attachments({ data, onUpload, onRemove }: Step3Props) {
+export function Step3Attachments({
+  data,
+  onUpload,
+  onRemove,
+  showExistingAttachments = false,
+}: Step3Props) {
+  const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewUrl, setPreviewUrl] = useState("")
   const [previewName, setPreviewName] = useState("")
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
+      const oversizedFiles: string[] = []
       // Add all selected files
       Array.from(e.target.files).forEach((file) => {
+        if (file.size > MAX_FILE_SIZE_BYTES) {
+          oversizedFiles.push(file.name)
+          return
+        }
         onUpload(file)
       })
+      if (oversizedFiles.length > 0) {
+        const previewNames = oversizedFiles.slice(0, 2).join(", ")
+        const suffix = oversizedFiles.length > 2 ? ` และอีก ${oversizedFiles.length - 2} ไฟล์` : ""
+        toast.error(`ไฟล์เกินขนาด 5MB: ${previewNames}${suffix}`)
+      }
       // Reset input
       e.target.value = ""
     }
@@ -117,7 +135,7 @@ export function Step3Attachments({ data, onUpload, onRemove }: Step3Props) {
         )}
 
         {/* Existing Attachments (Server) */}
-        {data.attachments && data.attachments.length > 0 && (
+        {showExistingAttachments && data.attachments && data.attachments.length > 0 && (
           <Card className="w-full">
             <CardContent className="p-4 space-y-3">
               <Label className="text-sm text-muted-foreground">ไฟล์เดิมในระบบ ({data.attachments.length})</Label>
