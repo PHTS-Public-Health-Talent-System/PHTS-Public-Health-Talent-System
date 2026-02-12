@@ -382,8 +382,8 @@ export default function HeadHRRequestsPage() {
                 <TableHead>รหัสคำขอ</TableHead>
                 <TableHead>ชื่อ-สกุล</TableHead>
                 <TableHead>ตำแหน่ง</TableHead>
-                <TableHead>หน่วยงาน</TableHead>
-                <TableHead>กลุ่ม/อัตรา</TableHead>
+                <TableHead>กลุ่มงาน</TableHead>
+                <TableHead>กลุ่ม</TableHead>
                 <TableHead className="text-right">จำนวนเงิน</TableHead>
                 <TableHead>SLA</TableHead>
                 <TableHead className="text-right">การดำเนินการ</TableHead>
@@ -398,9 +398,6 @@ export default function HeadHRRequestsPage() {
                   <TableCell className="text-sm text-muted-foreground">{request.department || "-"}</TableCell>
                   <TableCell className="text-sm">
                     <div>{request.groupId || "-"}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {request.rateItem ? `ข้อ ${request.rateItem}` : "-"}
-                    </div>
                   </TableCell>
                   <TableCell className="text-right font-semibold">
                     {request.amount.toLocaleString()} บาท
@@ -498,7 +495,7 @@ export default function HeadHRRequestsPage() {
                     <p className="font-medium">{selectedRequest.position || "-"}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">หน่วยงาน:</span>
+                    <span className="text-muted-foreground">กลุ่มงาน:</span>
                     <p className="font-medium">{selectedRequest.department || "-"}</p>
                   </div>
                   <div>

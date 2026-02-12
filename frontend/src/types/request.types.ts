@@ -58,7 +58,6 @@ export interface PTSRequest {
   work_attributes: WorkAttributes;
   main_duty: string | null;
   request_type: RequestType;
-  target_rate_id: number | null;
   requested_amount: number;
   effective_date: string;
   status: RequestStatus;

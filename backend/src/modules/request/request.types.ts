@@ -107,6 +107,7 @@ export interface PTSRequest {
   // Timestamps
   created_at: Date;
   updated_at: Date;
+  step_started_at?: Date | null;
   submitted_at?: Date | null;
 
   // Verification snapshot status (for officer flow)

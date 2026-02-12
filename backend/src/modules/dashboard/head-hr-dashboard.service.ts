@@ -153,8 +153,8 @@ export const getHeadHrDashboard = async (userId: number) => {
       SELECT COUNT(*) as count
       FROM req_submissions
       WHERE status = 'APPROVED'
-        AND MONTH(COALESCE(submitted_at, updated_at, created_at)) = ?
-        AND YEAR(COALESCE(submitted_at, updated_at, created_at)) = ?
+        AND MONTH(COALESCE(updated_at, created_at)) = ?
+        AND YEAR(COALESCE(updated_at, created_at)) = ?
     `,
     [month, year],
   );

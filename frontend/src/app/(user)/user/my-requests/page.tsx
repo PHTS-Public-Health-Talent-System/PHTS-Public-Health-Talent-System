@@ -142,7 +142,7 @@ export default function MyRequestsPage() {
   const requests = useMemo(() => {
     return (data ?? []).map((request: RequestWithDetails) => ({
       id: String(request.request_id),
-      displayId: toRequestDisplayId(request.request_id, request.created_at),
+      displayId: request.request_no ?? toRequestDisplayId(request.request_id, request.created_at),
       amount: request.requested_amount,
       status: request.status,
       current_step: request.current_step,

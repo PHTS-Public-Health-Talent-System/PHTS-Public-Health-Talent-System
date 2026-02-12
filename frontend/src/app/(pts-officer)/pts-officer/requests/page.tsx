@@ -45,8 +45,16 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
-import { usePendingApprovals, useProcessAction } from "@/features/request/hooks"
+import type { AxiosError } from "axios"
+import {
+  useAvailableOfficers,
+  usePendingApprovals,
+  useProcessAction,
+  useReassignRequest,
+  useRequestDetail,
+} from "@/features/request/hooks"
 import type { RequestWithDetails } from "@/types/request.types"
+import { toRequestDisplayId } from "@/shared/utils/public-id"
 
 type RequestStatus = "pending" | "approved" | "rejected" | "returned"
 
@@ -60,16 +68,19 @@ interface Request {
   rateGroup: string
   rateItem: string
   amount: number
-  submitDate: string
-  licenseExpiry: string
+  hasVerificationSnapshot: boolean
 }
 
-function formatThaiDate(dateStr: string | null | undefined): string {
+function formatThaiDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "-"
-  return new Date(dateStr).toLocaleDateString("th-TH", {
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return "-"
+  return date.toLocaleString("th-TH", {
     day: "numeric",
     month: "short",
     year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   })
 }
 
@@ -83,6 +94,20 @@ function parseSubmissionData(data: RequestWithDetails["submission_data"]) {
     }
   }
   return data as Record<string, unknown>
+}
+
+function pickSubmissionValue(
+  submission: Record<string, unknown> | null,
+  ...keys: string[]
+) {
+  if (!submission) return undefined
+  for (const key of keys) {
+    const value = submission[key]
+    if (value !== undefined && value !== null && value !== "") {
+      return value
+    }
+  }
+  return undefined
 }
 
 function mapStatus(status: string): RequestStatus {
@@ -130,11 +155,20 @@ export default function RequestsPage() {
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null)
   const [actionType, setActionType] = useState<"approve" | "reject" | "return" | null>(null)
   const [comment, setComment] = useState("")
+  const [historyRequest, setHistoryRequest] = useState<Request | null>(null)
+  const [reassignTargetRequest, setReassignTargetRequest] = useState<Request | null>(null)
+  const [selectedOfficerId, setSelectedOfficerId] = useState<number | null>(null)
+  const [reassignRemark, setReassignRemark] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState<RequestStatus | "all">("all")
 
   const { data: requestsData } = usePendingApprovals()
   const processAction = useProcessAction()
+  const { data: availableOfficers = [], isLoading: isLoadingOfficers } = useAvailableOfficers()
+  const reassignMutation = useReassignRequest()
+  const { data: historyRequestDetail, isLoading: isLoadingHistory } = useRequestDetail(
+    historyRequest?.id,
+  )
 
   const requests = useMemo<Request[]>(() => {
     if (!Array.isArray(requestsData)) return []
@@ -146,28 +180,47 @@ export default function RequestsPage() {
           : undefined
       const name =
         requesterName ||
-        (submission?.firstName || submission?.lastName
-          ? `${submission?.firstName ?? ""} ${submission?.lastName ?? ""}`.trim()
+        (pickSubmissionValue(submission, "first_name", "firstName") ||
+        pickSubmissionValue(submission, "last_name", "lastName")
+          ? `${String(pickSubmissionValue(submission, "first_name", "firstName") ?? "")} ${String(
+              pickSubmissionValue(submission, "last_name", "lastName") ?? "",
+            )}`.trim()
           : undefined) ||
         (submission?.fullName as string | undefined) ||
         "ไม่ระบุ"
 
-      const rateMapping = submission?.rateMapping as
-        | { groupId?: string; itemId?: string; subItemId?: string }
+      const rateMapping = (
+        pickSubmissionValue(submission, "rate_mapping", "rateMapping") ?? {}
+      ) as
+        | {
+            groupId?: string
+            itemId?: string
+            subItemId?: string
+            group_no?: number
+            item_no?: string
+            sub_item_no?: string
+          }
         | undefined
 
       return {
         id: req.request_id,
-        requestNo: req.request_no ?? `REQ-${req.request_id}`,
+        requestNo: req.request_no ?? toRequestDisplayId(req.request_id, req.created_at),
         name,
-        position: (submission?.positionName as string | undefined) || req.requester?.position || "-",
-        department: (submission?.department as string | undefined) || "-",
+        position:
+          (pickSubmissionValue(submission, "position_name", "positionName") as string | undefined) ||
+          req.requester?.position ||
+          "-",
+        department:
+          req.current_department ||
+          (pickSubmissionValue(submission, "department") as string | undefined) ||
+          "-",
         status: mapStatus(req.status),
-        rateGroup: rateMapping?.groupId ?? "-",
-        rateItem: rateMapping?.itemId ?? rateMapping?.subItemId ?? "-",
-        amount: req.requested_amount ?? 0,
-        submitDate: formatThaiDate(req.created_at),
-        licenseExpiry: "-",
+        rateGroup: String(rateMapping?.group_no ?? rateMapping?.groupId ?? "-"),
+        rateItem: String(
+          rateMapping?.item_no ?? rateMapping?.itemId ?? rateMapping?.sub_item_no ?? rateMapping?.subItemId ?? "-",
+        ),
+        amount: Number(req.requested_amount ?? 0),
+        hasVerificationSnapshot: Boolean(req.has_verification_snapshot),
       }
     })
   }, [requestsData])
@@ -200,10 +253,50 @@ export default function RequestsPage() {
     setActionType(action)
   }
 
+  const openReassignDialog = (request: Request) => {
+    setReassignTargetRequest(request)
+    setSelectedOfficerId(null)
+    setReassignRemark("")
+  }
+
+  const openHistoryDialog = (request: Request) => {
+    setHistoryRequest(request)
+  }
+
+  const handleReassign = async () => {
+    if (!reassignTargetRequest) return
+    if (!selectedOfficerId) {
+      toast.error("กรุณาเลือกเจ้าหน้าที่ปลายทาง")
+      return
+    }
+    if (!reassignRemark.trim()) {
+      toast.error("กรุณาระบุเหตุผลการโยกงาน")
+      return
+    }
+
+    try {
+      await reassignMutation.mutateAsync({
+        id: reassignTargetRequest.id,
+        payload: {
+          target_officer_id: selectedOfficerId,
+          remark: reassignRemark.trim(),
+        },
+      })
+      toast.success("โยกงานสำเร็จ")
+      setReassignTargetRequest(null)
+      setSelectedOfficerId(null)
+      setReassignRemark("")
+    } catch (error: unknown) {
+      const apiError = error as AxiosError<{ error?: string; message?: string }>
+      const apiMessage = apiError.response?.data?.error || apiError.response?.data?.message
+      toast.error(apiMessage || "ไม่สามารถโยกงานได้")
+    }
+  }
+
   const pendingCount = requests.filter((r) => r.status === "pending").length
-  const approvedCount = requests.filter((r) => r.status === "approved").length
-  const returnedCount = requests.filter((r) => r.status === "returned").length
-  const rejectedCount = requests.filter((r) => r.status === "rejected").length
+  const verifiedCount = requests.filter((r) => r.hasVerificationSnapshot).length
+  const pendingVerificationCount = requests.filter((r) => !r.hasVerificationSnapshot).length
+  const totalAmount = requests.reduce((sum, r) => sum + r.amount, 0)
 
   return (
     <div className="p-8">
@@ -232,8 +325,8 @@ export default function RequestsPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">อนุมัติวันนี้</p>
-                <p className="text-2xl font-bold text-[hsl(var(--success))]">{approvedCount}</p>
+                <p className="text-sm text-muted-foreground">มี Snapshot ตรวจสอบแล้ว</p>
+                <p className="text-2xl font-bold text-[hsl(var(--success))]">{verifiedCount}</p>
               </div>
               <CheckCircle2 className="h-8 w-8 text-[hsl(var(--success))]/50" />
             </div>
@@ -243,8 +336,8 @@ export default function RequestsPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">ส่งกลับแก้ไข</p>
-                <p className="text-2xl font-bold text-[hsl(var(--warning))]">{returnedCount}</p>
+                <p className="text-sm text-muted-foreground">ยังไม่สร้าง Snapshot</p>
+                <p className="text-2xl font-bold text-[hsl(var(--warning))]">{pendingVerificationCount}</p>
               </div>
               <RefreshCw className="h-8 w-8 text-[hsl(var(--warning))]/50" />
             </div>
@@ -254,10 +347,10 @@ export default function RequestsPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">ไม่อนุมัติ</p>
-                <p className="text-2xl font-bold text-destructive">{rejectedCount}</p>
+                <p className="text-sm text-muted-foreground">ยอดเงินรวมที่รอ</p>
+                <p className="text-2xl font-bold text-destructive">{totalAmount.toLocaleString()}</p>
               </div>
-              <XCircle className="h-8 w-8 text-destructive/50" />
+              <FileText className="h-8 w-8 text-destructive/50" />
             </div>
           </CardContent>
         </Card>
@@ -380,15 +473,19 @@ export default function RequestsPage() {
                                 <X className="h-4 w-4" />
                                 ไม่อนุมัติ
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="gap-2">
-                                <UserPlus className="h-4 w-4" />
-                                โยกงาน (Reassign)
+                              <DropdownMenuItem className="gap-2" asChild>
+                                <button type="button" onClick={() => openReassignDialog(request)}>
+                                  <UserPlus className="h-4 w-4" />
+                                  โยกงาน (Reassign)
+                                </button>
                               </DropdownMenuItem>
                             </>
                           )}
-                          <DropdownMenuItem className="gap-2">
-                            <FileText className="h-4 w-4" />
-                            ดูประวัติ
+                          <DropdownMenuItem className="gap-2" asChild>
+                            <button type="button" onClick={() => openHistoryDialog(request)}>
+                              <FileText className="h-4 w-4" />
+                              ดูประวัติ
+                            </button>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -475,6 +572,147 @@ export default function RequestsPage() {
               {actionType === "approve" && "อนุมัติ"}
               {actionType === "reject" && "ไม่อนุมัติ"}
               {actionType === "return" && "ส่งกลับแก้ไข"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!historyRequest}
+        onOpenChange={(open) => {
+          if (!open) setHistoryRequest(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>ประวัติการอนุมัติ</DialogTitle>
+            <DialogDescription>
+              {historyRequest ? (
+                <span>
+                  คำขอ: <span className="font-mono">{historyRequest.requestNo}</span>
+                </span>
+              ) : (
+                "รายละเอียดผู้ดำเนินการในแต่ละขั้นตอน"
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[420px] overflow-y-auto pr-1">
+            {isLoadingHistory ? (
+              <p className="text-sm text-muted-foreground">กำลังโหลดประวัติ...</p>
+            ) : (historyRequestDetail?.actions?.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">ไม่พบประวัติการดำเนินการ</p>
+            ) : (
+              <div className="space-y-2">
+                {(historyRequestDetail?.actions ?? []).map((action, index) => (
+                  <div
+                    key={`${action.action}-${action.step_no}-${index}`}
+                    className="rounded-lg border border-border p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">
+                        {action.action} (Step {action.step_no ?? "-"})
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatThaiDateTime(action.action_date ?? null)}
+                      </p>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      ผู้ดำเนินการ:{" "}
+                      {action.actor
+                        ? `${action.actor.first_name ?? ""} ${action.actor.last_name ?? ""}`.trim() || "-"
+                        : "-"}
+                    </p>
+                    {action.comment && (
+                      <p className="mt-2 rounded bg-secondary/40 px-2 py-1 text-xs text-foreground">
+                        หมายเหตุ: {action.comment}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!reassignTargetRequest}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReassignTargetRequest(null)
+            setSelectedOfficerId(null)
+            setReassignRemark("")
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>โยกงาน (Reassign)</DialogTitle>
+            <DialogDescription>
+              {reassignTargetRequest ? (
+                <span>
+                  คำขอ: <span className="font-mono">{reassignTargetRequest.requestNo}</span>
+                </span>
+              ) : (
+                "เลือกเจ้าหน้าที่ปลายทาง"
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="rounded-md border border-border bg-secondary/20 p-3 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground mb-1">เงื่อนไขการโยกงาน</p>
+              <p>1. คำขอต้องมีสถานะ `PENDING` และอยู่ขั้น `PTS_OFFICER` (step 3)</p>
+              <p>2. ระบบต้องมีเจ้าหน้าที่ `PTS_OFFICER` ที่ active อย่างน้อย 2 คน</p>
+              <p>3. ห้ามโยกงานให้ตัวเอง</p>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-foreground">เลือกเจ้าหน้าที่ปลายทาง</label>
+              <select
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={selectedOfficerId ?? ""}
+                onChange={(e) => setSelectedOfficerId(e.target.value ? Number(e.target.value) : null)}
+                disabled={isLoadingOfficers || reassignMutation.isPending}
+              >
+                <option value="">-- เลือกเจ้าหน้าที่ --</option>
+                {availableOfficers.map((officer) => (
+                  <option key={officer.id} value={officer.id}>
+                    {officer.name} (ภาระงาน: {officer.workload})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-foreground">
+                เหตุผลการโยกงาน <span className="text-destructive">*</span>
+              </label>
+              <Textarea
+                rows={3}
+                className="mt-1"
+                placeholder="ระบุเหตุผล เช่น ภาระงานสูง/มอบหมายใหม่"
+                value={reassignRemark}
+                onChange={(e) => setReassignRemark(e.target.value)}
+                disabled={reassignMutation.isPending}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReassignTargetRequest(null)
+                setSelectedOfficerId(null)
+                setReassignRemark("")
+              }}
+            >
+              ยกเลิก
+            </Button>
+            <Button onClick={handleReassign} disabled={reassignMutation.isPending}>
+              ยืนยันโยกงาน
             </Button>
           </DialogFooter>
         </DialogContent>

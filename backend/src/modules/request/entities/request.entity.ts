@@ -21,7 +21,6 @@ export interface RequestSubmissionEntity {
   main_duty: string | null;
   applicant_signature_id: number | null;
   request_type: string;
-  target_rate_id: number | null;
   requested_amount: number;
   effective_date: Date;
   submission_data: any; // JSON

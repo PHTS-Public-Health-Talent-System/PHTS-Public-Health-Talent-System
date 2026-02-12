@@ -293,6 +293,7 @@ export class RequestApprovalService {
         requestId,
         {
           status: RequestStatus.REJECTED,
+          step_started_at: null,
         },
         connection,
       );
@@ -405,6 +406,7 @@ export class RequestApprovalService {
         requestId,
         {
           status: RequestStatus.RETURNED,
+          step_started_at: null,
         },
         connection,
       );
@@ -608,6 +610,7 @@ export class RequestApprovalService {
         {
           status: RequestStatus.APPROVED,
           current_step: 7,
+          step_started_at: null,
         },
         connection,
       );
@@ -627,6 +630,7 @@ export class RequestApprovalService {
         requestId,
         {
           current_step: nextStep,
+          step_started_at: new Date(),
         },
         connection,
       );

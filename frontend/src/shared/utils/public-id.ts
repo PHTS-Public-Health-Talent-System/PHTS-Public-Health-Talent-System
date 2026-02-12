@@ -18,6 +18,6 @@ export function toRequestDisplayId(
   if (!Number.isFinite(numeric)) return String(id);
   const createdDate = createdAt ? new Date(createdAt) : new Date();
   const beYear = createdDate.getFullYear() + 543;
-  const seq = String(Math.abs(Math.trunc(numeric))).padStart(4, "0");
+  const seq = String(Math.abs(Math.trunc(numeric)));
   return `REQ-${beYear}-${seq}`;
 }

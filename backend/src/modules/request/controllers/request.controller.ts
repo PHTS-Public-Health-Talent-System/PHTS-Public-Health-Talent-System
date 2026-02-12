@@ -52,7 +52,7 @@ export class RequestController {
     let requestId = Number(rawId);
     if (!Number.isNaN(requestId) && Number.isFinite(requestId)) {
       // use numeric id
-    } else if (/^PTS-\d+$/i.test(rawId)) {
+    } else if (/^(PTS-\d+|REQ-\d{4}-\d+)$/i.test(rawId)) {
       const request = await requestRepository.findByRequestNo(rawId);
       if (!request) throw new ValidationError("Request not found");
       requestId = request.request_id;

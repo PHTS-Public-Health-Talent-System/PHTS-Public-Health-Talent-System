@@ -7,9 +7,9 @@ import {
 import { RequestStatus, RequestType, PersonnelType } from '@/modules/request/request.types.js';
 
 describe("request helpers", () => {
-  test("generateRequestNoFromId pads to 6 digits", () => {
-    expect(generateRequestNoFromId(1)).toBe("PTS-000001");
-    expect(generateRequestNoFromId(12345)).toBe("PTS-012345");
+  test("generateRequestNoFromId creates REQ-BE_YEAR-id", () => {
+    expect(generateRequestNoFromId(1, "2026-01-01")).toBe("REQ-2569-1");
+    expect(generateRequestNoFromId(66391, "2026-02-12")).toBe("REQ-2569-66391");
   });
 
   test("normalizeDateToYMD formats date to yyyy-mm-dd", () => {
@@ -27,7 +27,7 @@ describe("request helpers", () => {
       request_id: 10,
       user_id: 5,
       citizen_id: "123",
-      request_no: "PTS-000010",
+      request_no: "REQ-2569-10",
       personnel_type: PersonnelType.CIVIL_SERVANT,
       current_position_number: "A-01",
       current_department: "Dept",

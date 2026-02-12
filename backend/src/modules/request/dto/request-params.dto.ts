@@ -5,7 +5,12 @@ const idParam = z.object({
 });
 
 const idOrNoParam = z.object({
-  id: z.string().regex(/^(\d+|PTS-\d+)$/i, "id ต้องเป็นตัวเลขหรือรูปแบบ PTS-xxxxxx"),
+  id: z
+    .string()
+    .regex(
+      /^(\d+|PTS-\d+|REQ-\d{4}-\d+)$/i,
+      "id ต้องเป็นตัวเลขหรือรูปแบบ REQ-YYYY-xxxxx",
+    ),
 });
 
 export const requestIdParamSchema = z.object({

@@ -50,6 +50,22 @@ export class RequestCommandService {
     return name;
   }
 
+  private inferAttachmentType(fieldName: string, fileName: string): FileType {
+    if (fieldName === 'license_file') return FileType.LICENSE;
+    if (fieldName === 'applicant_signature') return FileType.SIGNATURE;
+
+    const lower = fileName.toLowerCase();
+    const looksLikeLicense =
+      lower.includes('license') ||
+      lower.includes('licence') ||
+      lower.includes('ใบอนุญาต') ||
+      lower.includes('ใบประกอบ') ||
+      lower.includes('ประกอบวิชาชีพ');
+    if (looksLikeLicense) return FileType.LICENSE;
+
+    return FileType.OTHER;
+  }
+
   // --- Helpers (Internal) ---
 
   private buildSubmissionDataJson(data: CreateRequestDTO): string | null {
@@ -74,14 +90,12 @@ export class RequestCommandService {
     for (const file of files) {
       if (!file.path) continue; // Skip files without path (e.g., MemoryStorage signatures)
 
-      let fileType: string = FileType.OTHER;
-      if (file.fieldname === 'license_file') fileType = FileType.LICENSE;
-      if (file.fieldname === 'applicant_signature') fileType = FileType.SIGNATURE;
       const relativePath = path.isAbsolute(file.path)
         ? path.relative(process.cwd(), file.path)
         : file.path;
       const normalizedPath = relativePath.split(path.sep).join('/');
       const normalizedName = this.normalizeFilename(file.originalname);
+      const fileType = this.inferAttachmentType(file.fieldname, normalizedName);
       await requestRepository.insertAttachment(
         {
           request_id: requestId,
@@ -326,6 +340,7 @@ export class RequestCommandService {
         {
           status: RequestStatus.PENDING,
           current_step: nextStep,
+          step_started_at: new Date(),
         },
         connection,
       );
@@ -477,6 +492,7 @@ export class RequestCommandService {
       // Reset status if RETURNED -> DRAFT
       if (isOwner && requestEntity.status === RequestStatus.RETURNED) {
         updateData.status = RequestStatus.DRAFT;
+        updateData.step_started_at = null;
       }
 
       // [REFACTOR] Use Repo Update
@@ -606,6 +622,7 @@ export class RequestCommandService {
         requestId,
         {
           status: RequestStatus.CANCELLED,
+          step_started_at: null,
         },
         connection,
       );

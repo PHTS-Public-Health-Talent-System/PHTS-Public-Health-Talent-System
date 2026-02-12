@@ -150,7 +150,9 @@ export default function HeadHRRequestDetailPage({ params }: { params: Promise<{ 
     '-';
   const department = (submission as { department?: string }).department ?? '-';
   const subDepartment = (submission as { sub_department?: string }).sub_department ?? '-';
-  const displayId = request ? toRequestDisplayId(request.request_id, request.created_at) : id;
+  const displayId = request
+    ? request.request_no ?? toRequestDisplayId(request.request_id, request.created_at)
+    : id;
   const approvalActions = request?.actions ?? [];
   const rateMapping = useMemo(
     () => normalizeRateMapping(request?.submission_data ?? null),
