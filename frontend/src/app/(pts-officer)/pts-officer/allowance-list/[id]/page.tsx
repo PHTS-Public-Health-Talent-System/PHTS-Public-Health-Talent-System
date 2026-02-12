@@ -1,498 +1,414 @@
 "use client"
-export const dynamic = 'force-dynamic'
+export const dynamic = "force-dynamic"
 
-import { use, useMemo } from "react"
+import { use, useMemo, type ReactNode } from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
   ArrowLeft,
   User,
   Award,
-  GraduationCap,
-  Banknote,
   Phone,
   Mail,
-  Download,
-  History,
   AlertTriangle,
-  CheckCircle2,
+  Calendar,
+  FileText,
+  ChevronRight,
+  Briefcase,
+  Building2,
   Clock,
-  Edit,
-  Printer,
+  CreditCard,
+  type LucideIcon,
 } from "lucide-react"
-import { useSearchPayouts } from "@/features/payroll/hooks"
-import type { PayoutSearchRow } from "@/features/payroll/api"
+import { useEligibilityDetail, useEligibilityList, useRequestDetail } from "@/features/request/hooks"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { resolveProfessionLabel } from "../utils"
+import type { RequestWithDetails } from "@/types/request.types"
 
-// TODO: add icons when person detail sections are expanded: Briefcase, Building2, Calendar, FileText
+const InfoItem = ({
+  label,
+  value,
+  icon: Icon,
+  className,
+}: {
+  label: string
+  value: ReactNode
+  icon?: LucideIcon
+  className?: string
+}) => (
+  <div className={`flex flex-col gap-1 ${className ?? ""}`}>
+    <dt className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+      {Icon && <Icon className="w-3.5 h-3.5 opacity-70" />}
+      {label}
+    </dt>
+    <dd className="text-sm font-medium text-foreground break-words">{value}</dd>
+  </div>
+)
 
-interface PersonDetail {
-  id: number
-  prefix: string
-  firstName: string
-  lastName: string
-  citizenId: string
-  position: string
-  positionLevel: string
-  department: string
-  unit: string
-  email: string
-  phone: string
-  licenseNumber: string
-  licenseExpiry: string
-  licenseIssueDate: string
-  licenseStatus: "active" | "expiring" | "expired"
-  education: string
-  specialization?: string
-  workStartDate: string
-  retirementDate: string
-  rateGroup: string
-  rateGroupName: string
-  rateItem: string
-  rateItemName: string
-  baseRate: number
-  currentStatus: "active" | "suspended" | "resigned"
-  note?: string
+const SectionHeader = ({ title, icon: Icon }: { title: string; icon: LucideIcon }) => (
+  <div className="flex items-center gap-2 mb-4">
+    <div className="p-2 rounded-lg bg-primary/10">
+      <Icon className="w-4 h-4 text-primary" />
+    </div>
+    <h3 className="font-semibold text-base text-foreground">{title}</h3>
+  </div>
+)
+
+const PERSONNEL_TYPE_LABELS: Record<string, string> = {
+  CIVIL_SERVANT: "ข้าราชการ",
+  GOV_EMPLOYEE: "พนักงานราชการ",
+  PH_EMPLOYEE: "พนักงานกระทรวงสาธารณสุข",
+  TEMP_EMPLOYEE: "ลูกจ้างชั่วคราว",
 }
 
-interface PaymentHistory {
-  id: string
-  month: string
-  year: string
-  workDays: number
-  leaveDays: number
-  actualRate: number
-  status: "paid" | "pending"
-  paidDate?: string
-  note?: string
+const REQUEST_TYPE_LABELS: Record<string, string> = {
+  NEW_ENTRY: "ขอรับ พ.ต.ส. ครั้งแรก",
+  EDIT_INFO_SAME_RATE: "แก้ไขข้อมูล (อัตราเดิม)",
+  EDIT_INFO_NEW_RATE: "แก้ไขข้อมูล (อัตราใหม่)",
 }
 
-const thaiMonths = [
-  "มกราคม",
-  "กุมภาพันธ์",
-  "มีนาคม",
-  "เมษายน",
-  "พฤษภาคม",
-  "มิถุนายน",
-  "กรกฎาคม",
-  "สิงหาคม",
-  "กันยายน",
-  "ตุลาคม",
-  "พฤศจิกายน",
-  "ธันวาคม",
-]
+const WORK_ATTRIBUTE_LABELS: Record<string, string> = {
+  operation: "ปฏิบัติการ",
+  planning: "วางแผน",
+  coordination: "ประสานงาน",
+  service: "บริการ",
+}
 
-function formatPeriod(row: PayoutSearchRow) {
-  const monthName = thaiMonths[(row.period_month ?? 1) - 1] ?? "-"
-  const yearNum = row.period_year ?? 0
-  const thaiYear = yearNum > 2400 ? yearNum : yearNum + 543
-  return { month: monthName, year: String(thaiYear) }
+function formatThaiDate(value?: string | null): string {
+  if (!value) return "-"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "-"
+  return date.toLocaleDateString("th-TH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })
+}
+
+function formatThaiDateTime(value?: string | null): string {
+  if (!value) return "-"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "-"
+  return date.toLocaleString("th-TH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function resolveLicenseStatus(expiryDate?: string | null): "active" | "expiring" | "expired" {
+  if (!expiryDate) return "active"
+  const expiry = new Date(expiryDate)
+  if (Number.isNaN(expiry.getTime())) return "active"
+  const now = new Date()
+  const diffMs = expiry.getTime() - now.getTime()
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+  if (diffDays < 0) return "expired"
+  if (diffDays <= 90) return "expiring"
+  return "active"
 }
 
 const licenseStatusConfig = {
-  active: { label: "ใช้งานได้", color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
-  expiring: { label: "ใกล้หมดอายุ", color: "bg-amber-500/20 text-amber-400 border-amber-500/30" },
-  expired: { label: "หมดอายุ", color: "bg-red-500/20 text-red-400 border-red-500/30" },
+  active: {
+    label: "สิทธิยังใช้งานได้",
+    color: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
+  expiring: {
+    label: "สิทธิใกล้หมดอายุ",
+    color: "bg-amber-50 text-amber-700 border-amber-200",
+  },
+  expired: {
+    label: "สิทธิหมดอายุแล้ว",
+    color: "bg-red-50 text-red-700 border-red-200",
+  },
 }
 
-const currentStatusConfig = {
-  active: { label: "ปฏิบัติงาน", color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
-  suspended: { label: "ระงับชั่วคราว", color: "bg-amber-500/20 text-amber-400 border-amber-500/30" },
-  resigned: { label: "ลาออก", color: "bg-red-500/20 text-red-400 border-red-500/30" },
+function parseSubmission(value: RequestWithDetails["submission_data"]) {
+  if (!value) return {}
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return {}
+    }
+  }
+  return value
 }
 
-export default function PersonDetailPage({ params }: { params: Promise<{ id: string }> }) {
+function getSubmissionString(submission: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = submission[key]
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  return undefined
+}
+
+export default function AllowanceEligibilityDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
   const { id } = use(params)
-  const { data: payoutsData } = useSearchPayouts({ q: id })
-  const payouts = useMemo(() => (Array.isArray(payoutsData) ? payoutsData : []), [payoutsData])
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const profession = searchParams.get("profession")
+  const normalizedProfession = profession ? profession.toUpperCase() : null
+  const backHref = normalizedProfession
+    ? `/pts-officer/allowance-list/profession/${normalizedProfession}`
+    : "/pts-officer/allowance-list"
 
-  const person = useMemo<PersonDetail>(() => {
-    const first = payouts[0]
-    if (!first) {
-      return {
-        id: Number(id),
-        prefix: "",
-        firstName: "-",
-        lastName: "",
-        citizenId: id,
-        position: "-",
-        positionLevel: "-",
-        department: "-",
-        unit: "-",
-        email: "-",
-        phone: "-",
-        licenseNumber: "-",
-        licenseExpiry: "-",
-        licenseIssueDate: "-",
-        licenseStatus: "active",
-        education: "-",
-        workStartDate: "-",
-        retirementDate: "-",
-        rateGroup: "-",
-        rateGroupName: "-",
-        rateItem: "-",
-        rateItemName: "-",
-        baseRate: 0,
-        currentStatus: "active",
-      }
-    }
-    return {
-      id: first.payout_id,
-      prefix: "",
-      firstName: first.first_name ?? "-",
-      lastName: first.last_name ?? "",
-      citizenId: first.citizen_id,
-      position: first.position_name ?? "-",
-      positionLevel: "-",
-      department: "-",
-      unit: "-",
-      email: "-",
-      phone: "-",
-      licenseNumber: "-",
-      licenseExpiry: "-",
-      licenseIssueDate: "-",
-      licenseStatus: "active",
-      education: "-",
-      workStartDate: "-",
-      retirementDate: "-",
-      rateGroup: "-",
-      rateGroupName: "-",
-      rateItem: "-",
-      rateItemName: "-",
-      baseRate: first.pts_rate_snapshot ?? 0,
-      currentStatus: "active",
-    }
-  }, [id, payouts])
-  const licenseStatus = licenseStatusConfig[person.licenseStatus]
-  const currentStatus = currentStatusConfig[person.currentStatus]
+  const { data: eligibilityList } = useEligibilityList(true)
+  const { data, isLoading } = useEligibilityDetail(id)
+  const { data: sourceRequest } = useRequestDetail(data?.request_id ?? undefined)
 
-  const paymentHistory: PaymentHistory[] = payouts.map((row) => {
-    const period = formatPeriod(row)
-    return {
-      id: String(row.period_id),
-      month: period.month,
-      year: period.year,
-      workDays: 0,
-      leaveDays: 0,
-      actualRate: row.total_payable ?? 0,
-      status: "paid",
-      note: row.retroactive_amount ? `ปรับย้อนหลัง ${row.retroactive_amount}` : undefined,
-    }
-  })
+  const personOptions = useMemo(() => {
+    const rows = Array.isArray(eligibilityList) ? eligibilityList : []
+    return [...rows]
+      .sort((a, b) => (b.eligibility_id ?? 0) - (a.eligibility_id ?? 0))
+      .map((row) => {
+        const fullName = `${row.title ?? ""}${row.first_name ?? "-"} ${row.last_name ?? ""}`.trim()
+        const professionLabel = resolveProfessionLabel(row.profession_code ?? "-")
+        return {
+          id: String(row.eligibility_id),
+          label: `${fullName} (${professionLabel})`,
+        }
+      })
+  }, [eligibilityList])
 
-  const totalPaid = paymentHistory
-    .filter((p) => p.status === "paid")
-    .reduce((sum, p) => sum + p.actualRate, 0)
+  const submission = useMemo(
+    () => parseSubmission(sourceRequest?.submission_data) as Record<string, unknown>,
+    [sourceRequest?.submission_data],
+  )
+
+  const submissionPositionName = getSubmissionString(submission, ["position_name", "positionName"])
+  const submissionDepartment = getSubmissionString(submission, ["department"])
+  const submissionSubDepartment = getSubmissionString(submission, ["sub_department", "subDepartment"])
+
+  const fullName = `${data?.title ?? ""}${data?.first_name ?? "-"} ${data?.last_name ?? ""}`.trim()
+  const professionLabel = resolveProfessionLabel(data?.profession_code ?? "-")
+  const groupNo = data?.group_no !== null && data?.group_no !== undefined ? String(data.group_no) : "-"
+  const itemNo = data?.item_no !== null && data?.item_no !== undefined ? String(data.item_no) : "-"
+  const subItemNo =
+    data?.sub_item_no !== null && data?.sub_item_no !== undefined ? String(data.sub_item_no) : null
+  const itemLabel = subItemNo ? `${itemNo}.${subItemNo}` : itemNo
+  const rateAmount = Number(data?.rate_amount ?? 0)
+  const licenseStatusKey = resolveLicenseStatus(data?.expiry_date ?? null)
+  const licenseStatus = licenseStatusConfig[licenseStatusKey]
+
+  const requestTypeLabel = sourceRequest?.request_type
+    ? (REQUEST_TYPE_LABELS[sourceRequest.request_type] ?? sourceRequest.request_type)
+    : "-"
+  const personnelTypeLabel = sourceRequest?.personnel_type
+    ? (PERSONNEL_TYPE_LABELS[sourceRequest.personnel_type] ?? sourceRequest.personnel_type)
+    : "-"
+  const workAttributes = sourceRequest?.work_attributes
+    ? Object.entries(sourceRequest.work_attributes)
+        .filter(([, enabled]) => Boolean(enabled))
+        .map(([key]) => WORK_ATTRIBUTE_LABELS[key] ?? key)
+    : []
+
+  if (isLoading) {
+    return (
+      <div className="container max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        <div className="mb-8 space-y-4">
+          <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+          <div className="h-8 w-64 bg-muted animate-pulse rounded" />
+        </div>
+      </div>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="container max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col items-center justify-center min-h-[50vh]">
+        <h2 className="text-xl font-semibold text-foreground">ไม่พบข้อมูลสิทธิ</h2>
+        <p className="text-muted-foreground mb-6">รายการนี้อาจไม่มีอยู่ในระบบ</p>
+        <Link href={backHref}>
+          <Button variant="outline">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            กลับ
+          </Button>
+        </Link>
+      </div>
+    )
+  }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/pts-officer/allowance-list">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
+    <div className="container max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+      <div className="w-full md:w-[520px]">
+        <Select
+          value={id}
+          onValueChange={(value) => {
+            if (value !== id) {
+              const nextUrl = normalizedProfession
+                ? `/pts-officer/allowance-list/${value}?profession=${normalizedProfession}`
+                : `/pts-officer/allowance-list/${value}`
+              router.push(nextUrl)
+            }
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="เลือกผู้มีสิทธิที่ต้องการดูรายละเอียด" />
+          </SelectTrigger>
+          <SelectContent>
+            {personOptions.map((person) => (
+              <SelectItem key={person.id} value={person.id}>
+                {person.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <nav className="flex items-center text-sm text-muted-foreground mb-4">
+          <Link href={backHref} className="hover:text-foreground transition-colors flex items-center gap-1">
+            <ArrowLeft className="h-3.5 w-3.5" />
+            รายชื่อผู้มีสิทธิ
           </Link>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold text-foreground">
-                {person.prefix}{person.firstName} {person.lastName}
-              </h1>
-              <Badge variant="outline" className={currentStatus.color}>
-                {currentStatus.label}
-              </Badge>
+          <ChevronRight className="h-4 w-4 mx-1 opacity-50" />
+          <span className="text-foreground font-medium">รายละเอียดสิทธิ</span>
+        </nav>
+
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">{fullName}</h1>
+              <Badge variant="outline" className={licenseStatus.color}>{licenseStatus.label}</Badge>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">{person.position}</p>
+            <p className="text-muted-foreground text-sm">
+              Eligibility ID: {data.eligibility_id} {data.request_no ? `| คำขอ ${data.request_no}` : ""}
+            </p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <Printer className="mr-2 h-4 w-4" />
-            พิมพ์
-          </Button>
-          <Button variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            ส่งออก
-          </Button>
-          <Button size="sm" className="bg-primary hover:bg-primary/90">
-            <Edit className="mr-2 h-4 w-4" />
-            แก้ไขข้อมูล
-          </Button>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Personal Info */}
-          <Card className="border-border bg-card">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <User className="h-5 w-5 text-primary" />
-                ข้อมูลส่วนตัว
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <p className="text-sm text-muted-foreground">ชื่อ-นามสกุล</p>
-                  <p className="font-medium">{person.prefix}{person.firstName} {person.lastName}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">เลขประจำตัวประชาชน</p>
-                  <p className="font-medium">{person.citizenId}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">ตำแหน่ง</p>
-                  <p className="font-medium">{person.position}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">ระดับ</p>
-                  <p className="font-medium">{person.positionLevel}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">สังกัด</p>
-                  <p className="font-medium">{person.department}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">หน่วยงาน</p>
-                  <p className="font-medium">{person.unit}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">อีเมล</p>
-                  <p className="font-medium flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    {person.email}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">โทรศัพท์</p>
-                  <p className="font-medium flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    {person.phone}
-                  </p>
-                </div>
-              </div>
+      <div className="grid gap-8 lg:grid-cols-12 items-start">
+        <div className="space-y-8 lg:col-span-8">
+          <Card className="shadow-sm border-border/60">
+            <CardContent className="p-6">
+              <SectionHeader title="ข้อมูลผู้มีสิทธิ" icon={User} />
+              <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-6 gap-x-4">
+                <InfoItem label="ชื่อ-นามสกุล" value={fullName} icon={User} className="sm:col-span-2" />
+                <InfoItem label="เลขบัตรประชาชน" value={data.citizen_id} />
+
+                <div className="col-span-full border-t border-border/50 my-2" />
+
+                <InfoItem label="ตำแหน่ง" value={submissionPositionName ?? data.position_name ?? "-"} icon={Briefcase} className="sm:col-span-2" />
+                <InfoItem label="เลขที่ตำแหน่ง" value={data.position_number ?? "-"} />
+
+                <InfoItem label="หน่วยงาน" value={submissionSubDepartment ?? data.sub_department ?? "-"} icon={Building2} />
+                <InfoItem label="กลุ่มงาน" value={submissionDepartment ?? data.department ?? "-"} />
+
+                <InfoItem label="อีเมล" value={data.email ?? "-"} icon={Mail} />
+                <InfoItem label="โทรศัพท์" value={data.phone ?? "-"} icon={Phone} />
+              </dl>
             </CardContent>
           </Card>
 
-          {/* License Info */}
-          <Card className="border-border bg-card">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Award className="h-5 w-5 text-primary" />
-                  ข้อมูลใบอนุญาตประกอบวิชาชีพ
-                </CardTitle>
-                <Badge variant="outline" className={licenseStatus.color}>
-                  {licenseStatus.label}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <p className="text-sm text-muted-foreground">เลขที่ใบอนุญาต</p>
-                  <p className="font-medium">{person.licenseNumber}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">วันที่ออกใบอนุญาต</p>
-                  <p className="font-medium">{person.licenseIssueDate}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">วันหมดอายุ</p>
-                  <p className="font-medium">{person.licenseExpiry}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">วันเกษียณอายุ</p>
-                  <p className="font-medium">{person.retirementDate}</p>
-                </div>
-              </div>
+          <Card className="shadow-sm border-border/60">
+            <CardContent className="p-6">
+              <SectionHeader title="รายละเอียดสิทธิ" icon={Award} />
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4">
+                <InfoItem label="วิชาชีพ" value={professionLabel} />
+                <InfoItem label="อัตรา" value={`กลุ่ม ${groupNo} | ข้อ ${itemLabel}`} />
+                <InfoItem label="วันที่เริ่มสิทธิ" value={formatThaiDate(data.effective_date)} icon={Calendar} />
+                <InfoItem label="วันหมดอายุสิทธิ" value={formatThaiDate(data.expiry_date ?? null)} icon={Calendar} />
+              </dl>
             </CardContent>
           </Card>
 
-          {/* Education Info */}
-          <Card className="border-border bg-card">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <GraduationCap className="h-5 w-5 text-primary" />
-                ข้อมูลการศึกษา/ความเชี่ยวชาญ
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <p className="text-sm text-muted-foreground">วุฒิการศึกษา</p>
-                  <p className="font-medium">{person.education}</p>
-                </div>
-                {person.specialization && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">ความเชี่ยวชาญเฉพาะทาง</p>
-                    <p className="font-medium">{person.specialization}</p>
-                  </div>
-                )}
-                <div>
-                  <p className="text-sm text-muted-foreground">วันเริ่มปฏิบัติงาน</p>
-                  <p className="font-medium">{person.workStartDate}</p>
-                </div>
-                {person.note && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">หมายเหตุ</p>
-                    <p className="font-medium text-primary">{person.note}</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Payment History */}
-          <Card className="border-border bg-card">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <History className="h-5 w-5 text-primary" />
-                  ประวัติการรับเงิน พ.ต.ส.
-                </CardTitle>
-                <Button variant="outline" size="sm">
-                  <Download className="mr-2 h-4 w-4" />
-                  ส่งออก
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-lg border border-border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-secondary/50 hover:bg-secondary/50">
-                      <TableHead className="text-muted-foreground">เดือน</TableHead>
-                      <TableHead className="text-muted-foreground text-center">วันทำงาน</TableHead>
-                      <TableHead className="text-muted-foreground text-center">วันลา</TableHead>
-                      <TableHead className="text-muted-foreground text-right">จำนวนเงิน</TableHead>
-                      <TableHead className="text-muted-foreground text-center">สถานะ</TableHead>
-                      <TableHead className="text-muted-foreground">หมายเหตุ</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paymentHistory.map((payment) => (
-                      <TableRow key={payment.id} className="hover:bg-secondary/30">
-                        <TableCell className="font-medium">{payment.month} {payment.year}</TableCell>
-                        <TableCell className="text-center">{payment.workDays}</TableCell>
-                        <TableCell className="text-center">
-                          {payment.leaveDays > 0 ? (
-                            <span className="text-amber-400">{payment.leaveDays}</span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-medium text-emerald-400">
-                          {payment.actualRate.toLocaleString()} บาท
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {payment.status === "paid" ? (
-                            <Badge variant="outline" className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
-                              <CheckCircle2 className="mr-1 h-3 w-3" />
-                              จ่ายแล้ว
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-amber-500/20 text-amber-400 border-amber-500/30">
-                              <Clock className="mr-1 h-3 w-3" />
-                              รอจ่าย
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {payment.note || "-"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+          <Card className="shadow-sm border-border/60">
+            <CardContent className="p-6">
+              <SectionHeader title="ข้อมูลจากคำขอต้นทาง" icon={CreditCard} />
+              {sourceRequest ? (
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4">
+                  <InfoItem label="เลขที่คำขอ" value={sourceRequest.request_no ?? sourceRequest.request_id} />
+                  <InfoItem label="สถานะคำขอ" value={sourceRequest.status} />
+                  <InfoItem label="ประเภทคำขอ" value={requestTypeLabel} />
+                  <InfoItem label="ประเภทบุคลากร" value={personnelTypeLabel} />
+                  <InfoItem label="หน้าที่หลัก" value={sourceRequest.main_duty || "-"} className="sm:col-span-2" />
+                  <InfoItem label="ลักษณะงาน" value={workAttributes.length > 0 ? workAttributes.join(", ") : "-"} className="sm:col-span-2" />
+                  <InfoItem label="อัปเดตล่าสุด" value={formatThaiDateTime(sourceRequest.updated_at)} icon={Clock} />
+                  <InfoItem label="เริ่มขั้นตอนปัจจุบัน" value={formatThaiDateTime(sourceRequest.step_started_at)} icon={Clock} />
+                </dl>
+              ) : (
+                <p className="text-sm text-muted-foreground">ไม่มีข้อมูลคำขอต้นทางหรือไม่สามารถเข้าถึงได้</p>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Rate Info Card */}
-          <Card className="border-border bg-card">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Banknote className="h-5 w-5 text-primary" />
-                อัตราเงิน พ.ต.ส.
+        <div className="space-y-6 lg:col-span-4 sticky top-6">
+          <Card className="shadow-sm border-primary/20 bg-primary/5 overflow-hidden">
+            <CardContent className="p-6">
+              <p className="text-sm font-medium text-primary/80 mb-1">อัตราเงินเพิ่มตามสิทธิ</p>
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl font-bold text-primary">{rateAmount.toLocaleString()}</span>
+                <span className="text-sm text-primary/80">บาท/เดือน</span>
+              </div>
+              <Separator className="my-4 bg-primary/10" />
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">วิชาชีพ</span>
+                  <span className="font-medium">{professionLabel}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">กลุ่ม/ข้อ</span>
+                  <span className="font-medium">{groupNo}/{itemLabel}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm border-border/60">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="w-4 h-4 text-muted-foreground" />
+                ข้อมูลอ้างอิง
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-4 rounded-lg bg-secondary/50 border border-border">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-muted-foreground">กลุ่มที่ {person.rateGroup}</span>
-                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-                    ข้อ {person.rateItem}
-                  </Badge>
-                </div>
-                <p className="font-medium text-sm mb-2">{person.rateGroupName}</p>
-                <p className="text-xs text-muted-foreground">{person.rateItemName}</p>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Eligibility ID</span>
+                <span className="font-medium">{data.eligibility_id}</span>
               </div>
-              <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                <p className="text-sm text-muted-foreground mb-1">อัตราเงินเพิ่ม</p>
-                <p className="text-3xl font-bold text-emerald-400">{person.baseRate.toLocaleString()}</p>
-                <p className="text-sm text-muted-foreground">บาท/เดือน</p>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Master Rate ID</span>
+                <span className="font-medium">{data.master_rate_id}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Request ID</span>
+                <span className="font-medium">{data.request_id ?? "-"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">สร้างสิทธิเมื่อ</span>
+                <span className="font-medium">{formatThaiDateTime(data.created_at ?? null)}</span>
               </div>
             </CardContent>
           </Card>
 
-          {/* Summary Card */}
-          <Card className="border-border bg-card">
-            <CardHeader>
-              <CardTitle className="text-lg">สรุปการรับเงิน</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">ปี 2568</span>
-                <span className="font-semibold">{paymentHistory.length} เดือน</span>
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">จ่ายแล้ว</span>
-                <span className="font-semibold text-emerald-400">
-                  {paymentHistory.filter((p) => p.status === "paid").length} เดือน
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">รอจ่าย</span>
-                <span className="font-semibold text-amber-400">
-                  {paymentHistory.filter((p) => p.status === "pending").length} เดือน
-                </span>
-              </div>
-              <Separator />
-              <div className="p-3 rounded-lg bg-primary/10">
-                <p className="text-sm text-muted-foreground mb-1">ยอดรวมที่จ่ายแล้ว</p>
-                <p className="text-2xl font-bold text-primary">{totalPaid.toLocaleString()} บาท</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Alert Card */}
-          {person.licenseStatus === "expiring" && (
-            <Card className="border-amber-500/30 bg-amber-500/10">
+          {licenseStatusKey === "expiring" && (
+            <Card className="border-amber-200 bg-amber-50">
               <CardContent className="pt-6">
                 <div className="flex gap-3">
-                  <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0" />
+                  <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
                   <div>
-                    <p className="font-medium text-amber-400">ใบอนุญาตใกล้หมดอายุ</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      ใบอนุญาตจะหมดอายุในวันที่ {person.licenseExpiry} กรุณาติดต่อเพื่อต่ออายุ
+                    <p className="font-medium text-amber-700">สิทธิใกล้หมดอายุ</p>
+                    <p className="text-sm text-amber-700/80 mt-1">
+                      สิทธินี้จะหมดอายุในวันที่ {formatThaiDate(data.expiry_date ?? null)}
                     </p>
                   </div>
                 </div>
