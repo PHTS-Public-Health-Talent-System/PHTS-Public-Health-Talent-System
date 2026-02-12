@@ -83,6 +83,8 @@ export class AuthRepository {
         position_name AS position,
         department,
         position_number,
+        email,
+        phone,
         emp_type AS employee_type,
         mission_group,
         start_work_date AS start_current_position
@@ -104,6 +106,8 @@ export class AuthRepository {
         position_name AS position,
         department,
         NULL AS position_number,
+        NULL AS email,
+        NULL AS phone,
         emp_type AS employee_type,
         NULL AS mission_group,
         NULL AS start_current_position
@@ -158,6 +162,22 @@ export class AuthRepository {
       "UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?",
       [passwordHash, userId],
     );
+  }
+
+  static async updateEmployeeProfileByCitizenId(
+    citizenId: string,
+    payload: { first_name: string; last_name: string; email: string | null; phone: string | null },
+    conn?: PoolConnection,
+  ): Promise<boolean> {
+    const executor = conn ?? db;
+    const [result] = await executor.execute(
+      `UPDATE emp_profiles
+       SET first_name = ?, last_name = ?, email = ?, phone = ?, updated_at = NOW()
+       WHERE citizen_id = ?`,
+      [payload.first_name, payload.last_name, payload.email, payload.phone, citizenId],
+    );
+    const affectedRows = Number((result as { affectedRows?: number }).affectedRows ?? 0);
+    return affectedRows > 0;
   }
 
   // ── Connection helper ───────────────────────────────────────────────────────

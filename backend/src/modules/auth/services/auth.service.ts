@@ -163,6 +163,8 @@ export class AuthService {
       position: employeeProfile?.position ?? null,
       position_number: employeeProfile?.position_number ?? null,
       department: employeeProfile?.department ?? null,
+      email: employeeProfile?.email ?? null,
+      phone: employeeProfile?.phone ?? null,
       employee_type: employeeProfile?.employee_type ?? null,
       mission_group: employeeProfile?.mission_group ?? null,
       start_current_position: employeeProfile?.start_current_position ?? null,
@@ -172,6 +174,46 @@ export class AuthService {
       license_valid_until: licenseProfile?.valid_until ?? null,
       license_status,
     };
+  }
+
+  static async updateUserProfile(
+    userId: number,
+    payload: { first_name: string; last_name: string; email?: string; phone?: string },
+    requestInfo?: { ipAddress: string; userAgent: string },
+  ): Promise<UserProfile> {
+    const user = await AuthRepository.findById(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const updated = await AuthRepository.updateEmployeeProfileByCitizenId(
+      user.citizen_id,
+      {
+        first_name: payload.first_name.trim(),
+        last_name: payload.last_name.trim(),
+        email: payload.email?.trim() || null,
+        phone: payload.phone?.trim() || null,
+      },
+    );
+
+    if (!updated) {
+      throw new Error("Employee profile not found");
+    }
+
+    await emitAuditEvent({
+      eventType: AuditEventType.USER_UPDATE,
+      entityType: "user",
+      entityId: user.user_id,
+      actorId: user.user_id,
+      actorRole: user.role,
+      actionDetail: {
+        updated_fields: ["first_name", "last_name", "email", "phone"],
+      },
+      ipAddress: requestInfo?.ipAddress,
+      userAgent: requestInfo?.userAgent,
+    });
+
+    return AuthService.getUserProfile(userId);
   }
 
   /**

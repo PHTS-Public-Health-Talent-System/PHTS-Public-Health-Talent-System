@@ -70,6 +70,8 @@ export interface UserProfile {
   position?: string | null;
   position_number?: string | null;
   department?: string | null;
+  email?: string | null;
+  phone?: string | null;
   employee_type?: string | null;
   mission_group?: string | null;
   start_current_position?: Date | null;
