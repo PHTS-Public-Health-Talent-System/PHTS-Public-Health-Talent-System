@@ -1,12 +1,24 @@
 import { z } from "zod";
 
+const jsonPreprocess = (value: unknown) => {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+};
+
 export const createSupportTicketSchema = z.object({
   body: z.object({
     subject: z.string().min(3).max(200),
     description: z.string().min(10).max(4000),
     page_url: z.string().max(500).optional().nullable(),
     user_agent: z.string().max(500).optional().nullable(),
-    metadata: z.record(z.string(), z.unknown()).optional().nullable(),
+    metadata: z.preprocess(
+      jsonPreprocess,
+      z.record(z.string(), z.unknown()).optional().nullable(),
+    ),
   }),
 });
 

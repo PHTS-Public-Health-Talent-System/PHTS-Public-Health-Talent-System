@@ -24,6 +24,16 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   HelpCircle,
   Plus,
   MessageCircle,
@@ -31,15 +41,22 @@ import {
   CheckCircle2,
   Send,
   RotateCcw,
+  Paperclip,
+  X,
+  Trash2,
+  CheckCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  useCloseSupportTicket,
   useCreateSupportTicket,
   useCreateSupportTicketMessage,
+  useDeleteSupportTicket,
   useMySupportTickets,
   useReopenSupportTicket,
   useSupportTicketMessages,
 } from '@/features/support/hooks';
+import { buildAttachmentUrl } from '@/app/(user)/user/request-detail-attachments';
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -119,10 +136,15 @@ export function SupportPage() {
   const createTicket = useCreateSupportTicket();
   const createMessage = useCreateSupportTicketMessage();
   const reopenTicket = useReopenSupportTicket();
+  const closeTicket = useCloseSupportTicket();
+  const deleteTicket = useDeleteSupportTicket();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [newTicket, setNewTicket] = useState({ subject: '', category: '', message: '' });
+  const [newTicketFiles, setNewTicketFiles] = useState<File[]>([]);
   const [replyMessage, setReplyMessage] = useState('');
+  const [replyFiles, setReplyFiles] = useState<File[]>([]);
   const messageTooShort = newTicket.message.trim().length > 0 && newTicket.message.trim().length < 10;
 
   const tickets = useMemo(
@@ -159,6 +181,7 @@ export function SupportPage() {
         sender: msg.sender_role === 'USER' ? 'user' : 'support',
         message: msg.message,
         timestamp: msg.created_at,
+        attachments: msg.attachments ?? [],
       })),
     [ticketMessages],
   );
@@ -168,21 +191,22 @@ export function SupportPage() {
       toast.error('กรุณากรอกรายละเอียดอย่างน้อย 10 ตัวอักษร');
       return;
     }
+    const formData = new FormData();
+    formData.append('subject', newTicket.subject.trim());
+    formData.append('description', newTicket.message.trim());
+    formData.append('page_url', window.location.href);
+    formData.append('user_agent', window.navigator.userAgent);
+    formData.append('metadata', JSON.stringify({ category: newTicket.category }));
+    newTicketFiles.forEach((file) => formData.append('attachments', file));
+
     createTicket.mutate(
-      {
-        subject: newTicket.subject,
-        description: newTicket.message,
-        page_url: window.location.href,
-        user_agent: window.navigator.userAgent,
-        metadata: {
-          category: newTicket.category,
-        },
-      },
+      formData,
       {
         onSuccess: () => {
           toast.success('สร้าง Ticket เรียบร้อย');
           setIsDialogOpen(false);
           setNewTicket({ subject: '', category: '', message: '' });
+          setNewTicketFiles([]);
         },
         onError: (error: unknown) => {
           const message = error instanceof Error ? error.message : 'เกิดข้อผิดพลาด';
@@ -194,11 +218,15 @@ export function SupportPage() {
 
   const handleSendMessage = () => {
     if (!selectedTicketId || !replyMessage.trim()) return;
+    const formData = new FormData();
+    formData.append('message', replyMessage.trim());
+    replyFiles.forEach((file) => formData.append('attachments', file));
     createMessage.mutate(
-      { ticketId: selectedTicketId, payload: { message: replyMessage.trim() } },
+      { ticketId: selectedTicketId, payload: formData },
       {
         onSuccess: () => {
           setReplyMessage('');
+          setReplyFiles([]);
         },
         onError: (error: unknown) => {
           const message = error instanceof Error ? error.message : 'เกิดข้อผิดพลาด';
@@ -213,6 +241,34 @@ export function SupportPage() {
     reopenTicket.mutate(selectedTicketId, {
       onSuccess: () => {
         toast.success('เปิด Ticket อีกครั้งแล้ว');
+      },
+      onError: (error: unknown) => {
+        const message = error instanceof Error ? error.message : 'เกิดข้อผิดพลาด';
+        toast.error(message);
+      },
+    });
+  };
+
+  const handleCloseTicket = () => {
+    if (!selectedTicketId) return;
+    closeTicket.mutate(selectedTicketId, {
+      onSuccess: () => toast.success('ปิด Ticket เรียบร้อย'),
+      onError: (error: unknown) => {
+        const message = error instanceof Error ? error.message : 'เกิดข้อผิดพลาด';
+        toast.error(message);
+      },
+    });
+  };
+
+  const handleDeleteTicket = () => {
+    if (!selectedTicketId) return;
+    deleteTicket.mutate(selectedTicketId, {
+      onSuccess: () => {
+        toast.success('ลบ Ticket เรียบร้อย');
+        setSelectedTicketId(null);
+        setReplyMessage('');
+        setReplyFiles([]);
+        setIsDeleteDialogOpen(false);
       },
       onError: (error: unknown) => {
         const message = error instanceof Error ? error.message : 'เกิดข้อผิดพลาด';
@@ -284,6 +340,37 @@ export function SupportPage() {
                   </p>
                 )}
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="ticket-attachments">แนบไฟล์ / รูปภาพ</Label>
+                <Input
+                  id="ticket-attachments"
+                  type="file"
+                  multiple
+                  accept=".pdf,.png,.jpg,.jpeg"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    setNewTicketFiles(files);
+                  }}
+                />
+                {newTicketFiles.length > 0 && (
+                  <div className="space-y-1 rounded-md border border-border p-2 text-xs text-muted-foreground">
+                    {newTicketFiles.map((file, index) => (
+                      <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-2">
+                        <span className="truncate">{file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setNewTicketFiles((prev) => prev.filter((_, i) => i !== index))
+                          }
+                          className="text-destructive"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
@@ -292,6 +379,7 @@ export function SupportPage() {
               <Button
                 onClick={handleCreateTicket}
                 disabled={
+                  createTicket.isPending ||
                   !newTicket.subject.trim() ||
                   !newTicket.category.trim() ||
                   newTicket.message.trim().length < 10
@@ -400,9 +488,31 @@ export function SupportPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <Badge variant="outline">{selectedTicket.category}</Badge>
-                  <Badge variant="outline" className={getStatusColor(selectedTicket.status)}>
-                    {selectedTicket.statusLabel}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className={getStatusColor(selectedTicket.status)}>
+                      {selectedTicket.statusLabel}
+                    </Badge>
+                    {selectedTicket.status !== 'closed' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCloseTicket}
+                        disabled={closeTicket.isPending}
+                      >
+                        <CheckCheck className="mr-1.5 h-4 w-4" />
+                        ปิด Ticket
+                      </Button>
+                    )}
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setIsDeleteDialogOpen(true)}
+                      disabled={deleteTicket.isPending}
+                    >
+                      <Trash2 className="mr-1.5 h-4 w-4" />
+                      ลบ
+                    </Button>
+                  </div>
                 </div>
                 <div>
                   <h4 className="font-medium text-foreground">{selectedTicket.subject}</h4>
@@ -415,6 +525,22 @@ export function SupportPage() {
                       className={`rounded-lg p-3 ${msg.sender === 'user' ? 'bg-primary/10 ml-4' : 'bg-muted mr-4'}`}
                     >
                       <p className="text-sm text-foreground">{msg.message}</p>
+                      {msg.attachments.length > 0 && (
+                        <div className="mt-2 space-y-1 rounded border border-border/60 bg-background/60 p-2">
+                          {msg.attachments.map((att) => (
+                            <a
+                              key={att.attachment_id}
+                              href={buildAttachmentUrl(att.file_path)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              <Paperclip className="h-3.5 w-3.5" />
+                              {att.file_name}
+                            </a>
+                          ))}
+                        </div>
+                      )}
                       <p className="mt-2 text-xs text-muted-foreground">
                         {msg.sender === 'user' ? 'คุณ' : 'เจ้าหน้าที่'} -{' '}
                         {new Date(msg.timestamp).toLocaleString('th-TH')}
@@ -441,6 +567,33 @@ export function SupportPage() {
                       value={replyMessage}
                       onChange={(e) => setReplyMessage(e.target.value)}
                     />
+                    <Input
+                      type="file"
+                      multiple
+                      accept=".pdf,.png,.jpg,.jpeg"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files ?? []);
+                        setReplyFiles(files);
+                      }}
+                    />
+                    {replyFiles.length > 0 && (
+                      <div className="space-y-1 rounded-md border border-border p-2 text-xs text-muted-foreground">
+                        {replyFiles.map((file, index) => (
+                          <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-2">
+                            <span className="truncate">{file.name}</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setReplyFiles((prev) => prev.filter((_, i) => i !== index))
+                              }
+                              className="text-destructive"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <Button
                       className="w-full"
                       onClick={handleSendMessage}
@@ -461,6 +614,26 @@ export function SupportPage() {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบ Ticket</AlertDialogTitle>
+            <AlertDialogDescription>
+              การลบจะนำ Ticket, ข้อความ และไฟล์แนบออกทั้งหมด และไม่สามารถกู้คืนได้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDeleteTicket}
+            >
+              ยืนยันลบ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

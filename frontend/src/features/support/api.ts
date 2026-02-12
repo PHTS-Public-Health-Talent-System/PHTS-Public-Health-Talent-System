@@ -15,6 +15,15 @@ export type CreateSupportTicketPayload = {
   metadata?: Record<string, unknown> | null;
 };
 
+export type SupportTicketAttachment = {
+  attachment_id: number;
+  file_name: string;
+  file_path: string;
+  file_type?: string | null;
+  file_size?: number | null;
+  created_at: string;
+};
+
 export type SupportTicket = {
   id: number;
   subject: string;
@@ -106,6 +115,7 @@ export type SupportTicketMessage = {
   sender_role: string;
   message: string;
   created_at: string;
+  attachments?: SupportTicketAttachment[];
 };
 
 export async function listSupportTicketMessages(ticketId: number | string) {
@@ -115,10 +125,38 @@ export async function listSupportTicketMessages(ticketId: number | string) {
   return res.data.data;
 }
 
-export async function createSupportTicketMessage(ticketId: number | string, payload: { message: string }) {
+export async function createSupportTicketMessage(ticketId: number | string, payload: FormData) {
   const res = await api.post<{ success: boolean; data: { id: number } }>(
     `/support/tickets/${ticketId}/messages`,
     payload,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    },
   );
   return res.data.data;
+}
+
+export async function createSupportTicketWithAttachments(payload: FormData) {
+  const res = await api.post<{ success: boolean; data: { id: number } }>(
+    "/support/tickets",
+    payload,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    },
+  );
+  return res.data;
+}
+
+export async function closeSupportTicket(ticketId: number | string) {
+  const res = await api.post<{ success: boolean; message?: string }>(
+    `/support/tickets/${ticketId}/close`,
+  );
+  return res.data;
+}
+
+export async function deleteSupportTicket(ticketId: number | string) {
+  const res = await api.delete<{ success: boolean; message?: string }>(
+    `/support/tickets/${ticketId}`,
+  );
+  return res.data;
 }

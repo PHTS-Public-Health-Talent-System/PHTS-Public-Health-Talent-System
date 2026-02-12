@@ -5,6 +5,7 @@ import type {
   SupportTicketStatus,
 } from "../entities/support-ticket.entity.js";
 import type { SupportTicketMessage } from "../entities/support-ticket-message.entity.js";
+import type { SupportTicketAttachment } from "../entities/support-ticket-attachment.entity.js";
 
 export class SupportRepository {
   private getDb(connection?: PoolConnection) {
@@ -154,6 +155,45 @@ export class SupportRepository {
       [payload.ticket_id, payload.sender_user_id, payload.sender_role, payload.message],
     );
     return result.insertId as number;
+  }
+
+  async createAttachments(
+    payloads: Omit<SupportTicketAttachment, "attachment_id" | "created_at">[],
+    connection?: PoolConnection,
+  ): Promise<void> {
+    if (!payloads.length) return;
+    const db = this.getDb(connection);
+    for (const payload of payloads) {
+      await db.execute(
+        `INSERT INTO support_ticket_attachments
+         (ticket_id, message_id, uploaded_by, file_name, file_path, file_type, file_size)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          payload.ticket_id,
+          payload.message_id,
+          payload.uploaded_by,
+          payload.file_name,
+          payload.file_path,
+          payload.file_type ?? null,
+          payload.file_size ?? null,
+        ],
+      );
+    }
+  }
+
+  async listAttachmentsByTicket(ticketId: number): Promise<SupportTicketAttachment[]> {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT * FROM support_ticket_attachments WHERE ticket_id = ? ORDER BY created_at ASC`,
+      [ticketId],
+    );
+    return rows as SupportTicketAttachment[];
+  }
+
+  async deleteTicket(ticketId: number, connection?: PoolConnection): Promise<void> {
+    const db = this.getDb(connection);
+    await db.execute(`DELETE FROM support_ticket_attachments WHERE ticket_id = ?`, [ticketId]);
+    await db.execute(`DELETE FROM support_ticket_messages WHERE ticket_id = ?`, [ticketId]);
+    await db.execute(`DELETE FROM support_tickets WHERE ticket_id = ?`, [ticketId]);
   }
 }
 
