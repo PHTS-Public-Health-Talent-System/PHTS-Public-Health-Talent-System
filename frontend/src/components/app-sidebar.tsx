@@ -13,6 +13,8 @@ import {
 } from "lucide-react"
 import { UnifiedSidebar, type SidebarConfig } from "./unified-sidebar"
 import { useAuth } from "@/components/providers/auth-provider"
+import { useNavigation } from "@/features/navigation/hooks"
+import { mapNavigationItems } from "@/features/navigation/mappers"
 
 const baseConfig: Omit<SidebarConfig, "user"> = {
   role: "pts-officer",
@@ -45,18 +47,56 @@ function getInitials(name: string) {
 
 export function AppSidebar() {
   const { user } = useAuth()
+  const navigationQuery = useNavigation()
   const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim()
   const name = displayName || user?.username || "ผู้ใช้งาน"
   const title = user?.position || baseConfig.roleLabel
 
-  const config: SidebarConfig = {
+  const fallbackConfig: SidebarConfig = {
     ...baseConfig,
+    navigation: [
+      { name: "แดชบอร์ด", href: "/pts-officer", icon: LayoutDashboard, iconKey: "LayoutDashboard" },
+      { name: "คำขอรออนุมัติ", href: "/pts-officer/requests", icon: FileCheck, iconKey: "FileCheck" },
+      { name: "รอบจ่ายเงิน", href: "/pts-officer/payroll", icon: Calculator, iconKey: "Calculator" },
+      { name: "รายชื่อผู้มีสิทธิ์", href: "/pts-officer/allowance-list", icon: Users, iconKey: "Users" },
+      { name: "แจ้งเตือนใบอนุญาต", href: "/pts-officer/alerts", icon: AlertTriangle, iconKey: "AlertTriangle" },
+      { name: "จัดการวันลา", href: "/pts-officer/leave-management", icon: CalendarDays, iconKey: "CalendarDays" },
+      { name: "การเปลี่ยนแปลงบุคลากร", href: "/pts-officer/personnel-changes", icon: UserMinus, iconKey: "UserMinus" },
+    ],
+    secondaryNavigation: [
+      { name: "จัดการวันหยุด", href: "/pts-officer/holidays", icon: Calendar, iconKey: "Calendar" },
+      { name: "จัดการอัตราเงิน", href: "/pts-officer/rates", icon: FileText, iconKey: "FileText" },
+    ],
     user: {
       name,
       title,
       initials: getInitials(name),
     },
   }
+
+  const config: SidebarConfig = (() => {
+    const nav = navigationQuery.data
+    const badges = nav?.badges
+    if (!nav) {
+      return {
+        ...fallbackConfig,
+        notificationCount: 0,
+      }
+    }
+
+    return {
+      ...fallbackConfig,
+      navigation: mapNavigationItems(nav.menu, badges),
+      secondaryNavigation: mapNavigationItems(nav.secondaryMenu, badges),
+      secondaryLabel: nav.secondaryLabel || fallbackConfig.secondaryLabel,
+      notificationCount: badges?.notifications ?? 0,
+      user: {
+        name: nav.user?.name || name,
+        title: nav.user?.title || title,
+        initials: getInitials(nav.user?.name || name),
+      },
+    }
+  })()
 
   return <UnifiedSidebar config={config} />
 }

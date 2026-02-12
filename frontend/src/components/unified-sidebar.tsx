@@ -4,11 +4,28 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
+  AlertTriangle,
   Bell,
+  Calendar,
+  CalendarDays,
+  Calculator,
+  Clock,
+  ClipboardList,
+  FileBarChart,
+  FileCheck,
+  FileText,
   LogOut,
-  Settings,
-  PenTool,
+  LayoutDashboard,
   Megaphone,
+  PenTool,
+  Server,
+  Settings,
+  Shield,
+  TrendingUp,
+  User,
+  UserMinus,
+  Users,
+  Wallet,
   HelpCircle,
 } from "lucide-react"
 import {
@@ -27,7 +44,8 @@ import { useAuth } from "@/components/providers/auth-provider"
 export interface NavItem {
   name: string
   href: string
-  icon: React.ComponentType<{ className?: string }>
+  icon?: React.ComponentType<{ className?: string }>
+  iconKey?: string
   badge?: number
 }
 
@@ -52,6 +70,30 @@ export function UnifiedSidebar({ config }: { config: SidebarConfig }) {
   const { logout } = useAuth()
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const basePath = `/${config.role.toLowerCase().replace(/_/g, "-")}`
+
+  const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+    LayoutDashboard,
+    FileText,
+    User,
+    FileCheck,
+    Calculator,
+    ClipboardList,
+    FileBarChart,
+    Users,
+    Shield,
+    Megaphone,
+    Server,
+    Clock,
+    Wallet,
+    TrendingUp,
+    AlertTriangle,
+    Calendar,
+    CalendarDays,
+    UserMinus,
+  }
+
+  const resolveIcon = (item: NavItem) =>
+    item.icon ?? (item.iconKey ? iconMap[item.iconKey] : undefined) ?? FileText
 
   // Common items for all roles
   const commonItems: NavItem[] = [
@@ -98,6 +140,7 @@ export function UnifiedSidebar({ config }: { config: SidebarConfig }) {
         </div>
         {config.navigation.map((item) => {
           const isActive = pathname === item.href || (item.href !== basePath && pathname.startsWith(item.href))
+          const Icon = resolveIcon(item)
           return (
             <Link
               key={item.name}
@@ -109,7 +152,7 @@ export function UnifiedSidebar({ config }: { config: SidebarConfig }) {
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               )}
             >
-              <item.icon className="h-5 w-5" />
+              <Icon className="h-5 w-5" />
               {item.name}
               {item.badge !== undefined && item.badge > 0 && (
                 <span className={cn(
@@ -130,6 +173,7 @@ export function UnifiedSidebar({ config }: { config: SidebarConfig }) {
             </div>
             {config.secondaryNavigation.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(item.href)
+              const Icon = resolveIcon(item)
               return (
                 <Link
                   key={item.name}
@@ -141,7 +185,7 @@ export function UnifiedSidebar({ config }: { config: SidebarConfig }) {
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   )}
                 >
-                  <item.icon className="h-5 w-5" />
+                  <Icon className="h-5 w-5" />
                   {item.name}
                   {item.badge !== undefined && item.badge > 0 && (
                     <span className={cn(
@@ -163,6 +207,7 @@ export function UnifiedSidebar({ config }: { config: SidebarConfig }) {
         </div>
         {commonItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href)
+          const Icon = resolveIcon(item)
           return (
             <Link
               key={item.name}
@@ -174,7 +219,7 @@ export function UnifiedSidebar({ config }: { config: SidebarConfig }) {
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               )}
             >
-              <item.icon className="h-5 w-5" />
+              <Icon className="h-5 w-5" />
               {item.name}
               {item.badge !== undefined && item.badge > 0 && (
                 <span className={cn(

@@ -34,6 +34,7 @@ import healthRoutes from '@/modules/health/health.routes.js';
 import announcementRoutes from '@/modules/announcement/announcement.routes.js';
 import supportRoutes from '@/modules/support/support.routes.js';
 import dashboardRoutes from '@/modules/dashboard/dashboard.routes.js';
+import navigationRoutes from '@/modules/navigation/navigation.routes.js';
 import { isMaintenanceModeEnabled } from '@/modules/system/services/maintenance.service.js';
 import { errorHandler, notFoundHandler } from '@middlewares/errorHandler.js';
 import { apiRateLimiter } from '@middlewares/rateLimiter.js';
@@ -187,6 +188,7 @@ app.use('/api/alerts', alertsRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/navigation', navigationRoutes);
 
 /**
  * 404 Handler - Route Not Found
