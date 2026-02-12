@@ -16,6 +16,8 @@ import { verificationSnapshotSchema } from '@/modules/request/dto/verification-s
 import {
   requestAdjustLeaveSchema,
   requestApproveBatchSchema,
+  requestEligibilityIdParamSchema,
+  requestEligibilityQuerySchema,
   requestIdOrNoParamSchema,
   requestIdParamSchema,
   requestRateMappingSchema,
@@ -101,6 +103,20 @@ router.get(
     UserRole.HEAD_FINANCE,
   ),
   requestController.getPendingApprovals,
+);
+
+router.get(
+  "/eligibility",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityQuerySchema),
+  requestController.getEligibilityList,
+);
+
+router.get(
+  "/eligibility/:eligibilityId",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityIdParamSchema),
+  requestController.getEligibilityById,
 );
 
 

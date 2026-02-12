@@ -17,6 +17,106 @@ export class RequestRepository {
 
   // --- READ Operations ---
 
+  async findEligibilityList(
+    activeOnly: boolean = true,
+    connection?: PoolConnection,
+  ): Promise<RowDataPacket[]> {
+    const db = this.getDb(connection);
+    const [rows] = await db.query<RowDataPacket[]>(
+      `
+      SELECT
+        e.eligibility_id,
+        e.user_id,
+        e.citizen_id,
+        e.master_rate_id,
+        e.request_id,
+        e.effective_date,
+        e.expiry_date,
+        e.is_active,
+        e.created_at,
+        rs.request_no,
+        ep.title,
+        ep.first_name,
+        ep.last_name,
+        ep.position_name,
+        ep.position_number,
+        ep.department,
+        ep.sub_department,
+        ep.email,
+        ep.phone,
+        r.profession_code,
+        r.group_no,
+        r.item_no,
+        r.sub_item_no,
+        r.amount AS rate_amount
+      FROM req_eligibility e
+      LEFT JOIN req_submissions rs ON rs.request_id = e.request_id
+      LEFT JOIN emp_profiles ep ON ep.citizen_id = e.citizen_id
+      LEFT JOIN cfg_payment_rates r ON r.rate_id = e.master_rate_id
+      WHERE (? = 0 OR e.is_active = 1)
+      ORDER BY e.is_active DESC, e.effective_date DESC, e.eligibility_id DESC
+      `,
+      [activeOnly ? 1 : 0],
+    );
+    return rows;
+  }
+
+  async findEligibilityById(
+    eligibilityId: number,
+    connection?: PoolConnection,
+  ): Promise<RowDataPacket | null> {
+    const db = this.getDb(connection);
+    const [rows] = await db.query<RowDataPacket[]>(
+      `
+      SELECT
+        e.eligibility_id,
+        e.user_id,
+        e.citizen_id,
+        e.master_rate_id,
+        e.request_id,
+        e.effective_date,
+        e.expiry_date,
+        e.reference_doc_no,
+        e.is_active,
+        e.created_at,
+        rs.request_no,
+        rs.personnel_type,
+        rs.request_type,
+        rs.work_attributes,
+        rs.main_duty,
+        rs.submission_data,
+        ep.title,
+        ep.first_name,
+        ep.last_name,
+        ep.position_name,
+        ep.position_number,
+        ep.department,
+        ep.sub_department,
+        ep.mission_group,
+        ep.emp_type,
+        ep.specialist,
+        ep.expert,
+        ep.start_work_date,
+        ep.first_entry_date,
+        ep.email,
+        ep.phone,
+        r.profession_code,
+        r.group_no,
+        r.item_no,
+        r.sub_item_no,
+        r.amount AS rate_amount
+      FROM req_eligibility e
+      LEFT JOIN req_submissions rs ON rs.request_id = e.request_id
+      LEFT JOIN emp_profiles ep ON ep.citizen_id = e.citizen_id
+      LEFT JOIN cfg_payment_rates r ON r.rate_id = e.master_rate_id
+      WHERE e.eligibility_id = ?
+      LIMIT 1
+      `,
+      [eligibilityId],
+    );
+    return rows[0] ?? null;
+  }
+
   async findById(
     requestId: number,
     connection?: PoolConnection,

@@ -4,6 +4,10 @@ const idParam = z.object({
   id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
 });
 
+const eligibilityIdParam = z.object({
+  eligibilityId: z.string().regex(/^\d+$/, "eligibilityId ต้องเป็นตัวเลข"),
+});
+
 const idOrNoParam = z.object({
   id: z
     .string()
@@ -19,6 +23,16 @@ export const requestIdParamSchema = z.object({
 
 export const requestIdOrNoParamSchema = z.object({
   params: idOrNoParam,
+});
+
+export const requestEligibilityIdParamSchema = z.object({
+  params: eligibilityIdParam,
+});
+
+export const requestEligibilityQuerySchema = z.object({
+  query: z.object({
+    active_only: z.enum(["0", "1"]).optional(),
+  }),
 });
 
 export const requestRateMappingSchema = z.object({

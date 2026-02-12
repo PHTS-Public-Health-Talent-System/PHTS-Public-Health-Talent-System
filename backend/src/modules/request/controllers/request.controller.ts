@@ -96,6 +96,27 @@ export class RequestController {
       res.json({ success: true, data: requests });
   });
 
+  getEligibilityList = catchAsync(
+    async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      const activeOnly = String(req.query.active_only ?? "1") !== "0";
+      const rows = await requestQueryService.getEligibilityList(activeOnly);
+      res.json({ success: true, data: rows });
+    },
+  );
+
+  getEligibilityById = catchAsync(
+    async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      const eligibilityId = Number(req.params.eligibilityId);
+      if (!Number.isFinite(eligibilityId)) {
+        throw new ValidationError("Invalid eligibility ID");
+      }
+      const row = await requestQueryService.getEligibilityById(eligibilityId);
+      res.json({ success: true, data: row });
+    },
+  );
+
   // --- WRITE Operations ---
 
   createRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {

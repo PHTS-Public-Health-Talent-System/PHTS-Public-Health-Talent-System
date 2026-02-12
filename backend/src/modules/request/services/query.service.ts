@@ -22,6 +22,22 @@ import { requestRepository } from '@/modules/request/repositories/request.reposi
 // ============================================================================
 
 export class RequestQueryService {
+  async getEligibilityList(
+    activeOnly: boolean = true,
+  ): Promise<Record<string, unknown>[]> {
+    return requestRepository.findEligibilityList(activeOnly);
+  }
+
+  async getEligibilityById(
+    eligibilityId: number,
+  ): Promise<Record<string, unknown>> {
+    const row = await requestRepository.findEligibilityById(eligibilityId);
+    if (!row) {
+      throw new Error("Eligibility not found");
+    }
+    return row;
+  }
+
   async getMyRequests(userId: number): Promise<RequestWithDetails[]> {
     // Use Repo instead of raw SQL
     const requestRows = await requestRepository.findByUserId(userId);
