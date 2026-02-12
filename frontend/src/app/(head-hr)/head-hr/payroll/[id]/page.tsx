@@ -1,10 +1,10 @@
-"use client"
+'use client';
 
-import { use } from "react"
-import { PayrollDetailContent } from "@/components/payroll/PayrollDetailContent"
+import { use } from 'react';
+import { PayrollDetailContent } from '@/components/payroll/PayrollDetailContent';
 
 export default function HeadHRPayrollDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+  const { id } = use(params);
 
   return (
     <PayrollDetailContent
@@ -15,5 +15,5 @@ export default function HeadHRPayrollDetailPage({ params }: { params: Promise<{ 
       showSummary={false}
       showSelector
     />
-  )
+  );
 }

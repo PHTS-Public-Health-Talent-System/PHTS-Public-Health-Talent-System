@@ -270,7 +270,79 @@ export const submitToHR = async (req: Request, res: Response) => {
     );
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    if (error?.missingProfessionCodes) {
+      res.status(400).json({
+        success: false,
+        error: error.message || "ยังตรวจไม่ครบทุกวิชาชีพก่อนส่งให้ HR",
+        data: {
+          missing_profession_codes: error.missingProfessionCodes,
+        },
+      });
+      return;
+    }
+    const message = error?.message || "เกิดข้อผิดพลาดในการส่งให้ HR";
+    if (
+      message === "ยังไม่มีข้อมูลการคำนวณสำหรับรอบนี้" ||
+      message.startsWith("Invalid action")
+    ) {
+      res.status(400).json({ success: false, error: message });
+      return;
+    }
+    res.status(500).json({ success: false, error: message });
+  }
+};
+
+export const getPeriodReviewProgress = async (
+  req: Request,
+  res: Response<ApiResponse>,
+) => {
+  try {
+    const { periodId } = req.params;
+    const data = await PayrollService.getPeriodReviewProgress(Number(periodId));
+    res.json({ success: true, data });
+  } catch (error: any) {
+    const message = error?.message || "เกิดข้อผิดพลาดในการโหลดความคืบหน้า";
+    if (message === "Period not found") {
+      res.status(404).json({ success: false, error: message });
+      return;
+    }
+    res.status(500).json({ success: false, error: message });
+  }
+};
+
+export const setPeriodProfessionReview = async (
+  req: Request,
+  res: Response<ApiResponse>,
+) => {
+  try {
+    const { periodId } = req.params;
+    const { profession_code, reviewed } = req.body as {
+      profession_code: string;
+      reviewed: boolean;
+    };
+    const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
+    const data = await PayrollService.setPeriodProfessionReview(
+      Number(periodId),
+      profession_code,
+      reviewed,
+      actorId,
+    );
+    res.json({ success: true, data });
+  } catch (error: any) {
+    const message = error?.message || "เกิดข้อผิดพลาดในการบันทึกการยืนยันตรวจ";
+    if (message === "Period not found") {
+      res.status(404).json({ success: false, error: message });
+      return;
+    }
+    if (
+      message === "สามารถยืนยันตรวจได้เฉพาะรอบที่ยังเปิดอยู่" ||
+      message === "profession_code is required" ||
+      message === "วิชาชีพนี้ไม่มีในรอบการคำนวณปัจจุบัน"
+    ) {
+      res.status(400).json({ success: false, error: message });
+      return;
+    }
+    res.status(500).json({ success: false, error: message });
   }
 };
 
@@ -371,6 +443,19 @@ export const getPeriodReport = async (req: Request, res: Response) => {
     );
     res.send(buffer);
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    const message = error?.message || "เกิดข้อผิดพลาดในการสร้างรายงาน";
+    if (message === "Period not found") {
+      res.status(404).json({ success: false, error: message });
+      return;
+    }
+    if (
+      message === "Report is available only for closed and frozen periods" ||
+      message === "Report requires frozen snapshot" ||
+      message === "Snapshot not found for frozen period"
+    ) {
+      res.status(409).json({ success: false, error: message });
+      return;
+    }
+    res.status(500).json({ success: false, error: message });
   }
 };

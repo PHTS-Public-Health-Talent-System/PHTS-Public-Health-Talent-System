@@ -35,6 +35,13 @@ export type PeriodItem = {
 export type PeriodDetail = {
   period: PayPeriod;
   items: PeriodItem[];
+  calendar?: {
+    total_days: number;
+    working_days: number;
+    holiday_days: number;
+    weekend_days: number;
+    public_holiday_days: number;
+  };
 };
 
 export type PeriodSummaryRow = {
@@ -48,12 +55,20 @@ export type PeriodSummaryRow = {
 export type PeriodPayoutRow = {
   payout_id: number;
   citizen_id: string;
+  request_id?: number | null;
+  profession_code?: string | null;
+  title?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   position_name?: string | null;
+  department?: string | null;
+  group_no?: number | string | null;
+  item_no?: number | string | null;
+  sub_item_no?: number | string | null;
   eligible_days?: number | null;
   deducted_days?: number | null;
   rate?: number | null;
+  retroactive_amount?: number | null;
   total_payable?: number | null;
   remark?: string | null;
 };
@@ -72,6 +87,15 @@ export type PayoutSearchRow = {
   position_name?: string | null;
 };
 
+export type PeriodReviewProgress = {
+  required_profession_codes: string[];
+  reviewed_profession_codes: string[];
+  missing_profession_codes: string[];
+  total_required: number;
+  total_reviewed: number;
+  all_reviewed: boolean;
+};
+
 export async function getPeriodPayouts(periodId: number | string): Promise<PeriodPayoutRow[]> {
   const res = await api.get<ApiResponse<PeriodPayoutRow[]>>(`/payroll/period/${periodId}/payouts`);
   return res.data.data;
@@ -79,6 +103,19 @@ export async function getPeriodPayouts(periodId: number | string): Promise<Perio
 
 export async function getPeriodSummaryByProfession(periodId: number | string): Promise<PeriodSummaryRow[]> {
   const res = await api.get<ApiResponse<PeriodSummaryRow[]>>(`/payroll/period/${periodId}/summary-by-profession`);
+  return res.data.data;
+}
+
+export async function getPeriodReviewProgress(periodId: number | string): Promise<PeriodReviewProgress> {
+  const res = await api.get<ApiResponse<PeriodReviewProgress>>(`/payroll/period/${periodId}/review-progress`);
+  return res.data.data;
+}
+
+export async function setPeriodProfessionReview(
+  periodId: number | string,
+  payload: { profession_code: string; reviewed: boolean },
+): Promise<PeriodReviewProgress> {
+  const res = await api.post<ApiResponse<PeriodReviewProgress>>(`/payroll/period/${periodId}/review-progress`, payload);
   return res.data.data;
 }
 

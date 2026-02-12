@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -43,6 +43,8 @@ import {
   Filter,
   Download,
   FileText,
+  Eye,
+  Send,
 } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -53,112 +55,32 @@ import {
   useRejectPeriod,
 } from "@/features/payroll/hooks"
 import type { PeriodPayoutRow, PeriodDetail } from "@/features/payroll/api"
+import { useRateHierarchy } from "@/features/master-data/hooks"
+import type { ProfessionHierarchy } from "@/features/master-data/api"
+import { useRequestDetail } from "@/features/request/hooks"
+import { normalizeRateMapping, resolveRateMappingDisplay } from "@/app/(user)/user/request-detail-rate-mapping"
+import { buildAttachmentUrl } from "@/app/(user)/user/request-detail-attachments"
 
 type PeriodStatus = "OPEN" | "WAITING_HR" | "WAITING_HEAD_FINANCE" | "WAITING_DIRECTOR" | "CLOSED"
-
-const professionCards = [
-  {
-    code: "NURSE",
-    label: "พยาบาลวิชาชีพ",
-    description: "ผู้ประกอบวิชาชีพการพยาบาลและการผดุงครรภ์",
-    rates: [1000, 1500, 2000],
-  },
-  {
-    code: "PHYSICIAN",
-    label: "แพทย์",
-    description: "แพทย์/ผู้อำนวยการโรงพยาบาล",
-    rates: [5000, 10000, 15000],
-  },
-  {
-    code: "MED_TECH",
-    label: "นักเทคนิคการแพทย์",
-    description: "ผู้ประกอบวิชาชีพเทคนิคการแพทย์",
-    rates: [1000],
-  },
-  {
-    code: "PHYSICAL_THERAPY",
-    label: "นักกายภาพบำบัด",
-    description: "ผู้ประกอบวิชาชีพกายภาพบำบัด",
-    rates: [1000],
-  },
-  {
-    code: "OCCUPATIONAL_THERAPY",
-    label: "นักกิจกรรมบำบัด",
-    description: "ผู้ประกอบวิชาชีพกิจกรรมบำบัด",
-    rates: [1000],
-  },
-  {
-    code: "RADIOLOGIST",
-    label: "นักรังสีการแพทย์",
-    description: "ผู้ประกอบวิชาชีพรังสีการแพทย์",
-    rates: [1000],
-  },
-  {
-    code: "PHARMACIST",
-    label: "เภสัชกร",
-    description: "ผู้ประกอบวิชาชีพเภสัชกรรม",
-    rates: [1500, 3000],
-  },
-  {
-    code: "DENTIST",
-    label: "ทันตแพทย์",
-    description: "ผู้ประกอบวิชาชีพทันตกรรม",
-    rates: [5000, 7500, 10000],
-  },
-  {
-    code: "CLINICAL_PSYCHOLOGIST",
-    label: "นักจิตวิทยาคลินิก",
-    description: "ผู้ประกอบวิชาชีพจิตวิทยาคลินิก",
-    rates: [1000],
-  },
-  {
-    code: "CARDIO_THORACIC_TECH",
-    label: "นักเทคโนโลยีหัวใจและทรวงอก",
-    description: "ผู้ประกอบวิชาชีพเทคโนโลยีหัวใจและทรวงอก",
-    rates: [1000],
-  },
-]
-
-const professionGroups: Record<string, { group: number; rate: number }[]> = {
-  PHYSICIAN: [
-    { group: 1, rate: 5000 },
-    { group: 2, rate: 10000 },
-    { group: 3, rate: 15000 },
-  ],
-  DENTIST: [
-    { group: 1, rate: 5000 },
-    { group: 2, rate: 7500 },
-    { group: 3, rate: 10000 },
-  ],
-  PHARMACIST: [
-    { group: 1, rate: 1500 },
-    { group: 2, rate: 3000 },
-  ],
-  NURSE: [
-    { group: 1, rate: 1000 },
-    { group: 2, rate: 1500 },
-    { group: 3, rate: 2000 },
-  ],
-  MED_TECH: [{ group: 5, rate: 1000 }],
-  RADIOLOGIST: [{ group: 5, rate: 1000 }],
-  PHYSICAL_THERAPY: [{ group: 5, rate: 1000 }],
-  OCCUPATIONAL_THERAPY: [{ group: 5, rate: 1000 }],
-  CLINICAL_PSYCHOLOGIST: [{ group: 5, rate: 1000 }],
-  CARDIO_THORACIC_TECH: [{ group: 5, rate: 1000 }],
-}
 
 type PayrollRow = {
   id: number
   citizenId: string
+  requestId: number | null
+  title: string
   name: string
   position: string
   department: string
   professionCode: string
   rateGroup: string
+  groupNo: string
+  itemNo: string
+  subItemNo: string
   baseRate: number
+  retroactiveAmount: number
   workDays: number
   leaveDays: number
-  actualRate: number
+  totalAmount: number
   note?: string
 }
 
@@ -171,19 +93,59 @@ type PayrollDetailContentProps = {
   showSummary?: boolean
   showSelector?: boolean
   backHref?: string
+  allowApprovalActions?: boolean
+  reviewedProfessionCodes?: string[]
+  onSetProfessionReviewed?: (professionCode: string, reviewed: boolean) => void
+  onSubmitForReview?: () => Promise<void>
+  isSubmittingForReview?: boolean
+  onAvailableProfessionsChange?: (professions: { code: string; label: string }[]) => void
 }
 
-const professionKeywordMap: Record<string, string[]> = {
-  PHYSICIAN: ["แพทย์", "นายแพทย์", "ผอ.รพ.", "ผู้อำนวยการ"],
-  DENTIST: ["ทันตแพทย์", "ทันต"],
-  PHARMACIST: ["เภสัชกร", "เภสัช"],
-  NURSE: ["พยาบาล"],
-  MED_TECH: ["เทคนิคการแพทย์"],
-  RADIOLOGIST: ["รังสีการแพทย์", "รังสี"],
-  PHYSICAL_THERAPY: ["กายภาพบำบัด"],
-  OCCUPATIONAL_THERAPY: ["กิจกรรมบำบัด"],
-  CLINICAL_PSYCHOLOGIST: ["จิตวิทยาคลินิก", "จิตวิทยา"],
-  CARDIO_THORACIC_TECH: ["หัวใจและทรวงอก", "เทคโนโลยีหัวใจ"],
+const backendProfessionMap: Record<string, string> = {
+  DOCTOR: "PHYSICIAN",
+  DENTIST: "DENTIST",
+  PHARMACIST: "PHARMACIST",
+  NURSE: "NURSE",
+  MED_TECH: "MED_TECH",
+  RAD_TECH: "RADIOLOGIST",
+  PHYSIO: "PHYSICAL_THERAPY",
+  OCC_THERAPY: "OCCUPATIONAL_THERAPY",
+  CLIN_PSY: "CLINICAL_PSYCHOLOGIST",
+  CARDIO_TECH: "CARDIO_THORACIC_TECH",
+}
+
+const professionDescriptions: Record<string, string> = {
+  NURSE: "ผู้ประกอบวิชาชีพการพยาบาลและการผดุงครรภ์",
+  PHYSICIAN: "แพทย์/ผู้อำนวยการโรงพยาบาล",
+  MED_TECH: "ผู้ประกอบวิชาชีพเทคนิคการแพทย์",
+  PHYSICAL_THERAPY: "ผู้ประกอบวิชาชีพกายภาพบำบัด",
+  OCCUPATIONAL_THERAPY: "ผู้ประกอบวิชาชีพกิจกรรมบำบัด",
+  RADIOLOGIST: "ผู้ประกอบวิชาชีพรังสีการแพทย์",
+  PHARMACIST: "ผู้ประกอบวิชาชีพเภสัชกรรม",
+  DENTIST: "ผู้ประกอบวิชาชีพทันตกรรม",
+  CLINICAL_PSYCHOLOGIST: "ผู้ประกอบวิชาชีพจิตวิทยาคลินิก",
+  CARDIO_THORACIC_TECH: "ผู้ประกอบวิชาชีพเทคโนโลยีหัวใจและทรวงอก",
+}
+
+const professionLabels: Record<string, string> = {
+  NURSE: "พยาบาลวิชาชีพ",
+  PHYSICIAN: "แพทย์",
+  MED_TECH: "นักเทคนิคการแพทย์",
+  PHYSICAL_THERAPY: "นักกายภาพบำบัด",
+  OCCUPATIONAL_THERAPY: "นักกิจกรรมบำบัด",
+  RADIOLOGIST: "นักรังสีการแพทย์",
+  PHARMACIST: "เภสัชกร",
+  DENTIST: "ทันตแพทย์",
+  CLINICAL_PSYCHOLOGIST: "นักจิตวิทยาคลินิก",
+  CARDIO_THORACIC_TECH: "นักเทคโนโลยีหัวใจและทรวงอก",
+}
+
+const parseGroupNumber = (value?: string) => {
+  if (!value) return null
+  const match = value.match(/\d+/)
+  if (!match) return null
+  const parsed = Number(match[0])
+  return Number.isNaN(parsed) ? null : parsed
 }
 
 const formatPeriodLabel = (month?: number | null, year?: number | null) => {
@@ -216,15 +178,24 @@ export function PayrollDetailContent({
   showSummary = true,
   showSelector = true,
   backHref = "/head-hr/payroll",
+  allowApprovalActions = true,
+  reviewedProfessionCodes = [],
+  onSetProfessionReviewed,
+  onSubmitForReview,
+  isSubmittingForReview = false,
+  onAvailableProfessionsChange,
 }: PayrollDetailContentProps) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
   const [rateFilter, setRateFilter] = useState("all")
   const [actionType, setActionType] = useState<"approve" | "reject" | null>(null)
   const [comment, setComment] = useState("")
+  const [selectedRow, setSelectedRow] = useState<PayrollRow | null>(null)
 
   const periodDetailQuery = usePeriodDetail(periodId)
   const payoutsQuery = usePeriodPayouts(periodId)
+  const rateHierarchyQuery = useRateHierarchy()
+  const requestDetailQuery = useRequestDetail(selectedRow?.requestId ?? undefined)
   const approveByHR = useApproveByHR()
   const rejectPeriod = useRejectPeriod()
   const downloadReport = useDownloadPeriodReport()
@@ -232,6 +203,92 @@ export function PayrollDetailContent({
   const periodDetail = periodDetailQuery.data as PeriodDetail | undefined
   const period = periodDetail?.period
   const statusInfo = statusConfig[(period?.status as PeriodStatus) ?? "OPEN"]
+
+  const { professionCards, professionGroups } = useMemo(() => {
+    const hierarchy = (rateHierarchyQuery.data ?? []) as ProfessionHierarchy[]
+    if (hierarchy.length) {
+      const cards = hierarchy
+        .map((profession) => {
+          const internalCode = backendProfessionMap[profession.id] ?? profession.id
+          const rates = Array.from(
+            new Set(
+              profession.groups
+                .map((group) => Number(group.rate))
+                .filter((rate) => Number.isFinite(rate) && rate > 0),
+            ),
+          ).sort((a, b) => a - b)
+          return {
+            code: internalCode,
+            label: profession.name,
+            description: professionDescriptions[internalCode] ?? "",
+            rates,
+          }
+        })
+        .filter((card) => Boolean(card.code))
+
+      const groups: Record<string, { group: number; rate: number }[]> = {}
+      hierarchy.forEach((profession) => {
+        const internalCode = backendProfessionMap[profession.id] ?? profession.id
+        groups[internalCode] = profession.groups.map((group, index) => ({
+          group: parseGroupNumber(group.name) ?? index + 1,
+          rate: Number(group.rate),
+        }))
+      })
+
+      return {
+        professionCards: cards,
+        professionGroups: groups,
+      }
+    }
+
+    // Fallback from calculated payouts (no hardcoded rate table)
+    const rawRows = (payoutsQuery.data ?? []) as PeriodPayoutRow[]
+    const groupsMap = new Map<string, Map<string, { group: number; rate: number }>>()
+
+    rawRows.forEach((row) => {
+      const rawCode = String(row.profession_code ?? "").toUpperCase()
+      const mappedCode = backendProfessionMap[rawCode] ?? rawCode
+      if (!mappedCode) return
+      const rate = Number(row.rate ?? 0)
+      if (!Number.isFinite(rate) || rate <= 0) return
+      const groupNo = row.group_no !== null && row.group_no !== undefined ? Number(row.group_no) : null
+      if (!groupsMap.has(mappedCode)) groupsMap.set(mappedCode, new Map())
+      const byRate = groupsMap.get(mappedCode)!
+      const key = `${groupNo ?? 0}-${rate}`
+      if (!byRate.has(key)) {
+        byRate.set(key, {
+          group: Number.isFinite(groupNo) && groupNo !== null ? groupNo : byRate.size + 1,
+          rate,
+        })
+      }
+    })
+
+    const groups: Record<string, { group: number; rate: number }[]> = {}
+    const cards = Array.from(groupsMap.entries())
+      .map(([code, value]) => {
+        const groupList = Array.from(value.values()).sort((a, b) => a.group - b.group)
+        groups[code] = groupList
+        return {
+          code,
+          label: professionLabels[code] ?? code,
+          description: professionDescriptions[code] ?? "",
+          rates: groupList.map((item) => item.rate),
+        }
+      })
+      .sort((a, b) => a.label.localeCompare(b.label, "th"))
+
+    return {
+      professionCards: cards,
+      professionGroups: groups,
+    }
+  }, [rateHierarchyQuery.data, payoutsQuery.data])
+
+  useEffect(() => {
+    if (!onAvailableProfessionsChange) return
+    onAvailableProfessionsChange(
+      professionCards.map((profession) => ({ code: profession.code, label: profession.label })),
+    )
+  }, [onAvailableProfessionsChange, professionCards])
 
   const itemByCitizenId = useMemo(() => {
     const map = new Map<string, PeriodDetail["items"][number]>()
@@ -247,60 +304,140 @@ export function PayrollDetailContent({
     return rows.map((row) => {
       const citizenId = row.citizen_id ?? ""
       const item = citizenId ? itemByCitizenId.get(citizenId) : undefined
+      const title = row.title ?? "-"
       const firstName = row.first_name ?? item?.first_name ?? ""
       const lastName = row.last_name ?? item?.last_name ?? ""
       const positionName = row.position_name ?? item?.position_name ?? "-"
-      const department = item?.current_department ?? "-"
+      const department = row.department ?? item?.current_department ?? "-"
       const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || "-"
 
-      let professionCode = "UNKNOWN"
-      for (const [code, keywords] of Object.entries(professionKeywordMap)) {
-        if (keywords.some((keyword) => positionName.includes(keyword))) {
-          professionCode = code
-          break
-        }
-      }
+      const rawCode = String(row.profession_code ?? "").toUpperCase()
+      const professionCode = backendProfessionMap[rawCode] ?? (rawCode || "UNKNOWN")
 
       const baseRate = Number(row.rate ?? 0)
-      const rateGroup =
-        professionGroups[professionCode]?.find((group) => group.rate === baseRate)?.group?.toString() ?? "-"
+      const groupNoFromRow =
+        row.group_no !== null && row.group_no !== undefined ? String(row.group_no) : "-"
+      const groupNoFromRate = professionGroups[professionCode]
+        ?.find((group) => group.rate === baseRate)
+        ?.group?.toString()
+      const groupNo = groupNoFromRow !== "-" ? groupNoFromRow : groupNoFromRate ?? "-"
+      const rateGroup = groupNo
+      const itemNo = row.item_no !== null && row.item_no !== undefined ? String(row.item_no) : "-"
+      const subItemNo = row.sub_item_no !== null && row.sub_item_no !== undefined ? String(row.sub_item_no) : "-"
+      const retroactiveAmount = Number(row.retroactive_amount ?? 0)
+      const totalAmount = Number(row.total_payable ?? 0)
 
       return {
         id: row.payout_id,
         citizenId,
+        requestId: row.request_id ?? item?.request_id ?? null,
+        title,
         name: fullName,
         position: positionName,
         department,
         professionCode,
         rateGroup,
+        groupNo,
+        itemNo,
+        subItemNo,
         baseRate,
+        retroactiveAmount,
         workDays: Number(row.eligible_days ?? 0),
         leaveDays: Number(row.deducted_days ?? 0),
-        actualRate: Number(row.total_payable ?? 0),
+        totalAmount,
         note: row.remark ?? undefined,
       } satisfies PayrollRow
     })
-  }, [payoutsQuery.data, itemByCitizenId])
+  }, [payoutsQuery.data, itemByCitizenId, professionGroups])
+
+  const selectedRequest = requestDetailQuery.data
+  const selectedRateMapping = useMemo(
+    () => normalizeRateMapping(selectedRequest?.submission_data ?? null),
+    [selectedRequest?.submission_data],
+  )
+  const selectedRateDisplay = useMemo(
+    () =>
+      selectedRateMapping
+        ? resolveRateMappingDisplay(selectedRateMapping, rateHierarchyQuery.data)
+        : null,
+    [selectedRateMapping, rateHierarchyQuery.data],
+  )
+  const selectedAttachments = selectedRequest?.attachments ?? []
+  const deductionReasons = useMemo(() => {
+    if (!selectedRow) return []
+    const reasons: string[] = []
+    if (selectedRow.leaveDays > 0) {
+      reasons.push(`ถูกหักตามวันลา/ขาดสิทธิ ${selectedRow.leaveDays.toLocaleString()} วัน`)
+    }
+    const expectedAmount = selectedRow.baseRate + Math.max(0, selectedRow.retroactiveAmount)
+    const deductedAmount = Math.max(0, expectedAmount - selectedRow.totalAmount)
+    if (deductedAmount > 0) {
+      reasons.push(`จำนวนเงินถูกหัก ${deductedAmount.toLocaleString()} บาท จากยอดที่ควรได้รับ`)
+    }
+    if (selectedRow.note && selectedRow.note.trim()) {
+      reasons.push(`หมายเหตุระบบ: ${selectedRow.note}`)
+    }
+    if (reasons.length === 0) {
+      reasons.push("รายการนี้ไม่ได้ถูกหักเงิน")
+    }
+    return reasons
+  }, [selectedRow])
 
   const professionTotals = useMemo(() => {
     const totals = new Map<string, number>()
     professionCards.forEach((card) => totals.set(card.code, 0))
     enrichedPayouts.forEach((row) => {
       if (!totals.has(row.professionCode)) totals.set(row.professionCode, 0)
-      totals.set(row.professionCode, (totals.get(row.professionCode) ?? 0) + row.actualRate)
+      totals.set(row.professionCode, (totals.get(row.professionCode) ?? 0) + row.totalAmount)
     })
     return totals
-  }, [enrichedPayouts])
+  }, [enrichedPayouts, professionCards])
 
   const filteredPersons = useMemo(() => {
     return enrichedPayouts.filter((person) => {
       const matchesSearch =
         person.name.includes(searchQuery) || person.department.includes(searchQuery)
-      const matchesRate = rateFilter === "all" || person.rateGroup === rateFilter
+      const matchesRate = rateFilter === "all" || person.groupNo === rateFilter
       const matchesProfession = selectedProfession === "all" || person.professionCode === selectedProfession
       return matchesSearch && matchesRate && matchesProfession
     })
   }, [enrichedPayouts, rateFilter, searchQuery, selectedProfession])
+
+  const reviewedCodeSet = useMemo(
+    () => new Set((reviewedProfessionCodes ?? []).map((code) => code.toUpperCase())),
+    [reviewedProfessionCodes],
+  )
+  const totalProfessionCount = professionCards.length
+  const reviewedCount = useMemo(
+    () => professionCards.filter((profession) => reviewedCodeSet.has(profession.code.toUpperCase())).length,
+    [professionCards, reviewedCodeSet],
+  )
+  const currentProfessionReviewed =
+    selectedProfession !== "all" && reviewedCodeSet.has(selectedProfession.toUpperCase())
+  const remainingProfessions = useMemo(
+    () =>
+      professionCards.filter(
+        (profession) => !reviewedCodeSet.has(profession.code.toUpperCase()),
+      ),
+    [professionCards, reviewedCodeSet],
+  )
+  const canSubmitReview =
+    !!onSubmitForReview &&
+    selectedProfession !== "all" &&
+    totalProfessionCount > 0 &&
+    reviewedCount === totalProfessionCount
+
+  const availableGroups = useMemo(() => {
+    const rows =
+      selectedProfession === "all"
+        ? enrichedPayouts
+        : enrichedPayouts.filter((row) => row.professionCode === selectedProfession)
+    const groups = new Set<string>()
+    rows.forEach((row) => {
+      if (row.groupNo !== "-" && row.groupNo) groups.add(row.groupNo)
+    })
+    return Array.from(groups).sort((a, b) => Number(a) - Number(b))
+  }, [enrichedPayouts, selectedProfession])
 
   const handleAction = async () => {
     if (!actionType) return
@@ -394,19 +531,27 @@ export function PayrollDetailContent({
             variant="outline"
             size="sm"
             onClick={async () => {
-              const blob = await downloadReport.mutateAsync(periodId)
-              const url = window.URL.createObjectURL(blob)
-              const link = document.createElement("a")
-              link.href = url
-              link.download = `payroll_${periodId}.pdf`
-              link.click()
-              window.URL.revokeObjectURL(url)
+              try {
+                const blob = await downloadReport.mutateAsync(periodId)
+                const url = window.URL.createObjectURL(blob)
+                const link = document.createElement("a")
+                link.href = url
+                link.download = `payroll_${periodId}.pdf`
+                link.click()
+                window.URL.revokeObjectURL(url)
+              } catch (error) {
+                const message =
+                  error instanceof Error
+                    ? error.message
+                    : "ไม่สามารถดาวน์โหลดรายงานได้"
+                toast.error(message)
+              }
             }}
           >
             <FileText className="mr-2 h-4 w-4" />
             ส่งออก PDF
           </Button>
-          {period?.status === "WAITING_HR" && (
+          {allowApprovalActions && period?.status === "WAITING_HR" && (
             <>
               <Button
                 onClick={() => setActionType("approve")}
@@ -422,6 +567,45 @@ export function PayrollDetailContent({
                 <XCircle className="mr-2 h-4 w-4" />
                 ปฏิเสธ
               </Button>
+            </>
+          )}
+          {!allowApprovalActions && selectedProfession !== "all" && onSetProfessionReviewed && (
+            <>
+              <Button
+                variant={currentProfessionReviewed ? "outline" : "default"}
+                size="sm"
+                onClick={() => onSetProfessionReviewed(selectedProfession, !currentProfessionReviewed)}
+              >
+                {currentProfessionReviewed ? "ยกเลิกยืนยันตรวจแล้ว" : "ยืนยันตรวจแล้ว"}
+              </Button>
+              {onSubmitForReview && (
+                <Button
+                  size="sm"
+                  className="bg-primary hover:bg-primary/90"
+                  onClick={async () => {
+                    if (!canSubmitReview) {
+                      const names = remainingProfessions.map((profession) => profession.label).join(", ")
+                      toast.error(
+                        names
+                          ? `ยังตรวจไม่ครบทุกวิชาชีพ: ${names}`
+                          : "ยังตรวจไม่ครบทุกวิชาชีพ",
+                      )
+                      return
+                    }
+                    try {
+                      await onSubmitForReview()
+                    } catch (error) {
+                      const message =
+                        error instanceof Error ? error.message : "ไม่สามารถส่งให้ HR ได้"
+                      toast.error(message)
+                    }
+                  }}
+                  disabled={!canSubmitReview || isSubmittingForReview}
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  ส่งให้ HR
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -469,7 +653,9 @@ export function PayrollDetailContent({
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">วันทำการ</p>
-                    <p className="text-2xl font-bold">-</p>
+                    <p className="text-2xl font-bold">
+                      {Number(periodDetail?.calendar?.working_days ?? 0).toLocaleString()}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -483,7 +669,9 @@ export function PayrollDetailContent({
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">วันหยุด</p>
-                    <p className="text-2xl font-bold">-</p>
+                    <p className="text-2xl font-bold">
+                      {Number(periodDetail?.calendar?.holiday_days ?? 0).toLocaleString()}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -502,9 +690,22 @@ export function PayrollDetailContent({
             </p>
           </CardHeader>
           <CardContent>
+            {!allowApprovalActions && totalProfessionCount > 0 && (
+              <div className="mb-4 rounded-lg border border-border bg-secondary/30 p-3">
+                <p className="text-sm text-muted-foreground">
+                  ตรวจแล้ว {reviewedCount}/{totalProfessionCount} วิชาชีพ
+                </p>
+                {remainingProfessions.length > 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    ค้างตรวจ: {remainingProfessions.map((profession) => profession.label).join(", ")}
+                  </p>
+                )}
+              </div>
+            )}
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {professionCards.map((profession) => {
                 const isActive = selectedProfession === profession.code
+                const isReviewed = reviewedCodeSet.has(profession.code.toUpperCase())
                 return (
                   <button
                     key={profession.code}
@@ -519,16 +720,30 @@ export function PayrollDetailContent({
                         <p className="text-base font-semibold text-foreground">{profession.label}</p>
                         <p className="text-xs text-muted-foreground mt-1">รหัส: {profession.code}</p>
                       </div>
-                    <Badge
-                      variant="outline"
-                      className={`text-xs ${
-                        isActive
-                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                          : "bg-secondary/60 text-muted-foreground"
-                      }`}
-                    >
-                      {Number(professionTotals.get(profession.code) ?? 0).toLocaleString()} บาท
-                    </Badge>
+                      <div className="flex flex-col items-end gap-1">
+                        <Badge
+                          variant="outline"
+                          className={`text-xs ${
+                            isActive
+                              ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                              : "bg-secondary/60 text-muted-foreground"
+                          }`}
+                        >
+                          {Number(professionTotals.get(profession.code) ?? 0).toLocaleString()} บาท
+                        </Badge>
+                        {!allowApprovalActions && (
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] ${
+                              isReviewed
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                            }`}
+                          >
+                            {isReviewed ? "ตรวจแล้ว" : "รอตรวจ"}
+                          </Badge>
+                        )}
+                      </div>
                   </div>
                     <p className="mt-3 text-sm text-muted-foreground">{profession.description}</p>
                     <div className="mt-4">
@@ -593,7 +808,7 @@ export function PayrollDetailContent({
                 const count = filteredPersons.filter((person) => person.baseRate === rate).length
                 const amount = filteredPersons
                   .filter((person) => person.baseRate === rate)
-                  .reduce((total, person) => total + person.actualRate, 0)
+                  .reduce((total, person) => total + person.totalAmount, 0)
                 const groupLabel =
                   selectedProfession === "all"
                     ? "อัตรา"
@@ -640,9 +855,18 @@ export function PayrollDetailContent({
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
                     <SelectItem value="all">ทุกกลุ่ม</SelectItem>
-                    <SelectItem value="1">กลุ่มที่ 1 (1,000 บาท)</SelectItem>
-                    <SelectItem value="2">กลุ่มที่ 2 (1,500 บาท)</SelectItem>
-                    <SelectItem value="3">กลุ่มที่ 3 (2,000 บาท)</SelectItem>
+                    {availableGroups.map((group) => {
+                      const groupNumber = Number(group)
+                      const rate =
+                        selectedProfession !== "all"
+                          ? professionGroups[selectedProfession]?.find((item) => item.group === groupNumber)?.rate
+                          : undefined
+                      return (
+                        <SelectItem key={group} value={group}>
+                          {rate ? `กลุ่มที่ ${group} (${rate.toLocaleString()} บาท)` : `กลุ่มที่ ${group}`}
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -654,43 +878,56 @@ export function PayrollDetailContent({
                 <TableHeader>
                   <TableRow className="bg-secondary/50 hover:bg-secondary/50">
                     <TableHead className="text-muted-foreground">ลำดับ</TableHead>
-                    <TableHead className="text-muted-foreground">ชื่อ-นามสกุล</TableHead>
+                    <TableHead className="text-muted-foreground">คำนำหน้าชื่อ</TableHead>
+                    <TableHead className="text-muted-foreground">ชื่อ-สกุล</TableHead>
                     <TableHead className="text-muted-foreground">ตำแหน่ง</TableHead>
-                    <TableHead className="text-muted-foreground">แผนก</TableHead>
-                    <TableHead className="text-muted-foreground text-center">กลุ่ม</TableHead>
-                    <TableHead className="text-muted-foreground text-right">อัตรา (บาท)</TableHead>
-                    <TableHead className="text-muted-foreground text-center">วันทำงาน</TableHead>
-                    <TableHead className="text-muted-foreground text-center">ลา</TableHead>
-                    <TableHead className="text-muted-foreground text-right">รับจริง (บาท)</TableHead>
+                    <TableHead className="text-muted-foreground text-center">กลุ่มที่</TableHead>
+                    <TableHead className="text-muted-foreground text-center">ข้อ</TableHead>
+                    <TableHead className="text-muted-foreground text-center">ข้อย่อย</TableHead>
+                    <TableHead className="text-muted-foreground text-right">
+                      อัตราเงิน (บาท/เดือน)
+                    </TableHead>
+                    <TableHead className="text-muted-foreground text-right">ตกเบิก (บาท)</TableHead>
+                    <TableHead className="text-muted-foreground text-right">รวม (บาท)</TableHead>
                     <TableHead className="text-muted-foreground">หมายเหตุ</TableHead>
+                    <TableHead className="text-muted-foreground text-right">ดู</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                 {filteredPersons.map((person, index) => (
                   <TableRow key={person.id} className="hover:bg-secondary/30">
                     <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                    <TableCell className="text-sm">{person.title || "-"}</TableCell>
                     <TableCell className="font-medium">{person.name}</TableCell>
                     <TableCell className="text-sm">{person.position}</TableCell>
-                    <TableCell className="text-sm">{person.department}</TableCell>
                     <TableCell className="text-center">
                       <Badge variant="outline" className="bg-secondary">
-                        {person.rateGroup}
+                        {person.groupNo}
                       </Badge>
                     </TableCell>
+                    <TableCell className="text-center">{person.itemNo}</TableCell>
+                    <TableCell className="text-center">{person.subItemNo}</TableCell>
                     <TableCell className="text-right">{person.baseRate.toLocaleString()}</TableCell>
-                    <TableCell className="text-center">{person.workDays || "-"}</TableCell>
-                    <TableCell className="text-center">
-                      {person.leaveDays > 0 ? (
-                        <span className="text-amber-400">{person.leaveDays}</span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
+                    <TableCell className="text-right">
+                      {person.retroactiveAmount > 0
+                        ? person.retroactiveAmount.toLocaleString()
+                        : "-"}
                     </TableCell>
                     <TableCell className="text-right font-medium text-emerald-400">
-                      {person.actualRate.toLocaleString()}
+                      {person.totalAmount.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {person.note || "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setSelectedRow(person)}
+                        title={person.requestId ? "ดูรายละเอียด" : "ไม่พบคำขอที่ผูกกับรายการนี้"}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -770,6 +1007,152 @@ export function PayrollDetailContent({
               {actionType === "reject" && "ปฏิเสธ"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!selectedRow}
+        onOpenChange={(open) => {
+          if (!open) setSelectedRow(null)
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto bg-card border-border sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>รายละเอียดข้อมูลที่ยื่นเข้ามา</DialogTitle>
+            <DialogDescription>
+              {selectedRow?.name ?? "-"} ({selectedRow?.citizenId ?? "-"})
+            </DialogDescription>
+          </DialogHeader>
+
+          {!selectedRow?.requestId ? (
+            <div className="rounded-lg border border-dashed border-border bg-secondary/30 p-4 text-sm text-muted-foreground">
+              ไม่พบคำขอที่ผูกกับรายการรับเงินนี้
+            </div>
+          ) : requestDetailQuery.isLoading ? (
+            <div className="rounded-lg border border-border bg-secondary/30 p-4 text-sm text-muted-foreground">
+              กำลังโหลดรายละเอียดคำขอ...
+            </div>
+          ) : requestDetailQuery.isError || !selectedRequest ? (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+              โหลดรายละเอียดคำขอไม่สำเร็จ
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div className="rounded-lg border border-border p-4">
+                <p className="text-sm font-semibold text-foreground">ข้อมูลพนักงาน</p>
+                <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <p className="text-muted-foreground">ชื่อ-นามสกุล</p>
+                    <p className="font-medium">{selectedRow.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">ตำแหน่ง</p>
+                    <p className="font-medium">{selectedRow.position}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">แผนก</p>
+                    <p className="font-medium">{selectedRow.department || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">เลขคำขอ</p>
+                    <p className="font-medium">{selectedRequest.request_no || selectedRequest.request_id}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border p-4">
+                <p className="text-sm font-semibold text-foreground">ข้อมูลที่ยื่นเข้ามา</p>
+                <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <p className="text-muted-foreground">วิชาชีพ</p>
+                    <p className="font-medium">{selectedRateDisplay?.professionLabel || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">กลุ่ม</p>
+                    <p className="font-medium">{selectedRateDisplay?.groupLabel || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">เงื่อนไขอ้างอิง</p>
+                    <p className="font-medium">{selectedRateDisplay?.criteriaLabel || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">เงื่อนไขย่อย</p>
+                    <p className="font-medium">{selectedRateDisplay?.subCriteriaLabel || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">วันที่มีผล</p>
+                    <p className="font-medium">
+                      {selectedRequest.effective_date ? formatDate(selectedRequest.effective_date) : "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">ยอดที่ยื่น</p>
+                    <p className="font-medium">
+                      {(Number(selectedRateMapping?.amount ?? selectedRequest.requested_amount ?? 0)).toLocaleString()} บาท
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border p-4">
+                <p className="text-sm font-semibold text-foreground">รายละเอียดการหักเงิน</p>
+                <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <p className="text-muted-foreground">อัตราเงินพื้นฐาน</p>
+                    <p className="font-medium">{selectedRow.baseRate.toLocaleString()} บาท</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">ตกเบิก</p>
+                    <p className="font-medium">{selectedRow.retroactiveAmount.toLocaleString()} บาท</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">วันมีสิทธิ</p>
+                    <p className="font-medium">{selectedRow.workDays.toLocaleString()} วัน</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">วันถูกหัก</p>
+                    <p className="font-medium">{selectedRow.leaveDays.toLocaleString()} วัน</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">ยอดรับจริง</p>
+                    <p className="font-semibold text-emerald-400">{selectedRow.totalAmount.toLocaleString()} บาท</p>
+                  </div>
+                </div>
+                <div className="mt-4 rounded-md bg-secondary/40 p-3">
+                  <p className="text-sm font-medium text-foreground">สาเหตุ</p>
+                  <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                    {deductionReasons.map((reason) => (
+                      <li key={reason}>- {reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border p-4">
+                <p className="text-sm font-semibold text-foreground">ไฟล์แนบจากคำขอ</p>
+                {selectedAttachments.length === 0 ? (
+                  <p className="mt-2 text-sm text-muted-foreground">ไม่มีไฟล์แนบ</p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {selectedAttachments.map((attachment) => {
+                      const url = buildAttachmentUrl(attachment.file_path || "")
+                      return (
+                        <a
+                          key={attachment.attachment_id}
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block rounded border border-border px-3 py-2 text-sm hover:bg-secondary/40"
+                        >
+                          {attachment.file_name}
+                        </a>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

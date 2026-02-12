@@ -1,4 +1,5 @@
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
+import { PoolConnection } from "mysql2/promise";
 import { payrollService as calculator } from '@/modules/payroll/core/calculator.js';
 import { calculateRetroactive } from '@/modules/payroll/core/retroactive.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
@@ -7,6 +8,25 @@ import { resolveNextStatus } from '@shared/policy/payroll.policy.js';
 import { PayrollRepository } from '@/modules/payroll/repositories/payroll.repository.js';
 
 export { PeriodStatus } from '@/modules/payroll/entities/payroll.entity.js';
+
+const REVIEW_PROFESSION_MAP: Record<string, string> = {
+  DOCTOR: "PHYSICIAN",
+  DENTIST: "DENTIST",
+  PHARMACIST: "PHARMACIST",
+  NURSE: "NURSE",
+  MED_TECH: "MED_TECH",
+  RAD_TECH: "RADIOLOGIST",
+  PHYSIO: "PHYSICAL_THERAPY",
+  OCC_THERAPY: "OCCUPATIONAL_THERAPY",
+  CLIN_PSY: "CLINICAL_PSYCHOLOGIST",
+  CARDIO_TECH: "CARDIO_THORACIC_TECH",
+};
+
+function normalizeProfessionCodeForReview(code: string): string {
+  const normalized = String(code ?? "").trim().toUpperCase();
+  if (!normalized) return "";
+  return REVIEW_PROFESSION_MAP[normalized] ?? normalized;
+}
 
 export class PayrollService {
   /**
@@ -195,6 +215,7 @@ export class PayrollService {
         headCount,
         conn,
       );
+      await PayrollRepository.clearProfessionReviewsByPeriod(periodId, conn);
 
       await conn.commit();
       return { success: true, headCount, totalAmount };
@@ -234,6 +255,27 @@ export class PayrollService {
         period;
       const nextStatus = resolveNextStatus(action, currentStatus);
 
+      if (action === "SUBMIT") {
+        const requiredProfessionCodes =
+          await PayrollService.getRequiredProfessionCodes(periodId, conn);
+        if (requiredProfessionCodes.length === 0) {
+          throw new Error("ยังไม่มีข้อมูลการคำนวณสำหรับรอบนี้");
+        }
+        const reviewedProfessionCodes =
+          await PayrollService.getReviewedProfessionCodes(periodId, conn);
+        const reviewedSet = new Set(reviewedProfessionCodes);
+        const missingProfessionCodes = requiredProfessionCodes.filter(
+          (code) => !reviewedSet.has(code),
+        );
+        if (missingProfessionCodes.length > 0) {
+          const error = new Error(
+            "ยังตรวจไม่ครบทุกวิชาชีพก่อนส่งให้ HR",
+          ) as Error & { missingProfessionCodes?: string[] };
+          error.missingProfessionCodes = missingProfessionCodes;
+          throw error;
+        }
+      }
+
       // Send notifications based on workflow transition
       await sendWorkflowNotification(nextStatus, month, year, conn);
 
@@ -243,6 +285,7 @@ export class PayrollService {
       }
       if (action === "REJECT") {
         await PayrollRepository.updatePeriodFreeze(periodId, false, null, conn);
+        await PayrollRepository.clearProfessionReviewsByPeriod(periodId, conn);
       }
       await conn.commit();
 
@@ -255,7 +298,7 @@ export class PayrollService {
         auditEventType = AuditEventType.PERIOD_REJECT;
       }
 
-      await emitAuditEvent({
+      await tryEmitAuditEvent({
         eventType: auditEventType,
         entityType: "period",
         entityId: periodId,
@@ -272,7 +315,7 @@ export class PayrollService {
       });
 
       if (action === "SUBMIT") {
-        await emitAuditEvent({
+        await tryEmitAuditEvent({
           eventType: AuditEventType.PERIOD_FREEZE,
           entityType: "period",
           entityId: periodId,
@@ -283,7 +326,7 @@ export class PayrollService {
             period_year: year,
           },
         });
-        await emitAuditEvent({
+        await tryEmitAuditEvent({
           eventType: AuditEventType.PERIOD_SUBMIT,
           entityType: "period",
           entityId: periodId,
@@ -314,6 +357,100 @@ export class PayrollService {
     return PayrollRepository.findPeriodById(periodId);
   }
 
+  static async getRequiredProfessionCodes(
+    periodId: number,
+    conn?: PoolConnection,
+  ): Promise<string[]> {
+    const rawCodes = await PayrollRepository.findRequiredProfessionCodesByPeriod(
+      periodId,
+      conn,
+    );
+    return Array.from(
+      new Set(
+        rawCodes
+          .map((code) => normalizeProfessionCodeForReview(code))
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  static async getReviewedProfessionCodes(
+    periodId: number,
+    conn?: PoolConnection,
+  ): Promise<string[]> {
+    const rawCodes = await PayrollRepository.findReviewedProfessionCodesByPeriod(
+      periodId,
+      conn,
+    );
+    return Array.from(
+      new Set(
+        rawCodes
+          .map((code) => normalizeProfessionCodeForReview(code))
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  static async getPeriodReviewProgress(periodId: number) {
+    const period = await PayrollRepository.findPeriodById(periodId);
+    if (!period) throw new Error("Period not found");
+
+    const requiredProfessionCodes =
+      await PayrollService.getRequiredProfessionCodes(periodId);
+    const reviewedProfessionCodes =
+      await PayrollService.getReviewedProfessionCodes(periodId);
+    const reviewedSet = new Set(reviewedProfessionCodes);
+    const missingProfessionCodes = requiredProfessionCodes.filter(
+      (code) => !reviewedSet.has(code),
+    );
+
+    return {
+      required_profession_codes: requiredProfessionCodes,
+      reviewed_profession_codes: reviewedProfessionCodes.filter((code) =>
+        requiredProfessionCodes.includes(code),
+      ),
+      missing_profession_codes: missingProfessionCodes,
+      total_required: requiredProfessionCodes.length,
+      total_reviewed: requiredProfessionCodes.filter((code) =>
+        reviewedSet.has(code),
+      ).length,
+      all_reviewed:
+        requiredProfessionCodes.length > 0 && missingProfessionCodes.length === 0,
+    };
+  }
+
+  static async setPeriodProfessionReview(
+    periodId: number,
+    professionCode: string,
+    reviewed: boolean,
+    actorId: number,
+  ) {
+    const period = await PayrollRepository.findPeriodById(periodId);
+    if (!period) throw new Error("Period not found");
+    if (period.status !== PeriodStatus.OPEN) {
+      throw new Error("สามารถยืนยันตรวจได้เฉพาะรอบที่ยังเปิดอยู่");
+    }
+
+    const normalizedCode = normalizeProfessionCodeForReview(professionCode);
+    if (!normalizedCode) {
+      throw new Error("profession_code is required");
+    }
+
+    const requiredProfessionCodes =
+      await PayrollService.getRequiredProfessionCodes(periodId);
+    if (!requiredProfessionCodes.includes(normalizedCode)) {
+      throw new Error("วิชาชีพนี้ไม่มีในรอบการคำนวณปัจจุบัน");
+    }
+
+    await PayrollRepository.setProfessionReview(
+      periodId,
+      normalizedCode,
+      reviewed,
+      actorId,
+    );
+    return PayrollService.getPeriodReviewProgress(periodId);
+  }
+
   /**
    * List all periods (newest first).
    */
@@ -334,7 +471,49 @@ export class PayrollService {
     const period = await PayrollRepository.findPeriodById(periodId);
     if (!period) throw new Error("Period not found");
     const items = await PayrollRepository.findPeriodItems(periodId);
-    return { period, items };
+    const monthStart = new Date(period.period_year, period.period_month - 1, 1);
+    const monthEnd = new Date(period.period_year, period.period_month, 0);
+    const toDate = (d: Date) => d.toISOString().slice(0, 10);
+
+    const holidayRows = await PayrollRepository.findHolidayDatesInRange(
+      toDate(monthStart),
+      toDate(monthEnd),
+    );
+    const publicHolidaySet = new Set<string>(
+      holidayRows.map((row: any) => toDate(new Date(row.holiday_date))),
+    );
+
+    const totalDays = monthEnd.getDate();
+    let weekendDays = 0;
+    let publicHolidayDays = 0;
+    for (let day = 1; day <= totalDays; day += 1) {
+      const current = new Date(period.period_year, period.period_month - 1, day);
+      const dayOfWeek = current.getDay();
+      const dateKey = toDate(current);
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      if (isWeekend) {
+        weekendDays += 1;
+        continue;
+      }
+      if (publicHolidaySet.has(dateKey)) {
+        publicHolidayDays += 1;
+      }
+    }
+
+    const holidayDays = weekendDays + publicHolidayDays;
+    const workingDays = Math.max(0, totalDays - holidayDays);
+
+    return {
+      period,
+      items,
+      calendar: {
+        total_days: totalDays,
+        working_days: workingDays,
+        holiday_days: holidayDays,
+        weekend_days: weekendDays,
+        public_holiday_days: publicHolidayDays,
+      },
+    };
   }
 
   static async addPeriodItems(
@@ -586,7 +765,16 @@ async function sendWorkflowNotification(
       notif.title,
       notif.message,
       notif.link,
+      undefined,
       conn,
     );
+  }
+}
+
+async function tryEmitAuditEvent(payload: Parameters<typeof emitAuditEvent>[0]) {
+  try {
+    await emitAuditEvent(payload);
+  } catch (error) {
+    console.error("[payroll] audit emit failed", error);
   }
 }

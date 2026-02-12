@@ -9,12 +9,14 @@ import {
   createPeriod,
   getPeriodDetail,
   getPeriodPayouts,
+  getPeriodReviewProgress,
   getPeriodSummaryByProfession,
   getPeriodReport,
   listPeriods,
   removePeriodItem,
   rejectPeriod,
   searchPayouts,
+  setPeriodProfessionReview,
   submitToHR,
 } from '@/modules/payroll/payroll.controller.js';
 import { protect, restrictTo } from '@middlewares/authMiddleware.js';
@@ -24,6 +26,7 @@ import {
   calculateOnDemandSchema,
   addPeriodItemsSchema,
   rejectPeriodSchema,
+  professionReviewSchema,
   periodIdParamSchema,
   periodItemParamSchema,
 } from '@/modules/payroll/payroll.schema.js';
@@ -96,6 +99,13 @@ router.get(
   validate(periodIdParamSchema),
   getPeriodSummaryByProfession,
 );
+router.get(
+  "/period/:periodId/review-progress",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(periodIdParamSchema),
+  getPeriodReviewProgress,
+);
 
 // Create a new period (PTS_OFFICER)
 router.post(
@@ -136,6 +146,15 @@ router.post(
 );
 
 // Calculate (OFFICER)
+router.post(
+  "/period/:periodId/review-progress",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(periodIdParamSchema),
+  validate(professionReviewSchema),
+  setPeriodProfessionReview,
+);
+
 router.post(
   "/period/:periodId/calculate",
   protect,

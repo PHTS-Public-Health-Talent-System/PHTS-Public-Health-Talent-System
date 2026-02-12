@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useMemo, useState } from "react"
+import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -28,26 +29,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
 import {
-  Calculator,
   Plus,
   Send,
   FileText,
-  Clock,
-  CheckCircle2,
   Download,
   Calendar,
   Users,
   Banknote,
   AlertCircle,
   ChevronRight,
+  Calculator,
 } from "lucide-react"
-import Link from "next/link"
-
-// TODO: add icon when rejected periods are shown: XCircle
 import { YearPicker } from "@/components/month-year-picker"
 import { toast } from "sonner"
+import type { AxiosError } from "axios"
 import {
   useCalculatePeriod,
   useCreatePeriod,
@@ -57,31 +54,7 @@ import {
   useSubmitToHR,
 } from "@/features/payroll/hooks"
 import type { PayPeriod, PeriodPayoutRow } from "@/features/payroll/api"
-
-type PeriodStatus = "draft" | "calculating" | "pending_hr" | "approved_hr" | "approved_director" | "paid"
-
-interface PayrollPeriod {
-  id: string
-  month: string
-  year: string
-  status: PeriodStatus
-  totalPersons: number
-  totalAmount: number
-  createdAt: string
-  submittedAt?: string
-}
-
-interface PayrollItem {
-  id: string
-  name: string
-  position: string
-  rateGroup: string
-  rateItem: string
-  baseAmount: number
-  leaveDays: number
-  deduction: number
-  netAmount: number
-}
+import { usePayrollReviewProgress } from "@/features/payroll/usePayrollReviewProgress"
 
 const thaiMonths = [
   "มกราคม",
@@ -98,12 +71,51 @@ const thaiMonths = [
   "ธันวาคม",
 ]
 
+const backendProfessionMap: Record<string, string> = {
+  DOCTOR: "PHYSICIAN",
+  DENTIST: "DENTIST",
+  PHARMACIST: "PHARMACIST",
+  NURSE: "NURSE",
+  MED_TECH: "MED_TECH",
+  RAD_TECH: "RADIOLOGIST",
+  PHYSIO: "PHYSICAL_THERAPY",
+  OCC_THERAPY: "OCCUPATIONAL_THERAPY",
+  CLIN_PSY: "CLINICAL_PSYCHOLOGIST",
+  CARDIO_TECH: "CARDIO_THORACIC_TECH",
+}
+
+const professionLabels: Record<string, string> = {
+  NURSE: "พยาบาลวิชาชีพ",
+  PHYSICIAN: "แพทย์",
+  MED_TECH: "นักเทคนิคการแพทย์",
+  PHYSICAL_THERAPY: "นักกายภาพบำบัด",
+  OCCUPATIONAL_THERAPY: "นักกิจกรรมบำบัด",
+  RADIOLOGIST: "นักรังสีการแพทย์",
+  PHARMACIST: "เภสัชกร",
+  DENTIST: "ทันตแพทย์",
+  CLINICAL_PSYCHOLOGIST: "นักจิตวิทยาคลินิก",
+  CARDIO_THORACIC_TECH: "นักเทคโนโลยีหัวใจและทรวงอก",
+}
+
+type PeriodStatus = "draft" | "pending_hr" | "approved_hr" | "approved_director" | "paid"
+
+type PayrollPeriod = {
+  id: string
+  label: string
+  month: string
+  year: string
+  status: PeriodStatus
+  totalPersons: number
+  totalAmount: number
+  createdAt: string
+}
+
 function formatThaiDate(dateStr?: string | null): string {
   if (!dateStr) return "-"
   const [year, month, day] = dateStr.split("T")[0].split("-")
-  const yearNum = parseInt(year)
+  const yearNum = Number.parseInt(year)
   const thaiYear = yearNum > 2400 ? yearNum : yearNum + 543
-  return `${parseInt(day)} ${thaiMonths[parseInt(month) - 1]} ${thaiYear}`
+  return `${Number.parseInt(day)} ${thaiMonths[Number.parseInt(month) - 1]} ${thaiYear}`
 }
 
 function mapStatus(status?: string | null): PeriodStatus {
@@ -129,117 +141,108 @@ function mapPeriod(period: PayPeriod): PayrollPeriod {
   const thaiYear = yearNum > 2400 ? yearNum : yearNum + 543
   return {
     id: String(period.period_id),
+    label: `${monthName} ${thaiYear}`,
     month: monthName,
     year: String(thaiYear),
     status: mapStatus(period.status),
-    totalPersons: period.total_headcount ?? 0,
-    totalAmount: period.total_amount ?? 0,
+    totalPersons: Number(period.total_headcount ?? 0),
+    totalAmount: Number(period.total_amount ?? 0),
     createdAt: formatThaiDate(period.created_at ?? undefined),
-    submittedAt: formatThaiDate(period.updated_at ?? undefined),
-  }
-}
-
-function mapPayout(row: PeriodPayoutRow): PayrollItem {
-  return {
-    id: String(row.payout_id),
-    name: `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() || "-",
-    position: row.position_name ?? "-",
-    rateGroup: "-",
-    rateItem: "-",
-    baseAmount: Number(row.rate ?? 0),
-    leaveDays: Number(row.deducted_days ?? 0),
-    deduction: 0,
-    netAmount: Number(row.total_payable ?? 0),
   }
 }
 
 function getStatusBadge(status: PeriodStatus) {
   switch (status) {
     case "draft":
-      return (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
-          <FileText className="h-3 w-3" />
-          แบบร่าง
-        </span>
-      )
-    case "calculating":
-      return (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-          <Calculator className="h-3 w-3" />
-          กำลังคำนวณ
-        </span>
-      )
+      return <Badge variant="outline" className="bg-secondary">เปิดรอบ</Badge>
     case "pending_hr":
-      return (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--warning))]/10 px-2.5 py-1 text-xs font-medium text-[hsl(var(--warning))]">
-          <Clock className="h-3 w-3" />
-          รอ HR อนุมัติ
-        </span>
-      )
+      return <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30">รอ HR อนุมัติ</Badge>
     case "approved_hr":
-      return (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--success))]/10 px-2.5 py-1 text-xs font-medium text-[hsl(var(--success))]">
-          <CheckCircle2 className="h-3 w-3" />
-          HR อนุมัติแล้ว
-        </span>
-      )
+      return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30">รอหัวหน้าการเงิน</Badge>
     case "approved_director":
-      return (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--success))]/10 px-2.5 py-1 text-xs font-medium text-[hsl(var(--success))]">
-          <CheckCircle2 className="h-3 w-3" />
-          ผอ.อนุมัติแล้ว
-        </span>
-      )
+      return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">รอผู้อำนวยการ</Badge>
     case "paid":
-      return (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--success))]/10 px-2.5 py-1 text-xs font-medium text-[hsl(var(--success))]">
-          <Banknote className="h-3 w-3" />
-          จ่ายเงินแล้ว
-        </span>
-      )
+      return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30">ปิดงวดแล้ว</Badge>
   }
 }
 
 export default function PayrollPage() {
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [createMonth, setCreateMonth] = useState("01")
-  const [createYear, setCreateYear] = useState(2568)
-
-  const { data: periodsData } = usePeriods()
+  const periodsQuery = usePeriods()
   const createPeriod = useCreatePeriod()
   const calculatePeriod = useCalculatePeriod()
   const submitToHR = useSubmitToHR()
   const downloadReport = useDownloadPeriodReport()
 
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [createMonth, setCreateMonth] = useState("01")
+  const [createYear, setCreateYear] = useState(2569)
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string>("")
+
   const periods = useMemo<PayrollPeriod[]>(() => {
-    if (!Array.isArray(periodsData)) return []
-    return [...periodsData]
+    const data = (periodsQuery.data ?? []) as PayPeriod[]
+    return [...data]
       .sort((a, b) => {
         const yearDiff = (b.period_year ?? 0) - (a.period_year ?? 0)
         if (yearDiff !== 0) return yearDiff
         return (b.period_month ?? 0) - (a.period_month ?? 0)
       })
       .map((period) => mapPeriod(period))
-  }, [periodsData])
+  }, [periodsQuery.data])
 
   const currentPeriod = useMemo(() => {
-    if (periods.length === 0) return null
-    return periods[0]
-  }, [periods])
+    if (!periods.length) return null
+    if (!selectedPeriodId) return periods[0]
+    return periods.find((period) => period.id === selectedPeriodId) ?? periods[0]
+  }, [periods, selectedPeriodId])
 
   const { data: payoutsData } = usePeriodPayouts(currentPeriod?.id)
-  const payouts = useMemo<PayrollItem[]>(() => {
-    if (!Array.isArray(payoutsData)) return []
-    return payoutsData.map((row) => mapPayout(row))
-  }, [payoutsData])
+  const { reviewedCodes } = usePayrollReviewProgress(currentPeriod?.id ?? "")
+
+  const professionProgress = useMemo(() => {
+    const rows = (payoutsData ?? []) as PeriodPayoutRow[]
+    const totals = new Map<string, { label: string; count: number; amount: number }>()
+    rows.forEach((row) => {
+      const raw = String(row.profession_code ?? "").toUpperCase()
+      const code = backendProfessionMap[raw] ?? raw
+      if (!code) return
+      const current = totals.get(code) ?? {
+        label: professionLabels[code] ?? code,
+        count: 0,
+        amount: 0,
+      }
+      current.count += 1
+      current.amount += Number(row.total_payable ?? 0)
+      totals.set(code, current)
+    })
+
+    const reviewedSet = new Set((reviewedCodes ?? []).map((item) => item.toUpperCase()))
+    const items = Array.from(totals.entries())
+      .map(([code, data]) => ({
+        code,
+        label: data.label,
+        count: data.count,
+        amount: data.amount,
+        reviewed: reviewedSet.has(code.toUpperCase()),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "th"))
+
+    return {
+      items,
+      total: items.length,
+      reviewed: items.filter((item) => item.reviewed).length,
+    }
+  }, [payoutsData, reviewedCodes])
+
+  const canSubmit = !!currentPeriod && currentPeriod.status === "draft" && professionProgress.total > 0 && professionProgress.total === professionProgress.reviewed
 
   const handleCreatePeriod = async () => {
     const year = createYear > 2400 ? createYear - 543 : createYear
-    const month = parseInt(createMonth)
+    const month = Number.parseInt(createMonth)
     try {
       await createPeriod.mutateAsync({ year, month })
       toast.success("สร้างรอบจ่ายเงินเรียบร้อย")
       setIsCreateDialogOpen(false)
+      periodsQuery.refetch()
     } catch {
       toast.error("ไม่สามารถสร้างรอบจ่ายเงินได้")
     }
@@ -249,19 +252,27 @@ export default function PayrollPage() {
     if (!currentPeriod) return
     try {
       await calculatePeriod.mutateAsync(currentPeriod.id)
-      toast.success("เริ่มคำนวณรอบเรียบร้อย")
+      toast.success("คำนวณรอบเรียบร้อย")
+      periodsQuery.refetch()
     } catch {
       toast.error("ไม่สามารถคำนวณรอบได้")
     }
   }
 
-  const handleSubmit = async () => {
+  const handleSubmitToHR = async () => {
     if (!currentPeriod) return
+    if (!canSubmit) {
+      toast.error("ต้องยืนยันตรวจครบทุกวิชาชีพก่อนส่ง HR")
+      return
+    }
     try {
       await submitToHR.mutateAsync(currentPeriod.id)
       toast.success("ส่งให้ HR อนุมัติเรียบร้อย")
-    } catch {
-      toast.error("ไม่สามารถส่งให้ HR อนุมัติได้")
+      periodsQuery.refetch()
+    } catch (error) {
+      const apiError = error as AxiosError<{ error?: string }>
+      const message = apiError.response?.data?.error ?? "ไม่สามารถส่งให้ HR อนุมัติได้"
+      toast.error(message)
     }
   }
 
@@ -282,22 +293,13 @@ export default function PayrollPage() {
     }
   }
 
-  const displayPeriod = currentPeriod ?? {
-    month: "-",
-    year: "-",
-    totalPersons: 0,
-    totalAmount: 0,
-    status: "draft" as PeriodStatus,
-  }
-
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8 flex items-center justify-between">
+    <div className="p-8 space-y-6">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">รอบจ่ายเงิน (Payroll)</h1>
+          <h1 className="text-2xl font-bold text-foreground">จัดการรอบจ่ายเงิน (PTS Officer)</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            จัดการรอบคำนวณเงิน พ.ต.ส. รายเดือน
+            สร้างรอบ คำนวณ ตรวจรายวิชาชีพ และส่งให้ HR อนุมัติ
           </p>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -310,9 +312,7 @@ export default function PayrollPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>สร้างรอบจ่ายเงินใหม่</DialogTitle>
-              <DialogDescription>
-                เลือกเดือนและปีสำหรับสร้างรอบจ่ายเงินใหม่
-              </DialogDescription>
+              <DialogDescription>เลือกเดือนและปีสำหรับสร้างรอบใหม่</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
@@ -330,38 +330,26 @@ export default function PayrollPage() {
                   </SelectContent>
                 </Select>
               </div>
-<div className="grid gap-2">
-  <label className="text-sm font-medium">ปี พ.ศ.</label>
-  <YearPicker
-    value={createYear}
-    onChange={setCreateYear}
-    minYear={2550}
-    maxYear={2600}
-  />
-  </div>
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">ปี พ.ศ.</label>
+                <YearPicker value={createYear} onChange={setCreateYear} minYear={2550} maxYear={2600} />
+              </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                ยกเลิก
-              </Button>
-              <Button onClick={handleCreatePeriod}>
-                สร้างรอบ
-              </Button>
+              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>ยกเลิก</Button>
+              <Button onClick={handleCreatePeriod}>สร้างรอบ</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* Stats */}
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card className="bg-card">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">รอบปัจจุบัน</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {displayPeriod.month} {displayPeriod.year}
-                </p>
+                <p className="text-sm text-muted-foreground">รอบที่เลือก</p>
+                <p className="text-2xl font-bold text-foreground">{currentPeriod ? `${currentPeriod.month} ${currentPeriod.year}` : "-"}</p>
               </div>
               <Calendar className="h-8 w-8 text-primary/50" />
             </div>
@@ -372,7 +360,7 @@ export default function PayrollPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">จำนวนผู้รับเงิน</p>
-                <p className="text-2xl font-bold text-primary">{displayPeriod.totalPersons} คน</p>
+                <p className="text-2xl font-bold text-primary">{currentPeriod?.totalPersons ?? 0} คน</p>
               </div>
               <Users className="h-8 w-8 text-primary/50" />
             </div>
@@ -383,9 +371,7 @@ export default function PayrollPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">ยอดรวม</p>
-                <p className="text-2xl font-bold text-[hsl(var(--success))]">
-                  {displayPeriod.totalAmount.toLocaleString()} บาท
-                </p>
+                <p className="text-2xl font-bold text-[hsl(var(--success))]">{Number(currentPeriod?.totalAmount ?? 0).toLocaleString()} บาท</p>
               </div>
               <Banknote className="h-8 w-8 text-[hsl(var(--success))]/50" />
             </div>
@@ -396,7 +382,7 @@ export default function PayrollPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">สถานะ</p>
-                <div className="mt-1">{getStatusBadge(displayPeriod.status)}</div>
+                <div className="mt-1">{currentPeriod ? getStatusBadge(currentPeriod.status) : <span>-</span>}</div>
               </div>
               <AlertCircle className="h-8 w-8 text-[hsl(var(--warning))]/50" />
             </div>
@@ -404,188 +390,145 @@ export default function PayrollPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="current" className="space-y-6">
-        <TabsList className="bg-secondary">
-          <TabsTrigger value="current">รอบปัจจุบัน</TabsTrigger>
-          <TabsTrigger value="history">ประวัติรอบจ่าย</TabsTrigger>
-        </TabsList>
+      <Card className="bg-card">
+        <CardHeader>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <CardTitle className="text-lg font-semibold">Workflow รอบที่เลือก</CardTitle>
+            <div className="w-full md:w-[320px]">
+              <Select
+                value={currentPeriod?.id ?? ""}
+                onValueChange={(value) => setSelectedPeriodId(value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกงวดที่ต้องการจัดการ" />
+                </SelectTrigger>
+                <SelectContent>
+                  {periods.map((period) => (
+                    <SelectItem key={period.id} value={period.id}>
+                      {period.label} (#{period.id})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border border-border bg-secondary/20 p-4">
+            <p className="text-sm text-muted-foreground">ขั้นตอน</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+              <Badge variant="outline">1. สร้างรอบ</Badge>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              <Badge variant="outline">2. คำนวณ</Badge>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              <Badge variant="outline">3. ตรวจรายวิชาชีพ</Badge>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              <Badge variant="outline">4. ส่ง HR</Badge>
+            </div>
+          </div>
 
-        <TabsContent value="current" className="space-y-6">
-          {/* Actions */}
-          <Card className="bg-card">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold">การดำเนินการ</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-4">
-                <Button
-                  variant="outline"
-                  className="gap-2 bg-transparent"
-                  onClick={() => toast.error("ยังไม่รองรับการเพิ่มรายการผ่านหน้านี้")}
-                >
-                  <Plus className="h-4 w-4" />
-                  เพิ่มรายการ
-                </Button>
-                <Button variant="outline" className="gap-2 bg-transparent" onClick={handleCalculate}>
-                  <Calculator className="h-4 w-4" />
-                  คำนวณใหม่
-                </Button>
-                <Button className="gap-2 bg-primary" onClick={handleSubmit}>
-                  <Send className="h-4 w-4" />
-                  ส่งให้ HR อนุมัติ
-                </Button>
-                <Button variant="outline" className="gap-2 ml-auto bg-transparent" onClick={handleDownload}>
-                  <Download className="h-4 w-4" />
-                  ดาวน์โหลดรายงาน
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" className="gap-2" onClick={handleCalculate} disabled={!currentPeriod || currentPeriod.status !== "draft"}>
+              <Calculator className="h-4 w-4" />
+              คำนวณใหม่
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={handleDownload} disabled={!currentPeriod}>
+              <Download className="h-4 w-4" />
+              ดาวน์โหลดรายงาน
+            </Button>
+            <Button className="gap-2 bg-primary" onClick={handleSubmitToHR} disabled={!canSubmit || submitToHR.isPending}>
+              <Send className="h-4 w-4" />
+              ส่งให้ HR อนุมัติ
+            </Button>
+            {currentPeriod && (
+              <Button variant="secondary" className="gap-2" asChild>
+                <Link href={`/pts-officer/payroll/${currentPeriod.id}`}>
+                  <FileText className="h-4 w-4" />
+                  ตรวจรายวิชาชีพ
+                </Link>
+              </Button>
+            )}
+          </div>
 
-          {/* Payroll Items */}
-          <Card className="bg-card">
-            <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-lg font-semibold">
-                รายการเบิกจ่าย - {displayPeriod.month} {displayPeriod.year}
-              </CardTitle>
-              <span className="text-sm text-muted-foreground">
-                แสดง {payouts.length} รายการ
-              </span>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-lg border border-border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-secondary/30 hover:bg-secondary/30">
-                      <TableHead className="font-semibold w-[50px]">ลำดับ</TableHead>
-                      <TableHead className="font-semibold">ชื่อ-สกุล</TableHead>
-                      <TableHead className="font-semibold">ตำแหน่ง</TableHead>
-                      <TableHead className="font-semibold text-center">กลุ่ม/ข้อ</TableHead>
-                      <TableHead className="font-semibold text-right">อัตรา (บาท)</TableHead>
-                      <TableHead className="font-semibold text-center">วันลา</TableHead>
-                      <TableHead className="font-semibold text-right">หักลา (บาท)</TableHead>
-                      <TableHead className="font-semibold text-right">สุทธิ (บาท)</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {payouts.map((item, index) => (
-                      <TableRow key={item.id} className="hover:bg-secondary/20">
-                        <TableCell className="text-center">{index + 1}</TableCell>
-                        <TableCell className="font-medium">{item.name}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {item.position}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="inline-flex items-center justify-center rounded bg-secondary px-2 py-1 text-xs font-medium">
-                            {item.rateGroup}/{item.rateItem}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.baseAmount.toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {item.leaveDays > 0 ? (
-                            <span className="text-[hsl(var(--warning))]">{item.leaveDays}</span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.deduction > 0 ? (
-                            <span className="text-destructive">-{item.deduction.toLocaleString()}</span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold text-[hsl(var(--success))]">
-                          {item.netAmount.toLocaleString()}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+          <div className="rounded-lg border border-border p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">ความคืบหน้าการตรวจวิชาชีพ</p>
+              <p className="text-sm text-muted-foreground">
+                {professionProgress.reviewed}/{professionProgress.total}
+              </p>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {professionProgress.items.length === 0 ? (
+                <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูลวิชาชีพในรอบนี้</p>
+              ) : (
+                professionProgress.items.map((item) => (
+                  <div key={item.code} className="rounded-md border border-border px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium">{item.label}</p>
+                      <Badge
+                        variant="outline"
+                        className={item.reviewed ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-amber-500/10 text-amber-400 border-amber-500/30"}
+                      >
+                        {item.reviewed ? "ตรวจแล้ว" : "รอตรวจ"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{item.count} คน • {item.amount.toLocaleString()} บาท</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
 
-              {/* Summary */}
-              <div className="mt-4 flex justify-end">
-                <div className="w-80 rounded-lg border border-border bg-secondary/30 p-4">
-                  <div className="flex justify-between py-2 text-sm">
-                    <span className="text-muted-foreground">จำนวนผู้รับเงิน</span>
-                    <span className="font-medium">{payouts.length} คน</span>
-                  </div>
-                  <div className="flex justify-between py-2 text-sm">
-                    <span className="text-muted-foreground">ยอดรวมก่อนหัก</span>
-                    <span className="font-medium">
-                      {payouts.reduce((sum, i) => sum + i.baseAmount, 0).toLocaleString()} บาท
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-2 text-sm">
-                    <span className="text-muted-foreground">หักลารวม</span>
-                    <span className="font-medium text-destructive">
-                      -{payouts.reduce((sum, i) => sum + i.deduction, 0).toLocaleString()} บาท
-                    </span>
-                  </div>
-                  <div className="flex justify-between border-t border-border pt-2 text-sm">
-                    <span className="font-semibold">ยอดสุทธิ</span>
-                    <span className="font-bold text-[hsl(var(--success))]">
-                      {payouts.reduce((sum, i) => sum + i.netAmount, 0).toLocaleString()} บาท
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          {!canSubmit && currentPeriod?.status === "draft" && (
+            <p className="text-sm text-amber-500">
+              ต้องตรวจและยืนยันครบทุกวิชาชีพก่อนจึงจะส่งให้ HR ได้
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
-        <TabsContent value="history">
-          <Card className="bg-card">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold">ประวัติรอบจ่ายเงิน</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-lg border border-border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-secondary/30 hover:bg-secondary/30">
-                      <TableHead className="font-semibold">รหัสรอบ</TableHead>
-                      <TableHead className="font-semibold">เดือน/ปี</TableHead>
-                      <TableHead className="font-semibold text-center">จำนวนคน</TableHead>
-                      <TableHead className="font-semibold text-right">ยอดรวม (บาท)</TableHead>
-                      <TableHead className="font-semibold">สถานะ</TableHead>
-                      <TableHead className="font-semibold">วันที่สร้าง</TableHead>
-                      <TableHead className="font-semibold text-center">การดำเนินการ</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {periods.map((period) => (
-                      <TableRow key={period.id} className="hover:bg-secondary/20">
-                        <TableCell className="font-mono text-sm">{period.id}</TableCell>
-                        <TableCell className="font-medium">
-                          {period.month} {period.year}
-                        </TableCell>
-                        <TableCell className="text-center">{period.totalPersons}</TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {period.totalAmount.toLocaleString()}
-                        </TableCell>
-                        <TableCell>{getStatusBadge(period.status)}</TableCell>
-                        <TableCell className="text-muted-foreground">{period.createdAt}</TableCell>
-                        <TableCell className="text-center">
-                          <Button variant="ghost" size="sm" className="gap-1" asChild>
-                            <Link href={`/pts-officer/payroll/${period.id}`}>
-                              ดูรายละเอียด
-                              <ChevronRight className="h-4 w-4" />
-                            </Link>
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <Card className="bg-card">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold">ประวัติรอบจ่ายเงิน</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-secondary/30 hover:bg-secondary/30">
+                  <TableHead className="font-semibold">รหัสรอบ</TableHead>
+                  <TableHead className="font-semibold">เดือน/ปี</TableHead>
+                  <TableHead className="font-semibold text-center">จำนวนคน</TableHead>
+                  <TableHead className="font-semibold text-right">ยอดรวม (บาท)</TableHead>
+                  <TableHead className="font-semibold">สถานะ</TableHead>
+                  <TableHead className="font-semibold">วันที่สร้าง</TableHead>
+                  <TableHead className="font-semibold text-center">การดำเนินการ</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {periods.map((period) => (
+                  <TableRow key={period.id} className="hover:bg-secondary/20">
+                    <TableCell className="font-mono text-sm">{period.id}</TableCell>
+                    <TableCell className="font-medium">{period.month} {period.year}</TableCell>
+                    <TableCell className="text-center">{period.totalPersons}</TableCell>
+                    <TableCell className="text-right font-semibold">{period.totalAmount.toLocaleString()}</TableCell>
+                    <TableCell>{getStatusBadge(period.status)}</TableCell>
+                    <TableCell className="text-muted-foreground">{period.createdAt}</TableCell>
+                    <TableCell className="text-center">
+                      <Button variant="ghost" size="sm" className="gap-1" asChild>
+                        <Link href={`/pts-officer/payroll/${period.id}`}>
+                          ดูรายละเอียด
+                          <ChevronRight className="h-4 w-4" />
+                        </Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

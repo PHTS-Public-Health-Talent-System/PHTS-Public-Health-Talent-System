@@ -29,6 +29,13 @@ export const rejectPeriodSchema = z.object({
   }),
 });
 
+export const professionReviewSchema = z.object({
+  body: z.object({
+    profession_code: z.string().trim().min(1),
+    reviewed: z.boolean(),
+  }),
+});
+
 const periodIdParam = z.object({
   periodId: z.string().regex(/^\d+$/, "periodId ต้องเป็นตัวเลข"),
 });

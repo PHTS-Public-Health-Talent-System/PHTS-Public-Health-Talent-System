@@ -16,6 +16,7 @@ import {
   downloadPeriodReport,
   getPeriodDetail,
   getPeriodPayouts,
+  getPeriodReviewProgress,
   getPeriodSummaryByProfession,
   listPeriods,
   removePeriodItem,
@@ -23,6 +24,7 @@ import {
   listLeaveReturnReports,
   rejectPeriod,
   searchPayouts,
+  setPeriodProfessionReview,
   submitToHR,
 } from './api';
 
@@ -38,6 +40,14 @@ export function usePeriodSummaryByProfession(periodId: number | string | undefin
   return useQuery({
     queryKey: ['payroll-period-summary', periodId],
     queryFn: () => getPeriodSummaryByProfession(periodId!),
+    enabled: !!periodId,
+  });
+}
+
+export function usePeriodReviewProgress(periodId: number | string | undefined) {
+  return useQuery({
+    queryKey: ['payroll-period-review-progress', periodId],
+    queryFn: () => getPeriodReviewProgress(periodId!),
     enabled: !!periodId,
   });
 }
@@ -116,8 +126,38 @@ export function useCalculatePeriod() {
 }
 
 export function useSubmitToHR() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (periodId: number | string) => submitToHR(periodId),
+    onSuccess: (_data, periodId) => {
+      qc.invalidateQueries({ queryKey: ['payroll-periods'] });
+      qc.invalidateQueries({ queryKey: ['payroll-period-review-progress', periodId] });
+      qc.invalidateQueries({ queryKey: ['payroll-period-detail', periodId] });
+    },
+  });
+}
+
+export function useSetPeriodProfessionReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      periodId,
+      professionCode,
+      reviewed,
+    }: {
+      periodId: number | string;
+      professionCode: string;
+      reviewed: boolean;
+    }) =>
+      setPeriodProfessionReview(periodId, {
+        profession_code: professionCode,
+        reviewed,
+      }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({
+        queryKey: ['payroll-period-review-progress', variables.periodId],
+      });
+    },
   });
 }
 

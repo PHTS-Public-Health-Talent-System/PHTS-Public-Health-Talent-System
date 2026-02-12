@@ -18,6 +18,28 @@ export interface BatchEmployeeData {
 // ─── PayrollRepository ──────────────────────────────────────────────────────
 
 export class PayrollRepository {
+  private static professionReviewTableReady = false;
+
+  static async ensureProfessionReviewTable(): Promise<void> {
+    if (PayrollRepository.professionReviewTableReady) return;
+    await db.execute(
+      `
+      CREATE TABLE IF NOT EXISTS pay_period_profession_reviews (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        period_id INT NOT NULL,
+        profession_code VARCHAR(64) NOT NULL,
+        reviewed_by INT NOT NULL,
+        reviewed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_period_profession (period_id, profession_code),
+        INDEX idx_period (period_id)
+      )
+      `,
+    );
+    PayrollRepository.professionReviewTableReady = true;
+  }
+
   // ── Period CRUD ──────────────────────────────────────────────────────────
   static buildListPeriodsQuery(): string {
     return `
@@ -280,6 +302,96 @@ export class PayrollRepository {
     );
   }
 
+  static async findRequiredProfessionCodesByPeriod(
+    periodId: number,
+    conn?: PoolConnection,
+  ): Promise<string[]> {
+    const executor = conn ?? db;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `
+      SELECT DISTINCT
+        UPPER(
+          COALESCE(
+            NULLIF(p.profession_code, ''),
+            NULLIF(r.profession_code, '')
+          )
+        ) AS profession_code
+      FROM pay_results p
+      LEFT JOIN cfg_payment_rates r ON r.rate_id = p.master_rate_id
+      WHERE p.period_id = ?
+      `,
+      [periodId],
+    );
+    return rows
+      .map((row: any) => String(row.profession_code ?? "").trim())
+      .filter((code) => code.length > 0);
+  }
+
+  static async findReviewedProfessionCodesByPeriod(
+    periodId: number,
+    conn?: PoolConnection,
+  ): Promise<string[]> {
+    await PayrollRepository.ensureProfessionReviewTable();
+    const executor = conn ?? db;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `
+      SELECT UPPER(profession_code) AS profession_code
+      FROM pay_period_profession_reviews
+      WHERE period_id = ?
+      `,
+      [periodId],
+    );
+    return rows
+      .map((row: any) => String(row.profession_code ?? "").trim())
+      .filter((code) => code.length > 0);
+  }
+
+  static async setProfessionReview(
+    periodId: number,
+    professionCode: string,
+    reviewed: boolean,
+    actorId: number,
+    conn?: PoolConnection,
+  ): Promise<void> {
+    await PayrollRepository.ensureProfessionReviewTable();
+    const executor = conn ?? db;
+    if (reviewed) {
+      await executor.execute(
+        `
+        INSERT INTO pay_period_profession_reviews
+          (period_id, profession_code, reviewed_by, reviewed_at)
+        VALUES (?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+          reviewed_by = VALUES(reviewed_by),
+          reviewed_at = VALUES(reviewed_at),
+          updated_at = NOW()
+        `,
+        [periodId, professionCode, actorId],
+      );
+      return;
+    }
+
+    await executor.execute(
+      `
+      DELETE FROM pay_period_profession_reviews
+      WHERE period_id = ? AND profession_code = ?
+      `,
+      [periodId, professionCode],
+    );
+  }
+
+  static async clearProfessionReviewsByPeriod(
+    periodId: number,
+    conn?: PoolConnection,
+  ): Promise<void> {
+    await PayrollRepository.ensureProfessionReviewTable();
+    const executor = conn ?? db;
+    await executor.execute(
+      `DELETE FROM pay_period_profession_reviews WHERE period_id = ?`,
+      [periodId],
+    );
+  }
+
   // ── Pay Results ─────────────────────────────────────────────────────────
 
   static async deletePayResultsByPeriod(
@@ -297,10 +409,35 @@ export class PayrollRepository {
       SELECT
         p.payout_id,
         p.citizen_id,
-        p.profession_code,
+        COALESCE(
+          (
+            SELECT ppi.request_id
+            FROM pay_period_items ppi
+            WHERE ppi.period_id = p.period_id
+              AND ppi.citizen_id = p.citizen_id
+            ORDER BY ppi.period_item_id DESC
+            LIMIT 1
+          ),
+          (
+            SELECT ppi.request_id
+            FROM pay_period_items ppi
+            INNER JOIN users uu ON uu.id = ppi.user_id
+            WHERE ppi.period_id = p.period_id
+              AND uu.citizen_id = p.citizen_id
+            ORDER BY ppi.period_item_id DESC
+            LIMIT 1
+          )
+        ) AS request_id,
+        r.profession_code,
+        p.retroactive_amount,
         e.first_name,
         e.last_name,
+        e.title,
         e.position_name,
+        e.department,
+        r.group_no,
+        r.item_no,
+        r.sub_item_no,
         p.eligible_days,
         p.deducted_days,
         p.pts_rate_snapshot as rate,
@@ -308,10 +445,26 @@ export class PayrollRepository {
         p.remark
       FROM pay_results p
       LEFT JOIN emp_profiles e ON e.citizen_id = p.citizen_id
+      LEFT JOIN cfg_payment_rates r ON r.rate_id = p.master_rate_id
       WHERE p.period_id = ?
       ORDER BY e.first_name ASC, e.last_name ASC, p.citizen_id ASC
       `,
       [periodId],
+    );
+    return rows;
+  }
+
+  static async findHolidayDatesInRange(
+    startDate: string,
+    endDate: string,
+  ): Promise<RowDataPacket[]> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `
+      SELECT holiday_date
+      FROM cfg_holidays
+      WHERE holiday_date BETWEEN ? AND ?
+      `,
+      [startDate, endDate],
     );
     return rows;
   }
