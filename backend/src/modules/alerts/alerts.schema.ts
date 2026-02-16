@@ -45,4 +45,31 @@ export const licenseNotifySchema = z.object({
   }),
 });
 
+const movementBodySchema = z.object({
+  citizen_id: z.string().min(1),
+  movement_type: z.enum(["RESIGN", "TRANSFER_OUT"]),
+  effective_date: z
+    .string()
+    .min(1)
+    .refine(isValidDate, { message: "Invalid effective_date format" }),
+  remark: z.string().optional(),
+});
+
+export const movementCreateSchema = z.object({
+  body: movementBodySchema,
+});
+
+export const movementUpdateSchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
+  }),
+  body: movementBodySchema,
+});
+
+export const movementIdSchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
+  }),
+});
+
 export type RetirementInput = z.infer<typeof retirementCreateSchema>["body"];

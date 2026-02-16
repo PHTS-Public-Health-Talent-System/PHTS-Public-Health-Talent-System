@@ -1,6 +1,11 @@
 import { Request, Response } from "express";
 import * as leaveRecordService from '../services/leave-records.service.js';
-import type { LeaveRecordListQuery, LeaveRecordExtensionBody, CreateLeaveRecordBody } from '../leave-records.schema.js';
+import type {
+  LeaveRecordListQuery,
+  LeavePersonnelListQuery,
+  LeaveRecordExtensionBody,
+  CreateLeaveRecordBody,
+} from '../leave-records.schema.js';
 import { handleUploadError } from '@config/upload.js';
 import fs from "node:fs";
 
@@ -20,6 +25,16 @@ export const listLeaveRecords = async (req: Request, res: Response) => {
         offset: params.offset ?? 0,
       },
     });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const listLeavePersonnel = async (req: Request, res: Response) => {
+  try {
+    const params = req.query as unknown as LeavePersonnelListQuery;
+    const rows = await leaveRecordService.listLeavePersonnel(params);
+    res.json({ success: true, data: rows });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

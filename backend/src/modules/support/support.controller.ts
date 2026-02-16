@@ -105,7 +105,9 @@ export const reopenTicket = catchAsync(async (req: Request, res: Response<ApiRes
     res.status(404).json({ success: false, error: "Ticket not found" });
     return;
   }
-  if (ticket.user_id !== req.user.userId) {
+  const isOwner = ticket.user_id === req.user.userId;
+  const isAdmin = req.user.role === "ADMIN";
+  if (!isOwner && !isAdmin) {
     throw new ValidationError("You do not have permission to reopen this ticket");
   }
   if (ticket.status !== "RESOLVED" && ticket.status !== "CLOSED") {
@@ -172,7 +174,9 @@ export const closeTicket = catchAsync(async (req: Request, res: Response<ApiResp
     res.status(404).json({ success: false, error: "Ticket not found" });
     return;
   }
-  if (ticket.user_id !== req.user.userId) {
+  const isOwner = ticket.user_id === req.user.userId;
+  const isAdmin = req.user.role === "ADMIN";
+  if (!isOwner && !isAdmin) {
     throw new ValidationError("You do not have permission to close this ticket");
   }
   if (ticket.status === "CLOSED") {
@@ -191,7 +195,9 @@ export const deleteTicket = catchAsync(async (req: Request, res: Response<ApiRes
     res.status(404).json({ success: false, error: "Ticket not found" });
     return;
   }
-  if (ticket.user_id !== req.user.userId) {
+  const isOwner = ticket.user_id === req.user.userId;
+  const isAdmin = req.user.role === "ADMIN";
+  if (!isOwner && !isAdmin) {
     throw new ValidationError("You do not have permission to delete this ticket");
   }
   await SupportService.deleteTicket(ticketId);

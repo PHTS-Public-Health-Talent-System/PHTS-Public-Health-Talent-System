@@ -23,9 +23,14 @@ describe('SystemRepository', () => {
   describe('searchUsers', () => {
     it('should sanitize LIKE wildcards in search term', async () => {
       const mockQuery = db.query as jest.Mock;
-      mockQuery.mockResolvedValue([[]]);
+      mockQuery.mockResolvedValueOnce([[{ total: 0, active_total: 0 }]]);
+      mockQuery.mockResolvedValueOnce([[]]);
 
-      await SystemRepository.searchUsers('test%user_name');
+      await SystemRepository.searchUsers({
+        q: 'test%user_name',
+        page: 1,
+        limit: 20,
+      });
 
       expect(mockQuery).toHaveBeenCalled();
       const callArgs = mockQuery.mock.calls[0];
@@ -50,24 +55,36 @@ describe('SystemRepository', () => {
       ];
 
       const mockQuery = db.query as jest.Mock;
-      mockQuery.mockResolvedValue([mockUsers]);
+      mockQuery.mockResolvedValueOnce([[{ total: 1, active_total: 1 }]]);
+      mockQuery.mockResolvedValueOnce([mockUsers]);
 
-      const result = await SystemRepository.searchUsers('สมชาย');
+      const result = await SystemRepository.searchUsers({
+        q: 'สมชาย',
+        page: 1,
+        limit: 20,
+      });
 
-      expect(result).toEqual(mockUsers);
+      expect(result.rows).toEqual(mockUsers);
+      expect(result.total).toBe(1);
+      expect(result.active_total).toBe(1);
       expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT u.id'),
+        expect.stringContaining('COUNT(DISTINCT u.id)'),
         expect.arrayContaining([expect.stringContaining('%สมชาย%')]),
       );
     });
 
-    it('should limit results to 20', async () => {
+    it('should apply page limit to user query', async () => {
       const mockQuery = db.query as jest.Mock;
-      mockQuery.mockResolvedValue([[]]);
+      mockQuery.mockResolvedValueOnce([[{ total: 0, active_total: 0 }]]);
+      mockQuery.mockResolvedValueOnce([[]]);
 
-      await SystemRepository.searchUsers('test');
+      await SystemRepository.searchUsers({
+        q: 'test',
+        page: 1,
+        limit: 20,
+      });
 
-      const sql = mockQuery.mock.calls[0][0];
+      const sql = mockQuery.mock.calls[1][0];
       expect(sql).toContain('LIMIT 20');
     });
   });

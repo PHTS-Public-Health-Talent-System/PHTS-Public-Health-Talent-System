@@ -19,6 +19,7 @@ export interface BatchEmployeeData {
 
 export class PayrollRepository {
   private static professionReviewTableReady = false;
+  private static payResultChecksTableReady = false;
 
   static async ensureProfessionReviewTable(): Promise<void> {
     if (PayrollRepository.professionReviewTableReady) return;
@@ -40,16 +41,56 @@ export class PayrollRepository {
     PayrollRepository.professionReviewTableReady = true;
   }
 
+  static async ensurePayResultChecksTable(): Promise<void> {
+    if (PayrollRepository.payResultChecksTableReady) return;
+    await db.execute(
+      `
+      CREATE TABLE IF NOT EXISTS pay_result_checks (
+        check_id INT AUTO_INCREMENT PRIMARY KEY,
+        payout_id INT NOT NULL,
+        code VARCHAR(64) NOT NULL,
+        severity VARCHAR(16) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        summary VARCHAR(512) NULL,
+        impact_days DECIMAL(6,2) NULL,
+        impact_amount DECIMAL(12,2) NULL,
+        start_date DATE NULL,
+        end_date DATE NULL,
+        evidence_json JSON NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_payout (payout_id),
+        INDEX idx_code (code),
+        INDEX idx_severity (severity)
+      )
+      `,
+    );
+    PayrollRepository.payResultChecksTableReady = true;
+  }
+
   // ── Period CRUD ──────────────────────────────────────────────────────────
   static buildListPeriodsQuery(): string {
     return `
       SELECT
         p.*,
         p.created_by,
-        TRIM(CONCAT(IFNULL(e.first_name, ''), ' ', IFNULL(e.last_name, ''))) AS created_by_name
+        COALESCE(
+          NULLIF(
+            TRIM(
+              CONCAT(
+                IFNULL(COALESCE(e.first_name, s.first_name), ''),
+                ' ',
+                IFNULL(COALESCE(e.last_name, s.last_name), '')
+              )
+            ),
+            ''
+          ),
+          u.citizen_id,
+          'ระบบ'
+        ) AS created_by_name
       FROM pay_periods p
       LEFT JOIN users u ON p.created_by = u.id
       LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
+      LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
       ORDER BY p.period_year DESC, p.period_month DESC
     `;
   }
@@ -84,7 +125,31 @@ export class PayrollRepository {
   ): Promise<PayPeriod | null> {
     const executor = conn ?? db;
     const [rows] = await executor.query<RowDataPacket[]>(
-      "SELECT * FROM pay_periods WHERE period_id = ?",
+      `
+      SELECT
+        p.*,
+        p.created_by,
+        COALESCE(
+          NULLIF(
+            TRIM(
+              CONCAT(
+                IFNULL(COALESCE(e.first_name, s.first_name), ''),
+                ' ',
+                IFNULL(COALESCE(e.last_name, s.last_name), '')
+              )
+            ),
+            ''
+          ),
+          u.citizen_id,
+          'ระบบ'
+        ) AS created_by_name
+      FROM pay_periods p
+      LEFT JOIN users u ON p.created_by = u.id
+      LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
+      LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
+      WHERE p.period_id = ?
+      LIMIT 1
+      `,
       [periodId],
     );
     return (rows[0] as PayPeriod) ?? null;
@@ -95,7 +160,31 @@ export class PayrollRepository {
     conn: PoolConnection,
   ): Promise<PayPeriod | null> {
     const [rows] = await conn.query<RowDataPacket[]>(
-      "SELECT * FROM pay_periods WHERE period_id = ? FOR UPDATE",
+      `
+      SELECT
+        p.*,
+        p.created_by,
+        COALESCE(
+          NULLIF(
+            TRIM(
+              CONCAT(
+                IFNULL(COALESCE(e.first_name, s.first_name), ''),
+                ' ',
+                IFNULL(COALESCE(e.last_name, s.last_name), '')
+              )
+            ),
+            ''
+          ),
+          u.citizen_id,
+          'ระบบ'
+        ) AS created_by_name
+      FROM pay_periods p
+      LEFT JOIN users u ON p.created_by = u.id
+      LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
+      LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
+      WHERE p.period_id = ?
+      FOR UPDATE
+      `,
       [periodId],
     );
     return (rows[0] as PayPeriod) ?? null;
@@ -403,12 +492,118 @@ export class PayrollRepository {
     ]);
   }
 
+  static async deletePayResultChecksByPeriod(
+    periodId: number,
+    conn: PoolConnection,
+  ): Promise<void> {
+    await conn.execute(
+      `
+      DELETE c
+      FROM pay_result_checks c
+      INNER JOIN pay_results p ON p.payout_id = c.payout_id
+      WHERE p.period_id = ?
+      `,
+      [periodId],
+    );
+  }
+
+  static async deletePayResultItemsByPeriod(
+    periodId: number,
+    conn: PoolConnection,
+  ): Promise<void> {
+    await conn.execute(
+      `
+      DELETE i
+      FROM pay_result_items i
+      INNER JOIN pay_results p ON p.payout_id = i.payout_id
+      WHERE p.period_id = ?
+      `,
+      [periodId],
+    );
+  }
+
+  static async deletePeriodItemsByPeriod(
+    periodId: number,
+    conn: PoolConnection,
+  ): Promise<void> {
+    await conn.execute("DELETE FROM pay_period_items WHERE period_id = ?", [
+      periodId,
+    ]);
+  }
+
+  static async deletePeriodById(
+    periodId: number,
+    conn: PoolConnection,
+  ): Promise<void> {
+    await conn.execute("DELETE FROM pay_periods WHERE period_id = ?", [periodId]);
+  }
+
+  static async findPayoutEditContextByIdForUpdate(
+    payoutId: number,
+    conn: PoolConnection,
+  ): Promise<RowDataPacket | null> {
+    const [rows] = await conn.query<RowDataPacket[]>(
+      `
+      SELECT
+        p.payout_id,
+        p.period_id,
+        p.citizen_id,
+        p.pts_rate_snapshot,
+        p.calculated_amount,
+        p.retroactive_amount,
+        p.total_payable,
+        p.deducted_days,
+        p.eligible_days,
+        p.remark,
+        pp.period_month,
+        pp.period_year,
+        pp.status AS period_status,
+        pp.is_frozen
+      FROM pay_results p
+      INNER JOIN pay_periods pp ON pp.period_id = p.period_id
+      WHERE p.payout_id = ?
+      FOR UPDATE
+      `,
+      [payoutId],
+    );
+    return (rows[0] as RowDataPacket) ?? null;
+  }
+
+  static async sumPayResultsByPeriod(
+    periodId: number,
+    conn: PoolConnection,
+  ): Promise<{ totalAmount: number; headCount: number }> {
+    const [rows] = await conn.query<RowDataPacket[]>(
+      `
+      SELECT
+        COALESCE(SUM(total_payable), 0) AS total_amount,
+        COUNT(*) AS headcount
+      FROM pay_results
+      WHERE period_id = ?
+      `,
+      [periodId],
+    );
+    const row = (rows[0] as any) ?? {};
+    return {
+      totalAmount: Number(row.total_amount ?? 0),
+      headCount: Number(row.headcount ?? 0),
+    };
+  }
+
   static async findPayoutsByPeriod(periodId: number): Promise<RowDataPacket[]> {
     const [rows] = await db.query<RowDataPacket[]>(
       `
       SELECT
         p.payout_id,
         p.citizen_id,
+        (
+          SELECT re.eligibility_id
+          FROM req_eligibility re
+          WHERE re.citizen_id = p.citizen_id
+            AND re.master_rate_id = p.master_rate_id
+          ORDER BY re.is_active DESC, re.effective_date DESC, re.eligibility_id DESC
+          LIMIT 1
+        ) AS eligibility_id,
         COALESCE(
           (
             SELECT ppi.request_id
@@ -442,7 +637,22 @@ export class PayrollRepository {
         p.deducted_days,
         p.pts_rate_snapshot as rate,
         p.total_payable,
-        p.remark
+        p.remark,
+        (
+          SELECT COUNT(*)
+          FROM pay_result_checks c
+          WHERE c.payout_id = p.payout_id
+        ) AS check_count,
+        (
+          SELECT COUNT(*)
+          FROM pay_result_checks c
+          WHERE c.payout_id = p.payout_id AND c.severity = 'BLOCKER'
+        ) AS blocker_count,
+        (
+          SELECT COUNT(*)
+          FROM pay_result_checks c
+          WHERE c.payout_id = p.payout_id AND c.severity = 'WARNING'
+        ) AS warning_count
       FROM pay_results p
       LEFT JOIN emp_profiles e ON e.citizen_id = p.citizen_id
       LEFT JOIN cfg_payment_rates r ON r.rate_id = p.master_rate_id
@@ -452,6 +662,65 @@ export class PayrollRepository {
       [periodId],
     );
     return rows;
+  }
+
+  static async findPayoutChecksByPayoutId(payoutId: number): Promise<RowDataPacket[]> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `
+      SELECT *
+      FROM pay_result_checks
+      WHERE payout_id = ?
+      ORDER BY
+        CASE severity WHEN 'BLOCKER' THEN 0 WHEN 'WARNING' THEN 1 ELSE 2 END,
+        impact_amount DESC,
+        impact_days DESC,
+        check_id ASC
+      `,
+      [payoutId],
+    );
+    return rows;
+  }
+
+  static async findPayoutItemsByPayoutId(payoutId: number): Promise<RowDataPacket[]> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `
+      SELECT *
+      FROM pay_result_items
+      WHERE payout_id = ?
+      ORDER BY item_id ASC
+      `,
+      [payoutId],
+    );
+    return rows;
+  }
+
+  static async findPayoutDetailById(payoutId: number): Promise<RowDataPacket | null> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `
+      SELECT
+        p.*,
+        pp.period_month,
+        pp.period_year,
+        TRIM(CONCAT(IFNULL(e.first_name, ''), ' ', IFNULL(e.last_name, ''))) AS full_name,
+        e.first_name,
+        e.last_name,
+        e.title,
+        e.position_name,
+        e.department,
+        r.profession_code,
+        r.group_no,
+        r.item_no,
+        r.sub_item_no
+      FROM pay_results p
+      LEFT JOIN pay_periods pp ON pp.period_id = p.period_id
+      LEFT JOIN emp_profiles e ON e.citizen_id = p.citizen_id
+      LEFT JOIN cfg_payment_rates r ON r.rate_id = p.master_rate_id
+      WHERE p.payout_id = ?
+      LIMIT 1
+      `,
+      [payoutId],
+    );
+    return (rows[0] as RowDataPacket) ?? null;
   }
 
   static async findHolidayDatesInRange(
@@ -568,9 +837,11 @@ export class PayrollRepository {
     const [rows] = await conn.query<RowDataPacket[]>(
       `
       SELECT DISTINCT citizen_id FROM req_eligibility
-      WHERE effective_date <= LAST_DAY(STR_TO_DATE(CONCAT(?, '-', ?, '-01'), '%Y-%m-%d'))
+      WHERE is_active = 1
+        AND effective_date <= LAST_DAY(STR_TO_DATE(CONCAT(?, '-', ?, '-01'), '%Y-%m-%d'))
+        AND (expiry_date IS NULL OR expiry_date >= STR_TO_DATE(CONCAT(?, '-', ?, '-01'), '%Y-%m-%d'))
       `,
-      [year, month],
+      [year, month, year, month],
     );
     return rows.map((r: any) => r.citizen_id);
   }
@@ -592,6 +863,7 @@ export class PayrollRepository {
         FROM req_eligibility e
         JOIN cfg_payment_rates m ON e.master_rate_id = m.rate_id
         WHERE e.citizen_id IN (${ph})
+        AND e.is_active = 1
         AND e.effective_date <= ?
         AND (e.expiry_date IS NULL OR e.expiry_date >= ?)
         ORDER BY e.effective_date ASC
@@ -627,6 +899,8 @@ export class PayrollRepository {
     const [noSalaryRows] = await conn.query<RowDataPacket[]>(
       `
         SELECT lr.citizen_id,
+               lr.id AS leave_record_id,
+               lr.leave_type,
                COALESCE(ext.document_start_date, lr.start_date) AS start_date,
                COALESCE(ext.document_end_date, lr.end_date) AS end_date
         FROM leave_record_extensions ext

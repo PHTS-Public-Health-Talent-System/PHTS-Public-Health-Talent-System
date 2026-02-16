@@ -71,6 +71,85 @@ export async function getSLAReport(
   }
 }
 
+export async function getSLAKpiOverview(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const { from, to } = req.query;
+    const data = await slaService.getSLAKpiOverview({
+      from: typeof from === "string" ? from : undefined,
+      to: typeof to === "string" ? to : undefined,
+    });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+export async function getSLAKpiByStep(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const { from, to } = req.query;
+    const data = await slaService.getSLAKpiByStep({
+      from: typeof from === "string" ? from : undefined,
+      to: typeof to === "string" ? to : undefined,
+    });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+export async function getSLAKpiBacklogAging(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const { as_of } = req.query;
+    const data = await slaService.getSLAKpiBacklogAging({
+      asOf: typeof as_of === "string" ? as_of : undefined,
+    });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+export async function getSLAKpiDataQuality(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const { from, to } = req.query;
+    const data = await slaService.getSLAKpiDataQuality({
+      from: typeof from === "string" ? from : undefined,
+      to: typeof to === "string" ? to : undefined,
+    });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+export async function getSLAKpiErrorOverview(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const { from, to } = req.query;
+    const data = await slaService.getSLAKpiErrorOverview({
+      from: typeof from === "string" ? from : undefined,
+      to: typeof to === "string" ? to : undefined,
+    });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
 /**
  * Get pending requests with SLA info
  * GET /api/sla/pending

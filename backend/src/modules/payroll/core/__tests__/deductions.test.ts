@@ -5,7 +5,7 @@ describe("payroll core deductions", () => {
   const monthEnd = new Date("2026-02-28");
 
   test("returns empty map when no leaves", () => {
-    const map = calculateDeductions(
+    const { deductionMap: map } = calculateDeductions(
       [],
       {},
       [],
@@ -25,7 +25,7 @@ describe("payroll core deductions", () => {
         is_no_pay: 1,
       },
     ];
-    const map = calculateDeductions(
+    const { deductionMap: map } = calculateDeductions(
       leaves,
       {},
       [],
@@ -47,7 +47,7 @@ describe("payroll core deductions", () => {
       },
     ];
     const serviceStart = new Date("2025-12-01");
-    const map = calculateDeductions(
+    const { deductionMap: map } = calculateDeductions(
       leaves,
       {},
       [],
@@ -72,7 +72,7 @@ describe("payroll core deductions", () => {
         duration_days: 5,
       },
     ];
-    const map = calculateDeductions(
+    const { deductionMap: map } = calculateDeductions(
       leaves,
       { quota_sick: 0 },
       [],
@@ -97,7 +97,7 @@ describe("payroll core deductions", () => {
     const quotaDecisions = new Map<number, { overQuota: boolean; exceedDate: Date | null }>([
       [99, { overQuota: true, exceedDate: new Date("2026-02-02") }],
     ]);
-    const map = calculateDeductions(
+    const { deductionMap: map } = calculateDeductions(
       leaves,
       {},
       [],

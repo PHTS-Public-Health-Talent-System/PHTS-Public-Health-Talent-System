@@ -7,6 +7,8 @@ import { resolveProfessionCode } from '@shared/utils/profession.js';
 import {
   CreateHolidayDTO,
   GetHolidaysQuery,
+  UpdateHolidayDTO,
+  CreateRateDTO,
   UpdateRateBody,
 } from '@/modules/master-data/master-data.schema.js';
 
@@ -24,10 +26,22 @@ export const getHolidays = async (req: Request, res: Response) => {
 
 export const addHoliday = async (req: Request, res: Response) => {
   try {
-    const { date, name } = req.body as CreateHolidayDTO;
+    const { date, name, type } = req.body as CreateHolidayDTO;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
-    await masterDataService.addHoliday(date, name, actorId);
+    await masterDataService.addHoliday(date, name, type, actorId);
     res.json({ success: true, message: "Holiday saved successfully" });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const updateHoliday = async (req: Request, res: Response) => {
+  try {
+    const { date: originalDate } = req.params;
+    const { date, name, type } = req.body as UpdateHolidayDTO;
+    const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
+    await masterDataService.updateHoliday(originalDate, date, name, type, actorId);
+    res.json({ success: true, message: "Holiday updated successfully" });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -57,16 +71,34 @@ export const getMasterRates = async (_req: Request, res: Response) => {
 export const updateMasterRate = async (req: Request, res: Response) => {
   try {
     const { rateId } = req.params;
-    const { amount, condition_desc, is_active } = req.body as UpdateRateBody;
+    const body = req.body as UpdateRateBody;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
 
-    await masterDataService.updateMasterRate(
-      Number(rateId),
-      amount,
-      condition_desc,
-      is_active ? 1 : 0,
-      actorId,
-    );
+    const existing = await masterDataService.getMasterRateById(Number(rateId));
+    if (!existing) {
+      res.status(404).json({ success: false, error: "Rate not found" });
+      return;
+    }
+
+    const merged = {
+      profession_code: body.profession_code ?? (existing as any).profession_code,
+      group_no: body.group_no ?? Number((existing as any).group_no),
+      item_no: Object.prototype.hasOwnProperty.call(body, "item_no")
+        ? (body.item_no ?? null)
+        : ((existing as any).item_no ?? null),
+      sub_item_no: Object.prototype.hasOwnProperty.call(body, "sub_item_no")
+        ? (body.sub_item_no ?? null)
+        : ((existing as any).sub_item_no ?? null),
+      amount: body.amount ?? Number((existing as any).amount),
+      condition_desc: body.condition_desc ?? (existing as any).condition_desc ?? "",
+      detailed_desc: body.detailed_desc ?? (existing as any).detailed_desc ?? "",
+      is_active:
+        typeof body.is_active === "boolean"
+          ? body.is_active
+          : Boolean((existing as any).is_active ?? true),
+    };
+
+    await masterDataService.updateMasterRate(Number(rateId), merged, actorId);
     res.json({ success: true, message: "Rate updated successfully" });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -75,7 +107,16 @@ export const updateMasterRate = async (req: Request, res: Response) => {
 
 export const createMasterRate = async (req: Request, res: Response) => {
   try {
-    const { profession_code, group_no, item_no, sub_item_no, amount, condition_desc } = req.body;
+    const {
+      profession_code,
+      group_no,
+      item_no,
+      sub_item_no,
+      amount,
+      condition_desc,
+      detailed_desc,
+      is_active,
+    } = req.body as CreateRateDTO;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
 
     const rateId = await masterDataService.createMasterRate(
@@ -85,6 +126,8 @@ export const createMasterRate = async (req: Request, res: Response) => {
       sub_item_no ?? null,
       amount,
       condition_desc,
+      detailed_desc,
+      is_active ? 1 : 0,
       actorId,
     );
     res.json({ success: true, data: { rateId }, message: "Rate created successfully" });

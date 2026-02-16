@@ -27,6 +27,13 @@ export const listLeaveRecordsSchema = z.object({
   }),
 });
 
+export const listLeavePersonnelSchema = z.object({
+  query: z.object({
+    q: z.string().optional(),
+    limit: z.coerce.number().int().positive().max(5000).optional(),
+  }),
+});
+
 export const createLeaveRecordSchema = z.object({
   body: z.object({
     citizen_id: z.string().min(1),
@@ -35,6 +42,9 @@ export const createLeaveRecordSchema = z.object({
     end_date: dateStringSchema,
     duration_days: z.number().optional(),
     remark: z.string().optional(),
+  }).refine((data) => new Date(data.start_date) <= new Date(data.end_date), {
+    message: "end_date must be after or equal to start_date",
+    path: ["end_date"],
   }),
 });
 
@@ -69,9 +79,32 @@ export const upsertLeaveRecordExtensionSchema = z.object({
     study_start_date: dateStringSchema.optional(),
     study_note: z.string().optional(),
     note: z.string().optional(),
-  }).strict(),
+  }).strict().superRefine((data, ctx) => {
+    const hasDocStart = Boolean(data.document_start_date)
+    const hasDocEnd = Boolean(data.document_end_date)
+    if (hasDocStart !== hasDocEnd) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "document_start_date and document_end_date must be provided together",
+        path: [hasDocStart ? "document_end_date" : "document_start_date"],
+      })
+      return
+    }
+    if (hasDocStart && hasDocEnd) {
+      const start = new Date(data.document_start_date as string)
+      const end = new Date(data.document_end_date as string)
+      if (start > end) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "document_end_date must be after or equal to document_start_date",
+          path: ["document_end_date"],
+        })
+      }
+    }
+  }),
 });
 
 export type LeaveRecordListQuery = z.infer<typeof listLeaveRecordsSchema>["query"];
+export type LeavePersonnelListQuery = z.infer<typeof listLeavePersonnelSchema>["query"];
 export type CreateLeaveRecordBody = z.infer<typeof createLeaveRecordSchema>["body"];
 export type LeaveRecordExtensionBody = z.infer<typeof upsertLeaveRecordExtensionSchema>["body"];

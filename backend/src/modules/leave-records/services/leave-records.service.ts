@@ -1,5 +1,10 @@
 import { LeaveRecordsRepository } from '../repositories/leave-records.repository.js';
-import type { LeaveRecordListQuery, LeaveRecordExtensionBody, CreateLeaveRecordBody } from '../leave-records.schema.js';
+import type {
+  LeaveRecordListQuery,
+  LeavePersonnelListQuery,
+  LeaveRecordExtensionBody,
+  CreateLeaveRecordBody,
+} from '../leave-records.schema.js';
 
 const repository = new LeaveRecordsRepository();
 
@@ -9,6 +14,10 @@ export async function listLeaveRecords(params: LeaveRecordListQuery) {
 
 export async function countLeaveRecords(params: LeaveRecordListQuery) {
   return repository.countLeaveRecords(params);
+}
+
+export async function listLeavePersonnel(params: LeavePersonnelListQuery) {
+  return repository.listPersonnel(params);
 }
 
 export async function getLeaveRecordStats() {

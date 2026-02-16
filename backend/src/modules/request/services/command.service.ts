@@ -248,14 +248,30 @@ export class RequestCommandService {
         throw new Error('Invalid role for verification snapshot');
       }
 
+      let normalizedEffectiveDate: string;
+      try {
+        normalizedEffectiveDate = normalizeDateToYMD(payload.effective_date);
+      } catch {
+        throw new ValidationError('effective_date ต้องเป็นวันที่ที่ถูกต้อง');
+      }
+
+      let normalizedExpiryDate: string | null = null;
+      if (payload.expiry_date) {
+        try {
+          normalizedExpiryDate = normalizeDateToYMD(payload.expiry_date);
+        } catch {
+          throw new ValidationError('expiry_date ต้องเป็นวันที่ที่ถูกต้อง');
+        }
+      }
+
       const snapshotId = await requestRepository.insertVerificationSnapshot(
         {
           request_id: requestId,
           user_id: requestEntity.user_id ?? null,
           citizen_id: requestEntity.citizen_id,
           master_rate_id: payload.master_rate_id,
-          effective_date: payload.effective_date,
-          expiry_date: payload.expiry_date ?? null,
+          effective_date: normalizedEffectiveDate,
+          expiry_date: normalizedExpiryDate,
           snapshot_data: payload.snapshot_data,
           created_by: actorId,
         },

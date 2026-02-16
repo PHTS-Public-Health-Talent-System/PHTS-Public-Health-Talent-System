@@ -9,15 +9,18 @@ import {
   createPeriod,
   getPeriodDetail,
   getPeriodPayouts,
+  getPayoutDetail,
   getPeriodReviewProgress,
   getPeriodSummaryByProfession,
   getPeriodReport,
   listPeriods,
+  deletePeriod,
   removePeriodItem,
   rejectPeriod,
   searchPayouts,
   setPeriodProfessionReview,
   submitToHR,
+  updatePayout,
 } from '@/modules/payroll/payroll.controller.js';
 import { protect, restrictTo } from '@middlewares/authMiddleware.js';
 import { validate } from '@shared/validate.middleware.js';
@@ -29,6 +32,8 @@ import {
   professionReviewSchema,
   periodIdParamSchema,
   periodItemParamSchema,
+  payoutIdParamSchema,
+  updatePayoutSchema,
 } from '@/modules/payroll/payroll.schema.js';
 import { UserRole } from '@/types/auth.js';
 
@@ -40,6 +45,26 @@ router.get(
   protect,
   validate(periodIdParamSchema),
   getPeriodPayouts,
+);
+router.get(
+  "/payout/:payoutId/detail",
+  protect,
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+  ),
+  validate(payoutIdParamSchema),
+  getPayoutDetail,
+);
+
+router.patch(
+  "/payout/:payoutId",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(updatePayoutSchema),
+  updatePayout,
 );
 router.get(
   "/payouts/search",
@@ -75,6 +100,13 @@ router.get(
   validate(periodIdParamSchema),
   getPeriodDetail,
 );
+router.delete(
+  "/period/:periodId",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(periodIdParamSchema),
+  deletePeriod,
+);
 router.get(
   "/period/:periodId/report",
   protect,
@@ -102,7 +134,12 @@ router.get(
 router.get(
   "/period/:periodId/review-progress",
   protect,
-  restrictTo(UserRole.PTS_OFFICER),
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+  ),
   validate(periodIdParamSchema),
   getPeriodReviewProgress,
 );

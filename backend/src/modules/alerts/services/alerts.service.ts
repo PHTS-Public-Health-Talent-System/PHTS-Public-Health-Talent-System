@@ -1,8 +1,35 @@
 import { RetirementsRepository } from '@/modules/alerts/repositories/retirements.repository.js';
-import type { RetirementInput, RetirementRecord } from '@/modules/alerts/entities/alerts.entity.js';
+import { AlertsRepository } from '@/modules/alerts/repositories/alerts.repository.js';
+import type {
+  PersonnelMovementRecord,
+  PersonnelMovementInput,
+  RetirementInput,
+  RetirementRecord,
+} from '@/modules/alerts/entities/alerts.entity.js';
 
 export async function listRetirements(): Promise<RetirementRecord[]> {
   return RetirementsRepository.list();
+}
+
+export async function listPersonnelMovements(): Promise<PersonnelMovementRecord[]> {
+  return AlertsRepository.getPersonnelMovements();
+}
+
+export async function createPersonnelMovement(
+  input: PersonnelMovementInput,
+): Promise<void> {
+  await AlertsRepository.createPersonnelMovement(input);
+}
+
+export async function updatePersonnelMovement(
+  movementId: number,
+  input: PersonnelMovementInput,
+): Promise<void> {
+  await AlertsRepository.updatePersonnelMovement(movementId, input);
+}
+
+export async function deletePersonnelMovement(movementId: number): Promise<void> {
+  await AlertsRepository.deletePersonnelMovement(movementId);
 }
 
 export async function createRetirement(

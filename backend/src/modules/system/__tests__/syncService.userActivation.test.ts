@@ -10,13 +10,13 @@ describe("deriveUserIsActive", () => {
     expect(derive("ปฏิบัติงาน (ตรง จ.)", null)).toBe(true);
   });
 
-  test("returns true when support login enabled", async () => {
+  test("returns false when profile status is inactive even if support exists", async () => {
     const mod = await loadModule();
     const derive =
       (mod as any).deriveUserIsActive ??
       ((..._args: any[]) => "MISSING");
 
-    expect(derive("ไม่ปฏิบัติงาน (ลาออก)", 1)).toBe(true);
+    expect(derive("ไม่ปฏิบัติงาน (ลาออก)", 1)).toBe(false);
   });
 
   test("returns false when both sources inactive", async () => {

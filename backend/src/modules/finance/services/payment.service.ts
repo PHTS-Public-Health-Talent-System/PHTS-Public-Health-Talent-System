@@ -15,6 +15,14 @@ import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.s
 export { PaymentStatus } from '@/modules/finance/entities/finance.entity.js';
 export type { PayoutWithDetails } from '@/modules/finance/entities/finance.entity.js';
 
+const ensureReportablePeriod = (params: { periodStatus: string; isFrozen: number | boolean }) => {
+  const isClosed = params.periodStatus === 'CLOSED';
+  const isFrozen = params.isFrozen === true || Number(params.isFrozen) === 1;
+  if (!isClosed || !isFrozen) {
+    throw new Error('งวดนี้ยังไม่ผ่านการอนุมัติปิดรอบจากผู้บริหาร');
+  }
+};
+
 /**
  * Mark a single payout as paid
  */
@@ -28,7 +36,7 @@ export async function markPayoutAsPaid(
     await conn.beginTransaction();
 
     // Check current status
-    const payout = await FinanceRepository.findPayoutByIdForUpdate(
+    const payout = await FinanceRepository.findPayoutWorkflowContextByIdForUpdate(
       payoutId,
       conn,
     );
@@ -36,6 +44,10 @@ export async function markPayoutAsPaid(
     if (!payout) {
       throw new Error(`Payout ${payoutId} not found`);
     }
+    ensureReportablePeriod({
+      periodStatus: String(payout.period_status ?? ''),
+      isFrozen: payout.is_frozen,
+    });
     if (payout.payment_status === PaymentStatus.PAID) {
       throw new Error(`Payout ${payoutId} is already marked as paid`);
     }
@@ -93,13 +105,22 @@ export async function batchMarkAsPaid(
 
     for (const payoutId of payoutIds) {
       try {
-        const payout = await FinanceRepository.findPayoutByIdForUpdate(
+        const payout = await FinanceRepository.findPayoutWorkflowContextByIdForUpdate(
           payoutId,
           conn,
         );
 
         if (!payout) {
           result.failed.push({ id: payoutId, reason: "Payout not found" });
+          continue;
+        }
+        try {
+          ensureReportablePeriod({
+            periodStatus: String(payout.period_status ?? ''),
+            isFrozen: payout.is_frozen,
+          });
+        } catch (error: any) {
+          result.failed.push({ id: payoutId, reason: error.message });
           continue;
         }
         if (payout.payment_status === PaymentStatus.PAID) {
@@ -162,7 +183,7 @@ export async function cancelPayout(
   try {
     await conn.beginTransaction();
 
-    const payout = await FinanceRepository.findPayoutByIdForUpdate(
+    const payout = await FinanceRepository.findPayoutWorkflowContextByIdForUpdate(
       payoutId,
       conn,
     );
@@ -170,6 +191,10 @@ export async function cancelPayout(
     if (!payout) {
       throw new Error(`Payout ${payoutId} not found`);
     }
+    ensureReportablePeriod({
+      periodStatus: String(payout.period_status ?? ''),
+      isFrozen: payout.is_frozen,
+    });
     if (payout.payment_status === PaymentStatus.PAID) {
       throw new Error(`Cannot cancel PAID payout ${payoutId}`);
     }
@@ -213,5 +238,13 @@ export async function getPayoutsByPeriod(
   status?: PaymentStatus,
   search?: string,
 ): Promise<PayoutWithDetails[]> {
+  const period = await FinanceRepository.findPeriodWorkflowContextById(periodId);
+  if (!period) {
+    throw new Error(`Period ${periodId} not found`);
+  }
+  ensureReportablePeriod({
+    periodStatus: String(period.status ?? ''),
+    isFrozen: period.is_frozen,
+  });
   return FinanceRepository.findPayoutsByPeriod(periodId, status, search);
 }

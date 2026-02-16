@@ -127,8 +127,15 @@ export async function completeCycle(
   try {
     const cycleId = Number.parseInt(req.params.id, 10);
     const completedBy = req.user!.userId;
+    const { autoKeepPending, note } = (req.body ?? {}) as {
+      autoKeepPending?: boolean;
+      note?: string;
+    };
 
-    await accessReviewService.completeReviewCycle(cycleId, completedBy);
+    await accessReviewService.completeReviewCycle(cycleId, completedBy, {
+      autoKeepPending: Boolean(autoKeepPending),
+      note,
+    });
     res.json({ success: true, message: "Review cycle completed" });
   } catch (error: any) {
     res.status(400).json({ success: false, error: error.message });

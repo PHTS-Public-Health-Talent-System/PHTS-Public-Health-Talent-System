@@ -44,12 +44,39 @@ const itemIdParam = z.object({
   itemId: z.string().regex(/^\d+$/, "itemId ต้องเป็นตัวเลข"),
 });
 
+const payoutIdParam = z.object({
+  payoutId: z.string().regex(/^\d+$/, "payoutId ต้องเป็นตัวเลข"),
+});
+
 export const periodIdParamSchema = z.object({
   params: periodIdParam,
 });
 
 export const periodItemParamSchema = z.object({
   params: periodIdParam.merge(itemIdParam),
+});
+
+export const payoutIdParamSchema = z.object({
+  params: payoutIdParam,
+});
+
+export const updatePayoutSchema = z.object({
+  params: payoutIdParam,
+  body: z
+    .object({
+      eligible_days: z.number().min(0).optional(),
+      deducted_days: z.number().min(0).optional(),
+      retroactive_amount: z.number().optional(),
+      remark: z.string().max(2000).nullable().optional(),
+    })
+    .refine(
+      (value) =>
+        value.eligible_days !== undefined ||
+        value.deducted_days !== undefined ||
+        value.retroactive_amount !== undefined ||
+        value.remark !== undefined,
+      { message: "ต้องระบุอย่างน้อย 1 ฟิลด์เพื่อแก้ไขข้อมูล payout" },
+    ),
 });
 
 export type CalculateOnDemandInput = z.infer<

@@ -8,6 +8,7 @@
 
 import express, { Application } from 'express';
 import crypto from 'node:crypto';
+import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -87,7 +88,18 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    // Allow common cache headers so browser/devtools "Disable cache" and other clients
+    // don't fail CORS preflight unexpectedly.
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Cache-Control',
+      'Pragma',
+      'If-Modified-Since',
+      'If-None-Match',
+      'X-Requested-With',
+      'X-Request-Id',
+    ],
   }),
 );
 
@@ -152,9 +164,27 @@ app.use(async (req, res, next) => {
   const maintenanceEnabled = await isMaintenanceModeEnabled();
   if (!maintenanceEnabled) return next();
 
-  const allowPaths = ['/health', '/ready', '/api/system/maintenance'];
+  const allowPaths = ['/health', '/ready', '/api/system/maintenance', '/api/auth/login'];
   if (allowPaths.some((path) => req.path.startsWith(path))) {
     return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  const token =
+    typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+      ? authHeader.slice('Bearer '.length)
+      : null;
+
+  if (token) {
+    try {
+      const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+      const payload = jwt.verify(token, jwtSecret) as { role?: string };
+      if (payload?.role === 'ADMIN') {
+        return next();
+      }
+    } catch {
+      // Ignore invalid token and continue to maintenance response
+    }
   }
 
   return res.status(503).json({

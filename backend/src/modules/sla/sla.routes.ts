@@ -48,6 +48,61 @@ router.get(
   slaController.getSLAReport,
 );
 
+router.get(
+  "/kpi/overview",
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  slaController.getSLAKpiOverview,
+);
+
+router.get(
+  "/kpi/by-step",
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  slaController.getSLAKpiByStep,
+);
+
+router.get(
+  "/kpi/backlog-aging",
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  slaController.getSLAKpiBacklogAging,
+);
+
+router.get(
+  "/kpi/data-quality",
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  slaController.getSLAKpiDataQuality,
+);
+
+router.get(
+  "/kpi/error",
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  slaController.getSLAKpiErrorOverview,
+);
+
 // Get pending requests with SLA info (PTS_OFFICER, ADMIN)
 router.get(
   "/pending",

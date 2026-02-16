@@ -1,5 +1,7 @@
 import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import db from '@config/database.js';
+import type { PersonnelMovementRecord } from '@/modules/alerts/entities/alerts.entity.js';
+import { MOVEMENT_RETURN_TYPES } from '@/modules/alerts/constants/alert-policy.js';
 
 export type MovementOutRow = {
   citizen_id: string;
@@ -16,6 +18,98 @@ export type LeaveReportCandidate = {
 };
 
 export class AlertsRepository {
+  static async getPersonnelMovements(
+    conn?: PoolConnection,
+  ): Promise<PersonnelMovementRecord[]> {
+    const executor = conn ?? db;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `
+       SELECT
+         mm.movement_id,
+         mm.citizen_id,
+         mm.movement_type,
+         mm.effective_date,
+         mm.remark,
+         e.first_name,
+         e.last_name,
+         e.position_name,
+         e.department
+       FROM (
+         -- De-dup sync noise: some sources insert the same movement multiple times.
+         SELECT
+           MAX(m.movement_id) AS movement_id,
+           m.citizen_id,
+           m.movement_type,
+           DATE(m.effective_date) AS effective_date,
+           m.remark
+         FROM emp_movements m
+         WHERE m.movement_type IN ('RESIGN', 'TRANSFER_OUT')
+         GROUP BY
+           m.citizen_id,
+           m.movement_type,
+           DATE(m.effective_date),
+           m.remark
+       ) mm
+       LEFT JOIN emp_profiles e ON e.citizen_id = mm.citizen_id
+       ORDER BY mm.effective_date DESC, mm.movement_id DESC
+      `,
+    );
+    return rows as PersonnelMovementRecord[];
+  }
+
+  static async createPersonnelMovement(payload: {
+    citizen_id: string;
+    movement_type: "RESIGN" | "TRANSFER_OUT";
+    effective_date: string;
+    remark?: string;
+  }): Promise<number> {
+    const [result] = await db.execute<ResultSetHeader>(
+      `INSERT INTO emp_movements
+        (citizen_id, movement_type, effective_date, remark)
+       VALUES (?, ?, ?, ?)`,
+      [
+        payload.citizen_id,
+        payload.movement_type,
+        payload.effective_date,
+        payload.remark ?? null,
+      ],
+    );
+    return result.insertId;
+  }
+
+  static async updatePersonnelMovement(
+    movementId: number,
+    payload: {
+      citizen_id: string;
+      movement_type: "RESIGN" | "TRANSFER_OUT";
+      effective_date: string;
+      remark?: string;
+    },
+  ): Promise<void> {
+    await db.execute<ResultSetHeader>(
+      `UPDATE emp_movements
+       SET citizen_id = ?, movement_type = ?, effective_date = ?, remark = ?
+       WHERE movement_id = ?
+         AND movement_type IN ('RESIGN', 'TRANSFER_OUT')`,
+      [
+        payload.citizen_id,
+        payload.movement_type,
+        payload.effective_date,
+        payload.remark ?? null,
+        movementId,
+      ],
+    );
+  }
+
+  static async deletePersonnelMovement(movementId: number): Promise<void> {
+    await db.execute<ResultSetHeader>(
+      `DELETE FROM emp_movements
+       WHERE movement_id = ?
+         AND movement_type IN ('RESIGN', 'TRANSFER_OUT')`,
+      [movementId],
+    );
+  }
+
   static async findUserIdByCitizenId(
     citizenId: string,
     conn?: PoolConnection,
@@ -79,6 +173,7 @@ export class AlertsRepository {
     conn?: PoolConnection,
   ): Promise<MovementOutRow[]> {
     const executor = conn ?? db;
+    const returnTypePlaceholders = MOVEMENT_RETURN_TYPES.map(() => "?").join(",");
     const [rows] = await executor.query<RowDataPacket[]>(
       `SELECT m.citizen_id, m.movement_type, m.effective_date
        FROM emp_movements m
@@ -87,10 +182,10 @@ export class AlertsRepository {
          AND NOT EXISTS (
            SELECT 1 FROM emp_movements m2
            WHERE m2.citizen_id = m.citizen_id
-             AND m2.movement_type IN ('ENTRY', 'TRANSFER_IN', 'REINSTATE', 'STUDY')
+             AND m2.movement_type IN (${returnTypePlaceholders})
              AND m2.effective_date > m.effective_date
          )`,
-      [asOf],
+      [asOf, ...MOVEMENT_RETURN_TYPES],
     );
     return rows as MovementOutRow[];
   }
@@ -104,6 +199,7 @@ export class AlertsRepository {
     const executor = conn ?? db;
     if (!leaveTypes.length) return [];
     const placeholders = leaveTypes.map(() => "?").join(",");
+    const returnTypePlaceholders = MOVEMENT_RETURN_TYPES.map(() => "?").join(",");
     const [rows] = await executor.query<RowDataPacket[]>(
       `SELECT lr.id as leave_record_id,
               lr.citizen_id,
@@ -117,7 +213,7 @@ export class AlertsRepository {
          AND NOT EXISTS (
            SELECT 1 FROM emp_movements em
            WHERE em.citizen_id = lr.citizen_id
-             AND em.movement_type IN ('ENTRY', 'TRANSFER_IN', 'REINSTATE', 'STUDY')
+             AND em.movement_type IN (${returnTypePlaceholders})
              AND em.effective_date > lr.end_date
          )
          AND NOT EXISTS (
@@ -127,7 +223,7 @@ export class AlertsRepository {
              AND ext.return_report_status = 'DONE'
          )
        ORDER BY lr.end_date ASC`,
-      [asOf, ...leaveTypes, asOf, asOf, maxDays],
+      [asOf, ...leaveTypes, asOf, asOf, maxDays, ...MOVEMENT_RETURN_TYPES],
     );
     return rows as LeaveReportCandidate[];
   }

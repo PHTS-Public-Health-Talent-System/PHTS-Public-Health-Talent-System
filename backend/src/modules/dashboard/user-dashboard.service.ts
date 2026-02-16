@@ -90,6 +90,7 @@ const formatThaiMonthYear = (value?: string | Date | null) => {
   return date.toLocaleDateString('th-TH', {
     month: 'long',
     year: 'numeric',
+    timeZone: 'Asia/Bangkok',
   });
 };
 
@@ -113,6 +114,7 @@ const formatThaiDate = (value?: string | Date | null) => {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    timeZone: 'Asia/Bangkok',
   });
 };
 

@@ -57,13 +57,18 @@ const formatThaiDate = (value?: string | Date | null) => {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    timeZone: 'Asia/Bangkok',
   });
 };
 
 const formatThaiMonthYear = (month: number, year: number) => {
   const normalizedYear = year >= 2400 ? year - 543 : year;
   const date = new Date(normalizedYear, month - 1, 1);
-  return date.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+  return date.toLocaleDateString('th-TH', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Asia/Bangkok',
+  });
 };
 
 const getRequestDisplayId = (request: RequestWithDetails) =>

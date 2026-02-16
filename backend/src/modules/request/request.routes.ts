@@ -18,6 +18,7 @@ import {
   requestApproveBatchSchema,
   requestEligibilityIdParamSchema,
   requestEligibilityQuerySchema,
+  requestHistoryQuerySchema,
   requestIdOrNoParamSchema,
   requestIdParamSchema,
   requestRateMappingSchema,
@@ -90,6 +91,12 @@ router.get(
   requestController.getMyScopes,
 );
 
+router.get(
+  "/my-scopes/members",
+  restrictTo(UserRole.HEAD_WARD, UserRole.HEAD_DEPT),
+  requestController.getMyScopeMembers,
+);
+
 // Get pending requests for approval (based on user's role)
 // Optional query param: ?scope=<scope_name> to filter to a specific scope
 router.get(
@@ -113,6 +120,20 @@ router.get(
 );
 
 router.get(
+  "/eligibility/summary",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityQuerySchema),
+  requestController.getEligibilitySummary,
+);
+
+router.get(
+  "/eligibility/export",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityQuerySchema),
+  requestController.exportEligibilityCsv,
+);
+
+router.get(
   "/eligibility/:eligibilityId",
   restrictTo(UserRole.PTS_OFFICER),
   validate(requestEligibilityIdParamSchema),
@@ -131,6 +152,7 @@ router.get(
     UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
   ),
+  validate(requestHistoryQuerySchema),
   requestController.getHistory,
 );
 

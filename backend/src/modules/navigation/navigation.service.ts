@@ -4,6 +4,7 @@ import { requestQueryService } from '@/modules/request/services/query.service.js
 import { PayrollRepository } from '@/modules/payroll/repositories/payroll.repository.js';
 import { PeriodStatus } from '@/modules/payroll/entities/payroll.entity.js';
 import { AuthRepository } from '@/modules/auth/repositories/auth.repository.js';
+import { FinanceRepository } from '@/modules/finance/repositories/finance.repository.js';
 import type { RequestWithDetails } from '@/modules/request/request.types.js';
 
 export type NavigationBadgeKey =
@@ -73,6 +74,7 @@ const buildMenu = (role: UserRole): {
           { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
           { label: 'คำขอรออนุมัติ', href: `${basePath}/requests`, iconKey: 'FileCheck', badgeKey: 'pendingRequests' },
           { label: 'รอบจ่ายเงิน', href: `${basePath}/payroll`, iconKey: 'Calculator', badgeKey: 'pendingPayroll' },
+          { label: 'ประวัติการอนุมัติ', href: `${basePath}/history`, iconKey: 'Clock' },
         ],
         secondaryMenu: [
           { label: 'รายงาน SLA', href: `${basePath}/sla-report`, iconKey: 'ClipboardList' },
@@ -86,6 +88,7 @@ const buildMenu = (role: UserRole): {
           { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
           { label: 'คำขอรออนุมัติ', href: `${basePath}/requests`, iconKey: 'FileCheck', badgeKey: 'pendingRequests' },
           { label: 'รอบจ่ายเงิน', href: `${basePath}/payroll`, iconKey: 'Calculator', badgeKey: 'pendingPayroll' },
+          { label: 'ประวัติการอนุมัติ', href: `${basePath}/history`, iconKey: 'Clock' },
         ],
         secondaryMenu: [
           { label: 'รายงาน SLA', href: `${basePath}/sla-report`, iconKey: 'Clock' },
@@ -98,8 +101,9 @@ const buildMenu = (role: UserRole): {
         menu: [
           { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
           { label: 'คำขอรออนุมัติ', href: `${basePath}/requests`, iconKey: 'FileCheck', badgeKey: 'pendingRequests' },
-          { label: 'รอบจ่ายเงิน', href: `${basePath}/payroll`, iconKey: 'Calculator', badgeKey: 'pendingPayroll' },
+          { label: 'ประวัติการอนุมัติ', href: `${basePath}/history`, iconKey: 'Clock' },
           { label: 'รายชื่อผู้มีสิทธิ์', href: `${basePath}/allowance-list`, iconKey: 'Users' },
+          { label: 'รอบจ่ายเงิน', href: `${basePath}/payroll`, iconKey: 'Calculator', badgeKey: 'pendingPayroll' },
           { label: 'แจ้งเตือนใบอนุญาต', href: `${basePath}/alerts`, iconKey: 'AlertTriangle' },
           { label: 'จัดการวันลา', href: `${basePath}/leave-management`, iconKey: 'CalendarDays' },
           { label: 'การเปลี่ยนแปลงบุคลากร', href: `${basePath}/personnel-changes`, iconKey: 'UserMinus' },
@@ -131,7 +135,8 @@ const buildMenu = (role: UserRole): {
           { label: 'บันทึกการใช้งาน', href: `${basePath}/audit-logs`, iconKey: 'FileText' },
         ],
         secondaryMenu: [
-          { label: 'จัดการประกาศ', href: `${basePath}/announcements`, iconKey: 'Megaphone' },
+          { label: 'ตั้งค่าประกาศ', href: `${basePath}/announcements`, iconKey: 'Megaphone' },
+          { label: 'ตอบ Ticket', href: `${basePath}/support`, iconKey: 'HelpCircle' },
           { label: 'ตั้งค่า SLA', href: `${basePath}/sla-config`, iconKey: 'ClipboardList' },
           { label: 'ระบบ', href: `${basePath}/system`, iconKey: 'Server' },
         ],
@@ -141,16 +146,40 @@ const buildMenu = (role: UserRole): {
       return {
         menu: [
           { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
+          { label: 'คำขอรออนุมัติ', href: `${basePath}/requests`, iconKey: 'FileCheck', badgeKey: 'pendingRequests' },
           { label: 'รอบจ่ายเงิน', href: `${basePath}/payroll`, iconKey: 'Calculator', badgeKey: 'pendingPayroll' },
+          { label: 'ประวัติการอนุมัติ', href: `${basePath}/history`, iconKey: 'Clock' },
         ],
+        secondaryMenu: [
+          { label: 'ดาวน์โหลดรายงาน', href: `${basePath}/reports`, iconKey: 'FileBarChart' },
+        ],
+        secondaryLabel: 'รายงาน',
       };
     case UserRole.HEAD_WARD:
+      return {
+        menu: [
+          { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
+          { label: 'คำขอรออนุมัติ', href: `${basePath}/requests`, iconKey: 'FileCheck', badgeKey: 'pendingRequests' },
+          { label: 'ขอบเขตที่ดูแล', href: `${basePath}/scopes`, iconKey: 'Users' },
+          { label: 'ประวัติการอนุมัติ', href: `${basePath}/history`, iconKey: 'Clock' },
+        ],
+        secondaryMenu: [
+          { label: 'คำขอของฉัน', href: `${basePath}/my-requests`, iconKey: 'FileText' },
+        ],
+        secondaryLabel: 'งานของฉัน',
+      };
     case UserRole.HEAD_DEPT:
       return {
         menu: [
           { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
           { label: 'คำขอรออนุมัติ', href: `${basePath}/requests`, iconKey: 'FileCheck', badgeKey: 'pendingRequests' },
+          { label: 'ขอบเขตที่ดูแล', href: `${basePath}/scopes`, iconKey: 'Users' },
+          { label: 'ประวัติการอนุมัติ', href: `${basePath}/history`, iconKey: 'Clock' },
         ],
+        secondaryMenu: [
+          { label: 'คำขอของฉัน', href: `${basePath}/my-requests`, iconKey: 'FileText' },
+        ],
+        secondaryLabel: 'งานของฉัน',
       };
     default:
       return { menu: [] };
@@ -203,10 +232,19 @@ export const getNavigationPayload = async (params: {
   }
 
   let pendingPayroll = 0;
-  const payrollStatus = resolvePayrollStatus(role);
-  if (payrollStatus) {
-    const periods = await PayrollRepository.findPeriodsByStatus(payrollStatus, 50);
-    pendingPayroll = periods.length;
+  if (role === UserRole.FINANCE_OFFICER) {
+    const financeSummary = await FinanceRepository.findFinanceSummary(undefined, undefined, true);
+    pendingPayroll = financeSummary.filter((period) => {
+      const pendingCount = Number(period.pending_count ?? 0);
+      const pendingAmount = Number(period.pending_amount ?? 0);
+      return pendingCount > 0 || pendingAmount > 0;
+    }).length;
+  } else {
+    const payrollStatus = resolvePayrollStatus(role);
+    if (payrollStatus) {
+      const periods = await PayrollRepository.findPeriodsByStatus(payrollStatus, 50);
+      pendingPayroll = periods.length;
+    }
   }
 
   const name = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ').trim();

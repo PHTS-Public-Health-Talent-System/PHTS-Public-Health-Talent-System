@@ -28,6 +28,63 @@ export class RequestQueryService {
     return requestRepository.findEligibilityList(activeOnly);
   }
 
+  async getEligibilitySummary(
+    activeOnly: boolean = true,
+  ): Promise<{
+    updated_at: string | null;
+    total_people: number;
+    total_rate_amount: number;
+    by_profession: { profession_code: string; people_count: number; total_rate_amount: number }[];
+  }> {
+    const rows = await requestRepository.findEligibilitySummary(activeOnly);
+    const by_profession = rows.map((r: any) => ({
+      profession_code: String(r.profession_code ?? "-"),
+      people_count: Number(r.people_count ?? 0),
+      total_rate_amount: Number(r.total_rate_amount ?? 0),
+    }));
+    const updated_at = rows.reduce<string | null>((acc, r: any) => {
+      if (!r?.updated_at) return acc;
+      const iso = new Date(r.updated_at).toISOString();
+      return !acc || iso > acc ? iso : acc;
+    }, null);
+    const total_people = by_profession.reduce((sum, p) => sum + p.people_count, 0);
+    const total_rate_amount = by_profession.reduce((sum, p) => sum + p.total_rate_amount, 0);
+
+    return { updated_at, total_people, total_rate_amount, by_profession };
+  }
+
+  async getEligibilityListPaged(params: {
+    activeOnly: boolean;
+    professionCode?: string | null;
+    search?: string | null;
+    rateGroup?: string | null;
+    department?: string | null;
+    subDepartment?: string | null;
+    licenseStatus?: "active" | "expiring" | "expired" | null;
+    expiringDays?: number;
+    page: number;
+    limit: number;
+  }): Promise<{
+    items: Record<string, unknown>[];
+    meta: { page: number; limit: number; total: number; updated_at: string | null; total_rate_amount: number };
+  }> {
+    const { page, limit, ...filters } = params;
+    const [items, meta] = await Promise.all([
+      requestRepository.findEligibilityListPaged(filters, page, limit),
+      requestRepository.findEligibilityListMeta(filters),
+    ]);
+    return {
+      items,
+      meta: {
+        page,
+        limit,
+        total: meta.total,
+        updated_at: meta.updated_at,
+        total_rate_amount: meta.total_rate_amount,
+      },
+    };
+  }
+
   async getEligibilityById(
     eligibilityId: number,
   ): Promise<Record<string, unknown>> {
@@ -35,7 +92,38 @@ export class RequestQueryService {
     if (!row) {
       throw new Error("Eligibility not found");
     }
-    return row;
+
+    const requestId = (row as any).request_id ? Number((row as any).request_id) : null;
+    const citizenId = String((row as any).citizen_id ?? "");
+
+    const [attachments, license] = await Promise.all([
+      requestId ? requestRepository.findAttachmentsWithMetadata(requestId) : Promise.resolve([]),
+      citizenId ? requestRepository.findLatestLicenseByCitizenId(citizenId) : Promise.resolve(null),
+    ]);
+
+    return {
+      ...row,
+      attachments: attachments.map((att: any) => ({
+        attachment_id: att.attachment_id,
+        request_id: att.request_id,
+        file_type: att.file_type,
+        file_path: att.file_path,
+        file_name: att.file_name,
+        uploaded_at: att.uploaded_at,
+      })),
+      license: license
+        ? {
+            license_id: (license as any).license_id,
+            citizen_id: (license as any).citizen_id,
+            license_name: (license as any).license_name,
+            license_no: (license as any).license_no,
+            valid_from: (license as any).valid_from,
+            valid_until: (license as any).valid_until,
+            status: (license as any).status,
+            synced_at: (license as any).synced_at,
+          }
+        : null,
+    };
   }
 
   async getMyRequests(userId: number): Promise<RequestWithDetails[]> {
@@ -109,7 +197,25 @@ export class RequestQueryService {
   async getApprovalHistory(
     actorId: number,
     actorRole: string,
+    options?: {
+      view?: "mine" | "team";
+      includeAllActions?: boolean;
+    },
   ): Promise<RequestWithDetails[]> {
+    const view = options?.view ?? "team";
+    const includeAllActions = options?.includeAllActions ?? false;
+    const actions = includeAllActions
+      ? ["SUBMIT", "APPROVE", "REJECT", "RETURN", "CANCEL", "REASSIGN"]
+      : ["APPROVE", "REJECT", "RETURN"];
+
+    if (view === "mine") {
+      const mineIds = await requestRepository.findApprovalHistoryIds(actorId, actions);
+      if (mineIds.length === 0) return [];
+      const requestIds = mineIds.map((row) => row.request_id);
+      const fullRequests = await requestRepository.findByIds(requestIds);
+      return await hydrateRequests(fullRequests as any[]);
+    }
+
     if (actorRole === "HEAD_WARD" || actorRole === "HEAD_DEPT") {
       const approverScopes = await getApproverScopes(actorId, actorRole);
       const scopeTypes =
@@ -127,7 +233,7 @@ export class RequestQueryService {
       );
       const actorIds = Array.from(new Set([actorId, ...peerIds]));
       const historyIds =
-        await requestRepository.findApprovalHistoryIdsForActors(actorIds);
+        await requestRepository.findApprovalHistoryIdsForActors(actorIds, actions);
 
       if (historyIds.length === 0) return [];
       const requestIds = historyIds.map((row) => row.request_id);
@@ -144,7 +250,7 @@ export class RequestQueryService {
       const peerIds = await requestRepository.findUserIdsByRole(actorRole);
       const actorIds = Array.from(new Set([actorId, ...peerIds]));
       const historyIds =
-        await requestRepository.findApprovalHistoryIdsForActors(actorIds);
+        await requestRepository.findApprovalHistoryIdsForActors(actorIds, actions);
 
       if (historyIds.length === 0) return [];
       const requestIds = historyIds.map((row) => row.request_id);
@@ -152,7 +258,7 @@ export class RequestQueryService {
       return await hydrateRequests(fullRequests as any[]);
     }
 
-    const historyIds = await requestRepository.findApprovalHistoryIds(actorId);
+    const historyIds = await requestRepository.findApprovalHistoryIds(actorId, actions);
 
     if (historyIds.length === 0) return [];
 
@@ -224,12 +330,36 @@ export class RequestQueryService {
     const details = await this.getRequestDetails(requestId);
 
     const reqAny = request as any;
+    const licenseStatusRaw = (reqAny.license_raw_status as string | null)?.toUpperCase() ?? null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const licenseValidUntil = reqAny.license_valid_until
+      ? new Date(reqAny.license_valid_until)
+      : null;
+    let licenseStatus: "ACTIVE" | "EXPIRED" | "INACTIVE" | "UNKNOWN" | null = null;
+    if (reqAny.license_no || reqAny.license_name || reqAny.license_valid_from || reqAny.license_valid_until) {
+      if (licenseStatusRaw && licenseStatusRaw !== "ACTIVE") {
+        licenseStatus = "INACTIVE";
+      } else if (licenseValidUntil && !Number.isNaN(licenseValidUntil.getTime()) && licenseValidUntil < today) {
+        licenseStatus = "EXPIRED";
+      } else if (licenseValidUntil || licenseStatusRaw === "ACTIVE" || licenseStatusRaw === null) {
+        licenseStatus = "ACTIVE";
+      } else {
+        licenseStatus = "UNKNOWN";
+      }
+    }
+
     details.requester = {
       citizen_id: reqAny.citizen_id,
       role: "USER",
       first_name: reqAny.first_name,
       last_name: reqAny.last_name,
       position: reqAny.position_name,
+      license_no: reqAny.license_no ?? null,
+      license_name: reqAny.license_name ?? null,
+      license_valid_from: reqAny.license_valid_from ?? null,
+      license_valid_until: reqAny.license_valid_until ?? null,
+      license_status: licenseStatus,
     };
 
     return details;

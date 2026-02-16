@@ -65,7 +65,7 @@ export class SupportService {
       "ADMIN",
       "มีคำขอแจ้งปัญหาใหม่",
       `${input.subject}`,
-      "/dashboard/admin/support",
+      "/admin/support",
     );
 
     return ticketId;

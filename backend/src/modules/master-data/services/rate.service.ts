@@ -10,21 +10,57 @@ import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.s
 
 export const getMasterRates = async (): Promise<any[]> => {
   const rates = await query<RowDataPacket[]>(
-    "SELECT * FROM cfg_payment_rates ORDER BY profession_code, group_no, item_no",
+    `SELECT
+       r.*,
+       COALESCE(ec.eligible_count, 0) AS eligible_count
+     FROM cfg_payment_rates r
+     LEFT JOIN (
+       SELECT master_rate_id, COUNT(*) AS eligible_count
+       FROM req_eligibility
+       WHERE is_active = 1
+       GROUP BY master_rate_id
+     ) ec ON ec.master_rate_id = r.rate_id
+     ORDER BY r.profession_code, r.group_no, r.item_no`,
   );
   return rates;
 };
 
 export const updateMasterRate = async (
   rateId: number,
-  amount: number,
-  condition_desc: string,
-  is_active: number,
+  payload: {
+    profession_code: string;
+    group_no: number;
+    item_no: string | null;
+    sub_item_no: string | null;
+    amount: number;
+    condition_desc: string;
+    detailed_desc: string;
+    is_active: boolean;
+  },
   actorId?: number,
 ): Promise<void> => {
   await query<ResultSetHeader>(
-    "UPDATE cfg_payment_rates SET amount = ?, condition_desc = ?, is_active = ? WHERE rate_id = ?",
-    [amount, condition_desc, is_active, rateId],
+    `UPDATE cfg_payment_rates
+     SET profession_code = ?,
+         group_no = ?,
+         item_no = ?,
+         sub_item_no = ?,
+         amount = ?,
+         condition_desc = ?,
+         detailed_desc = ?,
+         is_active = ?
+     WHERE rate_id = ?`,
+    [
+      payload.profession_code,
+      payload.group_no,
+      payload.item_no,
+      payload.sub_item_no,
+      payload.amount,
+      payload.condition_desc,
+      payload.detailed_desc,
+      payload.is_active ? 1 : 0,
+      rateId,
+    ],
   );
 
   await emitAuditEvent({
@@ -34,9 +70,8 @@ export const updateMasterRate = async (
     actorId: actorId ?? null,
     actorRole: null,
     actionDetail: {
-      amount,
-      condition_desc,
-      is_active,
+      action: "update",
+      ...payload,
     },
   });
 };
@@ -69,11 +104,13 @@ export const createMasterRate = async (
   sub_item_no: string | null,
   amount: number,
   condition_desc: string,
+  detailed_desc: string,
+  is_active: number,
   actorId?: number,
 ): Promise<number> => {
   const result = await query<ResultSetHeader>(
-    "INSERT INTO cfg_payment_rates (profession_code, group_no, item_no, sub_item_no, amount, condition_desc, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)",
-    [profession_code, group_no, item_no, sub_item_no, amount, condition_desc],
+    "INSERT INTO cfg_payment_rates (profession_code, group_no, item_no, sub_item_no, amount, condition_desc, detailed_desc, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    [profession_code, group_no, item_no, sub_item_no, amount, condition_desc, detailed_desc, is_active],
   );
 
   const rateId = result.insertId;
@@ -93,6 +130,14 @@ export const createMasterRate = async (
   });
 
   return rateId;
+};
+
+export const getMasterRateById = async (rateId: number): Promise<any | null> => {
+  const rows = await query<RowDataPacket[]>(
+    "SELECT * FROM cfg_payment_rates WHERE rate_id = ?",
+    [rateId],
+  );
+  return (rows[0] as any) ?? null;
 };
 
 /**
@@ -168,7 +213,8 @@ export const getRateHierarchy = async (): Promise<ProfessionNode[]> => {
       case "DENTIST": return "กลุ่มทันตแพทย์";
       case "PHARMACIST": return "กลุ่มเภสัชกร";
       case "NURSE": return "กลุ่มพยาบาลวิชาชีพ";
-      case "OTHERS": return "กลุ่มสหวิชาชีพ (กลุ่ม 5)";
+      case "ALLIED": return "กลุ่มสหวิชาชีพ";
+      case "SPECIAL_EDU": return "กลุ่มการศึกษาพิเศษ";
       default: return code;
     }
   };
@@ -194,7 +240,7 @@ export const getRateHierarchy = async (): Promise<ProfessionNode[]> => {
     if (!group) {
         // Group Name logic
         let groupName = `กลุ่มที่ ${row.group_no}`;
-        if (row.profession_code === 'OTHERS') groupName = "อัตราปกติ"; // Special case
+        if (row.profession_code === 'ALLIED') groupName = `กลุ่มที่ ${row.group_no}`; // keep standard
 
         group = {
             id: groupId,

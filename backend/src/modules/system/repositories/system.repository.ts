@@ -19,6 +19,7 @@ import {
 } from '@/modules/system/entities/system.entity.js';
 
 export class SystemRepository {
+  private static backupTableReady = false;
   // ── User queries ───────────────────────────────────────────────────────────
 
   static async findAllUsers(conn?: PoolConnection): Promise<UserRow[]> {
@@ -296,30 +297,6 @@ export class SystemRepository {
     );
   }
 
-  static async syncLicenses(conn: PoolConnection): Promise<void> {
-    await conn.query(`
-      INSERT INTO emp_licenses (citizen_id, license_no, valid_from, valid_until, status, synced_at)
-      SELECT l.citizen_id, l.license_no, l.valid_from, l.valid_until, l.status, NOW()
-      FROM vw_hrms_licenses l
-      JOIN users u ON CONVERT(l.citizen_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = u.citizen_id
-      ON DUPLICATE KEY UPDATE valid_from=VALUES(valid_from), valid_until=VALUES(valid_until), status=VALUES(status), synced_at=NOW()
-    `);
-  }
-
-  static async syncMovements(conn: PoolConnection): Promise<void> {
-    await conn.query(`
-      INSERT INTO emp_movements (citizen_id, movement_type, effective_date, remark, synced_at)
-      SELECT m.citizen_id, m.movement_type, m.effective_date, m.remark, NOW()
-      FROM vw_hrms_movements m
-      JOIN users u ON CONVERT(m.citizen_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = u.citizen_id
-      ON DUPLICATE KEY UPDATE
-        movement_type = VALUES(movement_type),
-        effective_date = VALUES(effective_date),
-        remark = VALUES(remark),
-        synced_at = NOW()
-    `);
-  }
-
   // ── Connection helper ──────────────────────────────────────────────────────
 
   static async getConnection(): Promise<PoolConnection> {
@@ -328,8 +305,14 @@ export class SystemRepository {
 
   // ── Admin operations ───────────────────────────────────────────────────────
 
-  static async searchUsers(searchTerm: string): Promise<
-    Array<{
+  static async searchUsers(params: {
+    q: string;
+    page: number;
+    limit: number;
+    role?: string;
+    isActive?: number;
+  }): Promise<{
+    rows: Array<{
       id: number;
       citizen_id: string;
       role: string;
@@ -337,24 +320,81 @@ export class SystemRepository {
       last_login_at: Date | null;
       first_name: string | null;
       last_name: string | null;
-    }>
-  > {
-    // Escape LIKE wildcards to prevent pattern injection
-    const sanitized = searchTerm.replace(/[%_]/g, '\\$&');
+    }>;
+    total: number;
+    active_total: number;
+    inactive_total: number;
+    page: number;
+    limit: number;
+    total_pages: number;
+  }> {
+    const page = Number.isFinite(params.page) && params.page > 0 ? Math.floor(params.page) : 1;
+    const limitRaw = Number.isFinite(params.limit) && params.limit > 0 ? Math.floor(params.limit) : 20;
+    const limit = Math.min(limitRaw, 100);
+    const offset = (page - 1) * limit;
+
+    const sanitized = params.q.replace(/[%_]/g, '\\$&');
     const search = `%${sanitized}%`;
 
-    const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT u.id, u.citizen_id, u.role, u.is_active, u.last_login_at,
-              COALESCE(e.first_name, s.first_name) as first_name,
-              COALESCE(e.last_name, s.last_name) as last_name
+    const whereParts: string[] = [
+      `(u.citizen_id LIKE ? OR COALESCE(e.first_name, s.first_name, '') LIKE ? OR COALESCE(e.last_name, s.last_name, '') LIKE ?)`,
+    ];
+    const whereParams: Array<string | number> = [search, search, search];
+
+    if (params.role) {
+      whereParts.push('u.role = ?');
+      whereParams.push(params.role);
+    }
+    if (params.isActive === 0 || params.isActive === 1) {
+      whereParts.push('u.is_active = ?');
+      whereParams.push(params.isActive);
+    }
+
+    const whereClause = `WHERE ${whereParts.join(' AND ')}`;
+
+    const [countRows] = await db.query<RowDataPacket[]>(
+      `SELECT
+         COUNT(DISTINCT u.id) AS total,
+         COUNT(DISTINCT CASE WHEN u.is_active = 1 THEN u.id END) AS active_total
        FROM users u
        LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
        LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
-       WHERE u.citizen_id LIKE ? OR e.first_name LIKE ? OR e.last_name LIKE ?
-       LIMIT 20`,
-      [search, search, search],
+       ${whereClause}`,
+      whereParams,
     );
-    return rows as any[];
+    const total = Number((countRows[0] as { total?: number })?.total ?? 0);
+    const activeTotal = Number((countRows[0] as { active_total?: number })?.active_total ?? 0);
+    const inactiveTotal = Math.max(0, total - activeTotal);
+    const totalPages = total > 0 ? Math.ceil(total / limit) : 1;
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT
+         u.id,
+         u.citizen_id,
+         u.role,
+         u.is_active,
+         u.last_login_at,
+         COALESCE(e.first_name, s.first_name) AS first_name,
+         COALESCE(e.last_name, s.last_name) AS last_name
+       FROM users u
+       LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
+       LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
+       ${whereClause}
+       GROUP BY u.id, u.citizen_id, u.role, u.is_active, u.last_login_at, e.first_name, s.first_name, e.last_name, s.last_name
+       ORDER BY u.id DESC
+       LIMIT ? OFFSET ?`,
+      [...whereParams, limit, offset],
+    );
+
+    return {
+      rows: rows as any[],
+      total,
+      active_total: activeTotal,
+      inactive_total: inactiveTotal,
+      page,
+      limit,
+      total_pages: totalPages,
+    };
   }
 
   static async updateUserRole(
@@ -385,5 +425,161 @@ export class SystemRepository {
     } finally {
       conn.release();
     }
+  }
+
+  static async findUserById(userId: number): Promise<{
+    id: number;
+    citizen_id: string;
+    role: string;
+    is_active: number;
+    last_login_at: Date | null;
+    first_name: string | null;
+    last_name: string | null;
+    department: string | null;
+    position_name: string | null;
+    updated_at: Date | null;
+    created_at: Date | null;
+  } | null> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT
+        u.id,
+        u.citizen_id,
+        u.role,
+        u.is_active,
+        u.last_login_at,
+        u.updated_at,
+        u.created_at,
+        COALESCE(e.first_name, s.first_name) AS first_name,
+        COALESCE(e.last_name, s.last_name) AS last_name,
+        COALESCE(e.department, s.department) AS department,
+        COALESCE(e.position_name, s.position_name) AS position_name
+       FROM users u
+       LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
+       LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
+       WHERE u.id = ?
+       LIMIT 1`,
+      [userId],
+    );
+    return (rows[0] as any) ?? null;
+  }
+
+  // ── Backup jobs ────────────────────────────────────────────────────────────
+
+  static async ensureBackupJobsTable(): Promise<void> {
+    if (SystemRepository.backupTableReady) return;
+    await db.execute(
+      `
+      CREATE TABLE IF NOT EXISTS sys_backup_jobs (
+        job_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        trigger_source VARCHAR(20) NOT NULL,
+        triggered_by INT NULL,
+        status VARCHAR(20) NOT NULL,
+        backup_file_path TEXT NULL,
+        backup_file_size_bytes BIGINT NULL,
+        duration_ms INT NULL,
+        stdout_text TEXT NULL,
+        stderr_text TEXT NULL,
+        error_message TEXT NULL,
+        started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        finished_at DATETIME NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_backup_jobs_created_at (created_at),
+        INDEX idx_backup_jobs_status_created_at (status, created_at)
+      )
+      `,
+    );
+    SystemRepository.backupTableReady = true;
+  }
+
+  static async createBackupJob(
+    triggerSource: 'MANUAL' | 'SCHEDULED',
+    triggeredBy: number | null,
+  ): Promise<number> {
+    await SystemRepository.ensureBackupJobsTable();
+    const [result] = await db.execute<any>(
+      `
+      INSERT INTO sys_backup_jobs (trigger_source, triggered_by, status, started_at)
+      VALUES (?, ?, 'RUNNING', NOW())
+      `,
+      [triggerSource, triggeredBy],
+    );
+    return Number(result.insertId);
+  }
+
+  static async finishBackupJob(
+    jobId: number,
+    payload: {
+      status: 'SUCCESS' | 'FAILED';
+      backupFilePath?: string | null;
+      backupFileSizeBytes?: number | null;
+      durationMs?: number | null;
+      stdoutText?: string | null;
+      stderrText?: string | null;
+      errorMessage?: string | null;
+    },
+  ): Promise<void> {
+    await SystemRepository.ensureBackupJobsTable();
+    await db.execute(
+      `
+      UPDATE sys_backup_jobs
+      SET status = ?,
+          backup_file_path = ?,
+          backup_file_size_bytes = ?,
+          duration_ms = ?,
+          stdout_text = ?,
+          stderr_text = ?,
+          error_message = ?,
+          finished_at = NOW()
+      WHERE job_id = ?
+      `,
+      [
+        payload.status,
+        payload.backupFilePath ?? null,
+        payload.backupFileSizeBytes ?? null,
+        payload.durationMs ?? null,
+        payload.stdoutText ?? null,
+        payload.stderrText ?? null,
+        payload.errorMessage ?? null,
+        jobId,
+      ],
+    );
+  }
+
+  static async getBackupHistory(limit: number = 20): Promise<
+    Array<{
+      job_id: number;
+      trigger_source: string;
+      triggered_by: number | null;
+      status: string;
+      backup_file_path: string | null;
+      backup_file_size_bytes: number | null;
+      duration_ms: number | null;
+      error_message: string | null;
+      started_at: Date;
+      finished_at: Date | null;
+      created_at: Date;
+    }>
+  > {
+    await SystemRepository.ensureBackupJobsTable();
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
+    const [rows] = await db.query<RowDataPacket[]>(
+      `
+      SELECT job_id,
+             trigger_source,
+             triggered_by,
+             status,
+             backup_file_path,
+             backup_file_size_bytes,
+             duration_ms,
+             error_message,
+             started_at,
+             finished_at,
+             created_at
+      FROM sys_backup_jobs
+      ORDER BY created_at DESC
+      LIMIT ${safeLimit}
+      `,
+    );
+    return rows as any[];
   }
 }

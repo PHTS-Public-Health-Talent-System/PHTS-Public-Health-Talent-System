@@ -1,6 +1,10 @@
 import { RowDataPacket, ResultSetHeader } from "mysql2/promise";
 import db from '@/config/database.js';
-import type { LeaveRecordListQuery, LeaveRecordExtensionBody } from '../leave-records.schema.js';
+import type {
+  LeaveRecordListQuery,
+  LeavePersonnelListQuery,
+  LeaveRecordExtensionBody,
+} from '../leave-records.schema.js';
 
 export type LeaveRecordRow = RowDataPacket & {
   id: number;
@@ -68,6 +72,16 @@ export type LeaveRecordStats = {
   total: number;
   study: number;
   pending_report: number;
+};
+
+export type LeavePersonnelRow = RowDataPacket & {
+  citizen_id: string;
+  title?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  position_name?: string | null;
+  department?: string | null;
+  profession_code?: string | null;
 };
 
 export type LeaveQuotaLeaveRow = RowDataPacket & {
@@ -178,6 +192,43 @@ const buildLeaveRecordFilters = (params: LeaveRecordListQuery) => {
 };
 
 export class LeaveRecordsRepository {
+  async listPersonnel(params: LeavePersonnelListQuery): Promise<LeavePersonnelRow[]> {
+    const q = (params.q ?? "").trim().toLowerCase();
+    const limit = params.limit ?? 2000;
+    const where = q
+      ? `
+        WHERE (
+          LOWER(COALESCE(ep.citizen_id, '')) LIKE ?
+          OR LOWER(COALESCE(ep.first_name, '')) LIKE ?
+          OR LOWER(COALESCE(ep.last_name, '')) LIKE ?
+          OR LOWER(COALESCE(ep.department, '')) LIKE ?
+          OR LOWER(COALESCE(ep.position_name, '')) LIKE ?
+        )
+      `
+      : "";
+    const values = q ? [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, limit] : [limit];
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      `
+        SELECT
+          ep.citizen_id,
+          ep.title,
+          ep.first_name,
+          ep.last_name,
+          ep.position_name,
+          ep.department,
+          ${buildProfessionCaseSql("COALESCE(ep.position_name, '')")} AS profession_code
+        FROM emp_profiles ep
+        ${where}
+        ORDER BY ep.first_name ASC, ep.last_name ASC
+        LIMIT ?
+      `,
+      values,
+    );
+
+    return rows as LeavePersonnelRow[];
+  }
+
   async listLeaveRecords(params: LeaveRecordListQuery): Promise<LeaveRecordRow[]> {
     const { whereClause, values } = buildLeaveRecordFilters(params);
     const positionExpr = "COALESCE(ep.position_name, ss.position_name, '')";
@@ -263,6 +314,7 @@ export class LeaveRecordsRepository {
 
   async countLeaveRecords(params: LeaveRecordListQuery): Promise<number> {
     const { whereClause, values } = buildLeaveRecordFilters(params);
+
     const [rows] = await db.query<RowDataPacket[]>(
       `
         SELECT COUNT(*) AS total

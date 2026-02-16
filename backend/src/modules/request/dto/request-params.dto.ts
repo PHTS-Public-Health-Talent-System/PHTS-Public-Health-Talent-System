@@ -32,6 +32,22 @@ export const requestEligibilityIdParamSchema = z.object({
 export const requestEligibilityQuerySchema = z.object({
   query: z.object({
     active_only: z.enum(["0", "1"]).optional(),
+    // Optional paging + filters (used by allowance-list screens)
+    page: z.coerce.number().int().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    profession_code: z.string().trim().min(1).optional(), // "ALL" or code
+    search: z.string().trim().max(200).optional(),
+    rate_group: z.string().trim().min(1).optional(), // "all" or group_no
+    department: z.string().trim().max(255).optional(),
+    sub_department: z.string().trim().max(255).optional(),
+    license_status: z.enum(["all", "active", "expiring", "expired"]).optional(),
+  }),
+});
+
+export const requestHistoryQuerySchema = z.object({
+  query: z.object({
+    view: z.enum(["mine", "team"]).optional(),
+    actions: z.enum(["important", "all"]).optional(),
   }),
 });
 

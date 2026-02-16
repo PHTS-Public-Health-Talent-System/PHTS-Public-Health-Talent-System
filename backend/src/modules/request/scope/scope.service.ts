@@ -258,6 +258,19 @@ export async function isRequestOwner(
  * Returns all scopes the user has access to, formatted for display
  */
 type DisplayScope = { value: string; label: string; type: "UNIT" | "DEPT" };
+type ScopeMember = {
+  citizenId: string;
+  fullName: string;
+  position: string;
+  department: string | null;
+  subDepartment: string | null;
+  userRole: string | null;
+  userRoleLabel: string;
+};
+type DisplayScopeWithMembers = DisplayScope & {
+  memberCount: number;
+  members: ScopeMember[];
+};
 
 function appendDisplayScopes(result: DisplayScope[], scopes: string[]) {
   for (const scope of scopes) {
@@ -288,6 +301,67 @@ export async function getUserScopesForDisplay(
   appendDisplayScopes(result, scopes.wardScopes);
   appendDisplayScopes(result, scopes.deptScopes);
   return result;
+}
+
+export async function getUserScopesWithMembers(
+  userId: number,
+  userRole: string,
+): Promise<DisplayScopeWithMembers[]> {
+  const scopes = await getUserScopesForDisplay(userId, userRole);
+  if (!scopes.length) return [];
+
+  const scopesWithMembers = await Promise.all(
+    scopes.map(async (scope) => {
+      const rows = await requestRepository.findEmployeesInScope(scope.type, scope.value);
+      const members: ScopeMember[] = rows.map((row) => {
+        const fullName = [row.title, row.first_name, row.last_name]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        return {
+          citizenId: row.citizen_id,
+          fullName: fullName || row.citizen_id,
+          position: row.position_name || "-",
+          department: row.department,
+          subDepartment: row.sub_department,
+          userRole: row.user_role ?? null,
+          userRoleLabel: mapUserRoleToThaiLabel(row.user_role ?? null),
+        };
+      });
+      return {
+        ...scope,
+        memberCount: members.length,
+        members,
+      };
+    }),
+  );
+
+  return scopesWithMembers;
+}
+
+function mapUserRoleToThaiLabel(role: string | null): string {
+  switch ((role ?? "").toUpperCase()) {
+    case "ADMIN":
+      return "ผู้ดูแลระบบ";
+    case "DIRECTOR":
+      return "ผู้อำนวยการ";
+    case "HEAD_FINANCE":
+      return "หัวหน้าการเงิน";
+    case "FINANCE_OFFICER":
+      return "เจ้าหน้าที่การเงิน";
+    case "HEAD_HR":
+      return "หัวหน้าทรัพยากรบุคคล";
+    case "PTS_OFFICER":
+      return "เจ้าหน้าที่ พ.ต.ส.";
+    case "HEAD_DEPT":
+      return "หัวหน้ากลุ่มงาน";
+    case "HEAD_WARD":
+      return "หัวหน้าตึก/หัวหน้างาน";
+    case "USER":
+      return "ผู้ใช้งานทั่วไป";
+    default:
+      return "ยังไม่ได้กำหนดสิทธิ์";
+  }
 }
 
 /**

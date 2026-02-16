@@ -32,51 +32,52 @@ const bucketCaseSql = `
   END
 `;
 
+const positionExpr = "COALESCE(ep.position_name, ss.position_name, '')";
+const departmentExpr = "COALESCE(ep.department, ss.department)";
+// Reuse existing CASE mapping, but bind it to our joined profile alias.
+const positionProfessionCaseSqlBound = positionProfessionCaseSql.replaceAll(
+  "p.position_name",
+  positionExpr,
+);
+
+// One row per citizen_id: take the latest license row, then enrich with profile/support fields.
 const baseSubquerySql = `
   SELECT
-    p.citizen_id,
-    p.first_name,
-    p.last_name,
-    p.position_name,
-    p.department,
+    ll.citizen_id,
+    COALESCE(ep.first_name, ss.first_name, '') AS first_name,
+    COALESCE(ep.last_name, ss.last_name, '') AS last_name,
+    ${positionExpr} AS position_name,
+    ${departmentExpr} AS department,
     COALESCE(
-      ${positionProfessionCaseSql},
+      ${positionProfessionCaseSqlBound},
       (
-      SELECT r.profession_code
-      FROM req_eligibility re
-      JOIN cfg_payment_rates r ON r.rate_id = re.master_rate_id
-      WHERE re.citizen_id = p.citizen_id
-      ORDER BY re.is_active DESC, re.effective_date DESC, re.eligibility_id DESC
-      LIMIT 1
+        SELECT r.profession_code
+        FROM req_eligibility re
+        JOIN cfg_payment_rates r ON r.rate_id = re.master_rate_id
+        WHERE re.citizen_id = ll.citizen_id
+        ORDER BY re.is_active DESC, re.effective_date DESC, re.eligibility_id DESC
+        LIMIT 1
       )
     ) AS profession_code,
-    (
-      SELECT l.license_no
+    ll.license_no,
+    ll.valid_until AS effective_expiry
+  FROM (
+    SELECT citizen_id, license_no, valid_until
+    FROM (
+      SELECT
+        l.citizen_id,
+        l.license_no,
+        l.valid_until,
+        ROW_NUMBER() OVER (
+          PARTITION BY l.citizen_id
+          ORDER BY l.valid_until DESC, l.valid_from DESC, l.license_id DESC
+        ) AS rn
       FROM emp_licenses l
-      WHERE l.citizen_id = p.citizen_id
-      ORDER BY
-        l.valid_until DESC,
-        l.valid_from DESC,
-        l.license_id DESC
-      LIMIT 1
-    ) AS license_no,
-    (
-      SELECT l.valid_until
-      FROM emp_licenses l
-      WHERE l.citizen_id = p.citizen_id
-      ORDER BY
-        l.valid_until DESC,
-        l.valid_from DESC,
-        l.license_id DESC
-      LIMIT 1
-    ) AS effective_expiry
-  FROM emp_profiles p
-  WHERE EXISTS (
-    SELECT 1
-    FROM req_eligibility re
-    WHERE re.citizen_id = p.citizen_id
-      AND re.is_active = 1
-  )
+    ) ranked
+    WHERE ranked.rn = 1
+  ) ll
+  LEFT JOIN emp_profiles ep ON ep.citizen_id = ll.citizen_id
+  LEFT JOIN emp_support_staff ss ON ss.citizen_id = ll.citizen_id
 `;
 
 export async function getLicenseAlertSummary(asOf: Date = new Date()) {

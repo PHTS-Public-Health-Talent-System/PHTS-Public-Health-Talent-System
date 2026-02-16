@@ -51,6 +51,65 @@ export interface SLAReport {
   }>;
 }
 
+export interface SLAKpiOverview {
+  from: string;
+  to: string;
+  total_closed: number;
+  on_time_completion_rate: number;
+  median_lead_time_days: number;
+  throughput_closed: number;
+  rework_rate: number;
+  overdue_backlog_count: number;
+}
+
+export interface SLAKpiByStepRow {
+  step: number;
+  role: string;
+  total: number;
+  median_days: number;
+  p90_days: number;
+  on_time_rate: number;
+}
+
+export interface SLAKpiAgingBucket {
+  bucket: "0-3" | "4-7" | "8-14" | "15+";
+  count: number;
+}
+
+export interface SLAKpiDataQuality {
+  from: string;
+  to: string;
+  closed_without_submit: number;
+  closed_without_actions: number;
+  step_missing_enter: number;
+  step_negative_duration: number;
+}
+
+export interface SLAKpiErrorCategoryRow {
+  category: string;
+  count: number;
+  ratio: number;
+}
+
+export interface SLAKpiErrorByStepRow {
+  step: number;
+  role: string;
+  error_count: number;
+}
+
+export interface SLAKpiErrorOverview {
+  from: string;
+  to: string;
+  total_submitted: number;
+  total_error_requests: number;
+  error_rate: number;
+  first_pass_yield: number;
+  return_rate: number;
+  rejection_rate: number;
+  top_categories: SLAKpiErrorCategoryRow[];
+  by_step: SLAKpiErrorByStepRow[];
+}
+
 // ─── SLA Reminder Result ──────────────────────────────────────────────────────
 
 export interface SLAReminderResult {

@@ -3,9 +3,11 @@ import { protect, restrictTo } from '@middlewares/authMiddleware.js';
 import { validate } from '@shared/validate.middleware.js';
 import {
   createHolidaySchema,
+  createRateSchema,
   deleteHolidaySchema,
   deleteRateSchema,
   getHolidaysSchema,
+  updateHolidaySchema,
   updateRateSchema,
 } from '@/modules/master-data/master-data.schema.js';
 import { UserRole } from '@/types/auth.js';
@@ -33,6 +35,13 @@ router.post(
   masterDataController.addHoliday,
 );
 
+router.put(
+  "/holidays/:date",
+  officerAuth,
+  validate(updateHolidaySchema),
+  masterDataController.updateHoliday,
+);
+
 router.delete(
   "/holidays/:date",
   officerAuth,
@@ -45,7 +54,7 @@ router.get("/rates", officerAuth, masterDataController.getMasterRates);
 router.post(
   "/rates",
   officerAuth,
-  // validate(createRateSchema), // TODO: Add schema
+  validate(createRateSchema),
   masterDataController.createMasterRate,
 );
 

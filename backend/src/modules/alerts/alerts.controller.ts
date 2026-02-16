@@ -1,6 +1,10 @@
 import { Request, Response } from "express";
 import {
+  createPersonnelMovement,
+  deletePersonnelMovement,
   listRetirements,
+  listPersonnelMovements,
+  updatePersonnelMovement,
   createRetirement,
   updateRetirement,
   deleteRetirement,
@@ -9,6 +13,28 @@ import {
 export async function getRetirements(_req: Request, res: Response) {
   const records = await listRetirements();
   res.json({ success: true, data: records });
+}
+
+export async function getPersonnelMovements(_req: Request, res: Response) {
+  const records = await listPersonnelMovements();
+  res.json({ success: true, data: records });
+}
+
+export async function postPersonnelMovement(req: Request, res: Response) {
+  await createPersonnelMovement(req.body);
+  res.json({ success: true });
+}
+
+export async function putPersonnelMovement(req: Request, res: Response) {
+  const movementId = Number(req.params.id);
+  await updatePersonnelMovement(movementId, req.body);
+  res.json({ success: true });
+}
+
+export async function removePersonnelMovement(req: Request, res: Response) {
+  const movementId = Number(req.params.id);
+  await deletePersonnelMovement(movementId);
+  res.json({ success: true });
 }
 
 export async function postRetirement(req: Request, res: Response) {

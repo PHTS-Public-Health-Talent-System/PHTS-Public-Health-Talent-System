@@ -7,8 +7,19 @@ import { LicenseAlertsRepository } from '@/modules/alerts/repositories/license-a
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 import { getSLAReport } from '@/modules/sla/services/sla.service.js';
 import type { AlertType } from '@/modules/alerts/entities/alerts.entity.js';
+import {
+  ALERT_JOB_TIMEZONE,
+  LEAVE_REPORT_POLICY,
+  resolveLeavePolicy,
+} from '@/modules/alerts/constants/alert-policy.js';
 
-const DATE_FMT = (d: Date) => d.toISOString().slice(0, 10);
+const DATE_FMT = (d: Date) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: ALERT_JOB_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
 
 const hashKey = (value: string) =>
   crypto.createHash("sha256").update(value).digest("hex");
@@ -251,28 +262,43 @@ export async function runSLADigest(): Promise<{ sent: number }> {
 
 export async function runLeaveReportAlerts(): Promise<{ sent: number }> {
   const asOf = new Date();
-  let sent = 0;
+  const stats = {
+    candidates: 0,
+    sent: 0,
+    skippedDedup: 0,
+    skippedNoUser: 0,
+    failed: 0,
+  };
 
   const ordain = await AlertsRepository.getLeaveReportCandidates(
     ["ordain"],
-    14,
+    LEAVE_REPORT_POLICY.ordain.windowDays,
     asOf,
   );
   const military = await AlertsRepository.getLeaveReportCandidates(
     ["military"],
-    15,
+    LEAVE_REPORT_POLICY.military.windowDays,
     asOf,
   );
 
   const candidates = [...ordain, ...military];
+  stats.candidates = candidates.length;
 
   for (const row of candidates) {
-    const maxDays = row.leave_type === "ordain" ? 5 : 7;
-    const isOverdue = row.days_since_end > maxDays;
-    if (!(await shouldSendAlert("LEAVE_REPORT", "leave_record", String(row.leave_record_id), asOf))) continue;
+    const policy = resolveLeavePolicy(row.leave_type);
+    const maxDays = policy.overdueDays;
+    const isOverdue = row.days_since_end > policy.overdueDays;
+    const referenceId = String(row.leave_record_id);
+    if (!(await shouldSendAlert("LEAVE_REPORT", "leave_record", referenceId, asOf))) {
+      stats.skippedDedup += 1;
+      continue;
+    }
 
     const userId = await AlertsRepository.findUserIdByCitizenId(row.citizen_id);
-    if (!userId) continue;
+    if (!userId) {
+      stats.skippedNoUser += 1;
+      continue;
+    }
 
     const title = isOverdue
       ? "แจ้งเตือนรายงานตัวกลับ (เกินกำหนด)"
@@ -281,17 +307,32 @@ export async function runLeaveReportAlerts(): Promise<{ sent: number }> {
       ? `ครบกำหนดรายงานตัวกลับจากการลาแล้ว (${row.days_since_end} วันหลังวันสิ้นสุดการลา)`
       : `กรุณารายงานตัวกลับภายใน ${maxDays} วันหลังสิ้นสุดการลา`;
 
-    await NotificationService.notifyUser(
-      userId,
-      title,
-      message,
-      "/dashboard/user/requests",
-      "LEAVE",
-    );
+    try {
+      await NotificationService.notifyUser(
+        userId,
+        title,
+        message,
+        "/dashboard/user/requests",
+        "LEAVE",
+      );
 
-    await logAlert("LEAVE_REPORT", "leave_record", String(row.leave_record_id), userId);
-    sent += 1;
+      await logAlert("LEAVE_REPORT", "leave_record", referenceId, userId);
+      stats.sent += 1;
+    } catch (error) {
+      stats.failed += 1;
+      await logAlert(
+        "LEAVE_REPORT",
+        "leave_record",
+        referenceId,
+        userId,
+        error instanceof Error ? error.message : "Unknown error",
+      );
+    }
   }
 
-  return { sent };
+  console.info(
+    `[leave-report] tz=${ALERT_JOB_TIMEZONE} candidates=${stats.candidates} sent=${stats.sent} dedup=${stats.skippedDedup} no_user=${stats.skippedNoUser} failed=${stats.failed}`,
+  );
+
+  return { sent: stats.sent };
 }

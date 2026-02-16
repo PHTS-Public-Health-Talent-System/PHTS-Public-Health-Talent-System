@@ -6,7 +6,15 @@ export class RetirementsRepository {
   static async list(conn?: PoolConnection): Promise<RetirementRecord[]> {
     const executor = conn ?? db;
     const [rows] = await executor.query<RowDataPacket[]>(
-      "SELECT * FROM emp_retirements ORDER BY retire_date ASC",
+      `SELECT
+         r.*,
+         e.first_name,
+         e.last_name,
+         e.position_name,
+         e.department
+       FROM emp_retirements r
+       LEFT JOIN emp_profiles e ON e.citizen_id = r.citizen_id
+       ORDER BY r.retire_date ASC`,
     );
     return rows as RetirementRecord[];
   }
@@ -17,7 +25,15 @@ export class RetirementsRepository {
   ): Promise<RetirementRecord | null> {
     const executor = conn ?? db;
     const [rows] = await executor.query<RowDataPacket[]>(
-      "SELECT * FROM emp_retirements WHERE retirement_id = ?",
+      `SELECT
+         r.*,
+         e.first_name,
+         e.last_name,
+         e.position_name,
+         e.department
+       FROM emp_retirements r
+       LEFT JOIN emp_profiles e ON e.citizen_id = r.citizen_id
+       WHERE r.retirement_id = ?`,
       [retirementId],
     );
     return (rows[0] as RetirementRecord) ?? null;

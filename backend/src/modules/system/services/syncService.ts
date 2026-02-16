@@ -13,6 +13,7 @@ import {
   removeOverlaps,
   inferScopeType,
 } from '@/modules/request/scope/utils.js';
+import { applyImmediateMovementEligibilityCutoff } from '@/modules/alerts/services/immediate-rules.service.js';
 
 const SALT_ROUNDS = 10;
 const SYNC_LOCK_KEY = 'system:sync:lock';
@@ -373,22 +374,49 @@ const syncUsersFromProfilesAndSupport = async (
 
   const sourceMap = new Map<
     string,
-    { profileStatus: string | null; supportEnable: number | null }
+    {
+      profileStatus: string | null;
+      supportEnable: number | null;
+      fromProfile: boolean;
+      fromSupport: boolean;
+    }
   >();
 
   for (const row of profileRows) {
     sourceMap.set(row.citizen_id, {
       profileStatus: row.original_status ?? null,
       supportEnable: null,
+      fromProfile: true,
+      fromSupport: false,
+    });
+  }
+
+  const supportWhere = options?.citizenId ? 'WHERE citizen_id = ?' : '';
+  const supportParams: string[] = [];
+  if (options?.citizenId) supportParams.push(options.citizenId);
+  const [supportRows] = await conn.query<RowDataPacket[]>(
+    `SELECT citizen_id, is_currently_active FROM emp_support_staff ${supportWhere}`,
+    supportParams,
+  );
+
+  for (const row of supportRows) {
+    if (!row.citizen_id) continue;
+    const existing = sourceMap.get(row.citizen_id);
+    sourceMap.set(row.citizen_id, {
+      profileStatus: existing?.profileStatus ?? null,
+      supportEnable: row.is_currently_active ?? existing?.supportEnable ?? null,
+      fromProfile: existing?.fromProfile ?? false,
+      fromSupport: true,
     });
   }
 
   for (const [citizenId, source] of sourceMap) {
     const desiredActive = deriveUserIsActive(source.profileStatus, source.supportEnable);
     const dbUser = userMap.get(citizenId);
+    const shouldCreateUser = desiredActive || source.fromSupport;
 
     if (!dbUser) {
-      if (!desiredActive) {
+      if (!shouldCreateUser) {
         stats.users.skipped++;
         continue;
       }
@@ -692,6 +720,7 @@ const syncLeaves = async (conn: PoolConnection, stats: SyncStats) => {
 const syncMovements = async (conn: PoolConnection, _stats: SyncStats) => {
   console.log('[SyncService] Processing movements...');
   await conn.query(buildMovementsViewQuery());
+  await applyImmediateMovementEligibilityCutoff(new Date(), conn);
 };
 
 export const buildScopesFromSpecialPosition = (specialPosition: string | null) => {
@@ -1023,7 +1052,10 @@ export class SyncService {
 
       // Employees (single)
       const [viewEmps] = await conn.query<RowDataPacket[]>(
-        `SELECT ${VIEW_EMPLOYEE_COLUMNS.join(', ')} FROM vw_hrms_employees WHERE citizen_id = ? LIMIT 1`,
+        `SELECT ${VIEW_EMPLOYEE_COLUMNS.join(', ')}
+         FROM vw_hrms_employees
+         WHERE ${citizenIdWhereBinary('vw_hrms_employees', '?')}
+         LIMIT 1`,
         [citizenId],
       );
       const vEmp = viewEmps[0];
@@ -1090,7 +1122,10 @@ export class SyncService {
       const { sql: supportSql } = buildSupportEmployeeSql(supportSqlOptions);
 
       const [viewSupEmps] = await conn.query<RowDataPacket[]>(
-        `SELECT ${VIEW_SUPPORT_COLUMNS.join(', ')} FROM vw_hrms_support_staff WHERE citizen_id = ? LIMIT 1`,
+        `SELECT ${VIEW_SUPPORT_COLUMNS.join(', ')}
+         FROM vw_hrms_support_staff
+         WHERE ${citizenIdWhereBinary('vw_hrms_support_staff', '?')}
+         LIMIT 1`,
         [citizenId],
       );
       const vSup = viewSupEmps[0];
@@ -1107,14 +1142,14 @@ export class SyncService {
         `
           SELECT s.citizen_id, s.signature_blob
           FROM vw_hrms_signatures s
-          WHERE s.citizen_id = ?
+          WHERE ${citizenIdWhereBinary('s', '?')}
         `,
         [citizenId],
       );
       const vSig = viewSigs[0];
       if (vSig) {
         const [existingSigs] = await conn.query<RowDataPacket[]>(
-          'SELECT citizen_id FROM sig_images WHERE citizen_id = ?',
+          `SELECT citizen_id FROM sig_images WHERE ${citizenIdWhereBinary('sig_images', '?')}`,
           [vSig.citizen_id],
         );
         if (!existingSigs.length) {
@@ -1140,7 +1175,7 @@ export class SyncService {
                  l.status,
                  NOW()
           FROM vw_hrms_licenses l
-          WHERE l.citizen_id = ?
+          WHERE ${citizenIdWhereBinary('l', '?')}
           ON DUPLICATE KEY UPDATE
             license_name=VALUES(license_name),
             valid_from=VALUES(valid_from),
@@ -1156,7 +1191,7 @@ export class SyncService {
         `
           SELECT q.citizen_id, q.fiscal_year, q.total_quota
           FROM vw_hrms_leave_quotas q
-          WHERE q.citizen_id = ?
+          WHERE ${citizenIdWhereBinary('q', '?')}
         `,
         [citizenId],
       );
@@ -1186,7 +1221,9 @@ export class SyncService {
       const { sql: leaveSql } = buildLeaveRecordSql(leaveSqlOptions);
 
       const [viewLeaves] = await conn.query<RowDataPacket[]>(
-        `SELECT ${selectColumns('lr', VIEW_LEAVE_COLUMNS)} FROM vw_hrms_leave_requests lr WHERE lr.citizen_id = ?`,
+        `SELECT ${selectColumns('lr', VIEW_LEAVE_COLUMNS)}
+         FROM vw_hrms_leave_requests lr
+         WHERE ${citizenIdWhereBinary('lr', '?')}`,
         [citizenId],
       );
 
@@ -1202,7 +1239,11 @@ export class SyncService {
         `
           INSERT INTO emp_movements (citizen_id, movement_type, effective_date, remark, synced_at)
           SELECT ${citizenIdSelectUtf8('m')} AS citizen_id,
-                 CASE WHEN m.movement_type = 'UNKNOWN' THEN 'OTHER' ELSE m.movement_type END,
+                 CASE
+                   WHEN CAST(m.movement_type AS BINARY) = CAST('UNKNOWN' AS BINARY)
+                     THEN 'OTHER'
+                   ELSE m.movement_type
+                 END,
                  m.effective_date,
                  m.remark,
                  NOW()
@@ -1216,6 +1257,7 @@ export class SyncService {
         `,
         [citizenId],
       );
+      await applyImmediateMovementEligibilityCutoff(new Date(), conn);
 
       // Scope mapping (HEAD roles only)
       await syncSpecialPositionScopesForCitizen(conn, citizenId);
@@ -1227,10 +1269,10 @@ export class SyncService {
         const [hrRows] = await conn.query<RowDataPacket[]>(
           `
             SELECT citizen_id, position_name, special_position, department, sub_department
-            FROM emp_profiles WHERE citizen_id = ?
+            FROM emp_profiles WHERE ${citizenIdWhereBinary('emp_profiles', '?')}
             UNION ALL
             SELECT citizen_id, position_name, special_position, department, NULL AS sub_department
-            FROM emp_support_staff WHERE citizen_id = ?
+            FROM emp_support_staff WHERE ${citizenIdWhereBinary('emp_support_staff', '?')}
             LIMIT 1
           `,
           [citizenId, citizenId],
@@ -1242,7 +1284,9 @@ export class SyncService {
             const nextRole = RoleAssignmentService.deriveRole(hrRow);
             if (nextRole !== currentRole) {
               await conn.execute(
-                'UPDATE users SET role = ?, updated_at = NOW() WHERE citizen_id = ?',
+                `UPDATE users
+                 SET role = ?, updated_at = NOW()
+                 WHERE ${citizenIdWhereBinary('users', '?')}`,
                 [nextRole, citizenId],
               );
               clearScopeCache(dbUser.id as number);

@@ -77,7 +77,7 @@ const calculateRetroForPeriod = async (
       month: targetMonth,
       year: targetYear,
       diff,
-      remark: `ปรับปรุงยอดเดือน ${targetMonth}/${targetYear}`,
+      remark: `ตกเบิกยอดเดือน ${targetMonth}/${targetYear}`,
     },
   };
 };

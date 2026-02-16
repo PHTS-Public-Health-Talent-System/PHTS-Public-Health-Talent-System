@@ -18,5 +18,16 @@ export function loadEnv(): void {
       ? localPath
       : defaultPath;
   dotenv.config({ path: envPath });
+
+  const appTimezone = process.env.APP_TIMEZONE || "Asia/Bangkok";
+  process.env.APP_TIMEZONE = appTimezone;
+  if (!process.env.TZ) {
+    process.env.TZ = appTimezone;
+  }
+
+  if (!process.env.DB_TIMEZONE) {
+    process.env.DB_TIMEZONE = "+07:00";
+  }
+
   loaded = true;
 }

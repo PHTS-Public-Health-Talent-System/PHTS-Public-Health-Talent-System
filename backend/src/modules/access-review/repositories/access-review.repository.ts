@@ -250,7 +250,15 @@ export class AccessReviewRepository {
   static async findActiveNonAdminUsers(conn: PoolConnection): Promise<any[]> {
     const [rows] = await conn.query<RowDataPacket[]>(`
       SELECT u.id, u.citizen_id, u.role, u.last_login_at,
-             COALESCE(e.employment_status, s.employment_status, 'unknown') AS employee_status
+             COALESCE(
+               NULLIF(e.original_status, ''),
+               CASE
+                 WHEN s.is_currently_active = 0 THEN 'inactive'
+                 WHEN s.is_currently_active = 1 THEN 'active'
+                 ELSE NULL
+               END,
+               'unknown'
+             ) AS employee_status
       FROM users u
       LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
       LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id

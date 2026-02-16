@@ -25,19 +25,42 @@ export async function getTestConnection() {
   const user = process.env.DB_USER || "root";
   const password = process.env.DB_PASSWORD || "";
   const database = process.env.DB_NAME || "phts_test";
+  const connectTimeout = Number.parseInt(process.env.DB_CONNECT_TIMEOUT_MS || "5000", 10);
   return mysql.createConnection({
     host,
     port,
     user,
     password,
     database,
+    connectTimeout,
     multipleStatements: true,
   });
 }
 
-async function waitForDatabase(retries = 60, delayMs = 500): Promise<void> {
+async function waitForDatabase(retries = 20, delayMs = 250): Promise<void> {
+  const isNonRetryableError = (error: unknown): boolean => {
+    const code = String((error as any)?.code || "");
+    const message = String((error as any)?.message || "");
+    return (
+      code === "ER_ACCESS_DENIED_ERROR" ||
+      code === "ER_DBACCESS_DENIED_ERROR" ||
+      code === "ER_BAD_DB_ERROR" ||
+      message.includes("Access denied") ||
+      message.includes("Unknown database")
+    );
+  };
+
+  const retryCount = Number.parseInt(
+    process.env.TEST_DB_WAIT_RETRIES || String(retries),
+    10,
+  );
+  const retryDelayMs = Number.parseInt(
+    process.env.TEST_DB_WAIT_DELAY_MS || String(delayMs),
+    10,
+  );
+
   let lastError: unknown;
-  for (let i = 0; i < retries; i += 1) {
+  for (let i = 0; i < retryCount; i += 1) {
     try {
       const conn = await getTestConnection();
       await conn.ping();
@@ -45,7 +68,10 @@ async function waitForDatabase(retries = 60, delayMs = 500): Promise<void> {
       return;
     } catch (error) {
       lastError = error;
-      await sleep(delayMs);
+      if (isNonRetryableError(error)) {
+        throw error;
+      }
+      await sleep(retryDelayMs);
     }
   }
   throw lastError;
@@ -283,20 +309,27 @@ export async function resetPayrollSchema(): Promise<void> {
 }
 
 export async function resetFinanceSchema(): Promise<void> {
-  await resetAuthSchema();
+  await waitForDatabase();
   const conn = await getTestConnection();
   try {
+    await conn.execute("DROP TABLE IF EXISTS pay_results");
+    await conn.execute("DROP TABLE IF EXISTS pay_periods");
+    await conn.execute("DROP TABLE IF EXISTS emp_profiles");
+    await conn.execute("DROP TABLE IF EXISTS emp_support_staff");
+
     await conn.execute(`
-      CREATE TABLE IF NOT EXISTS pay_periods (
+      CREATE TABLE pay_periods (
         period_id INT AUTO_INCREMENT PRIMARY KEY,
         period_month INT NOT NULL,
         period_year INT NOT NULL,
         status VARCHAR(50) NOT NULL,
+        is_frozen TINYINT NOT NULL DEFAULT 0,
+        frozen_at DATETIME NULL,
+        frozen_by INT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    await conn.execute("DROP TABLE IF EXISTS pay_results");
     await conn.execute(`
       CREATE TABLE pay_results (
         payout_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -315,39 +348,29 @@ export async function resetFinanceSchema(): Promise<void> {
       )
     `);
 
-    await conn.execute("DROP TABLE IF EXISTS emp_profiles");
     await conn.execute(`
       CREATE TABLE emp_profiles (
         citizen_id VARCHAR(20) PRIMARY KEY,
         first_name VARCHAR(100) NULL,
         last_name VARCHAR(100) NULL,
+        department VARCHAR(255) NULL,
         department_code VARCHAR(50) NULL
       )
     `);
 
     await conn.execute(`
-      CREATE TABLE IF NOT EXISTS emp_support_staff (
+      CREATE TABLE emp_support_staff (
         citizen_id VARCHAR(20) PRIMARY KEY,
         first_name VARCHAR(100) NULL,
         last_name VARCHAR(100) NULL,
-        department VARCHAR(50) NULL
+        department VARCHAR(255) NULL
       )
     `);
 
-    await conn.execute(`
-      CREATE TABLE IF NOT EXISTS vw_finance_period_summary (
-        period_year INT NOT NULL,
-        period_month INT NOT NULL,
-        total_employees INT NOT NULL,
-        total_amount DECIMAL(12,2) NOT NULL,
-        paid_amount DECIMAL(12,2) NOT NULL,
-        pending_amount DECIMAL(12,2) NOT NULL
-      )
-    `);
-
-    await conn.execute("DELETE FROM vw_finance_period_summary");
     await conn.execute("DELETE FROM pay_results");
     await conn.execute("DELETE FROM pay_periods");
+    await conn.execute("DELETE FROM emp_profiles");
+    await conn.execute("DELETE FROM emp_support_staff");
   } finally {
     await conn.end();
   }

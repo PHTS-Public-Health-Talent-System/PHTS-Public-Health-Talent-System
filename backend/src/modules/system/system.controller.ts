@@ -5,16 +5,34 @@ import * as systemService from '@/modules/system/services/system.service.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 import type {
   SearchUsersQuery,
+  GetUserByIdParams,
   UpdateUserRoleParams,
   UpdateUserRoleBody,
   ToggleMaintenanceModeBody,
   SyncUserParams,
+  BackupHistoryQuery,
 } from '@/modules/system/system.schema.js';
 
 export const searchUsers = asyncHandler(async (req: Request, res: Response) => {
-  const { q } = req.query as SearchUsersQuery;
-  const rows = await SystemRepository.searchUsers(q || '');
-  res.json({ success: true, data: rows });
+  const { q, page, limit, role, is_active } = req.query as SearchUsersQuery;
+  const result = await SystemRepository.searchUsers({
+    q: q || '',
+    page: Number(page || 1),
+    limit: Number(limit || 20),
+    role,
+    isActive: is_active === undefined ? undefined : Number(is_active),
+  });
+  res.json({ success: true, data: result });
+});
+
+export const getUserById = asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.params as unknown as GetUserByIdParams;
+  const row = await SystemRepository.findUserById(Number(userId));
+  if (!row) {
+    res.status(404).json({ success: false, error: 'User not found' });
+    return;
+  }
+  res.json({ success: true, data: row });
 });
 
 export const updateUserRole = asyncHandler(async (req: Request, res: Response) => {
@@ -59,9 +77,27 @@ export const toggleMaintenanceMode = asyncHandler(async (req: Request, res: Resp
   });
 });
 
+export const getMaintenanceMode = asyncHandler(async (_req: Request, res: Response) => {
+  const enabled = await systemService.isMaintenanceModeEnabled();
+  res.json({
+    success: true,
+    data: { enabled },
+  });
+});
+
 export const triggerBackup = asyncHandler(async (_req: Request, res: Response) => {
-  const result = await systemService.runBackupJob();
+  const actorId = (_req as any).user?.userId ?? (_req as any).user?.id ?? null;
+  const result = await systemService.runBackupJob({
+    triggerSource: 'MANUAL',
+    triggeredBy: actorId,
+  });
   res.json({ success: true, data: result });
+});
+
+export const getBackupHistory = asyncHandler(async (req: Request, res: Response) => {
+  const { limit } = req.query as unknown as BackupHistoryQuery;
+  const rows = await SystemRepository.getBackupHistory(Number(limit || 20));
+  res.json({ success: true, data: rows });
 });
 
 export const getJobStatus = asyncHandler(async (_req: Request, res: Response) => {

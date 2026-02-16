@@ -49,6 +49,11 @@ export const completeCycleSchema = z.object({
   params: z.object({
     id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
   }),
+  body: z.object({
+    autoKeepPending: z.boolean().optional(),
+    note: z.string().max(500).optional(),
+  }).optional(),
 });
 
 export type CompleteCycleParams = z.infer<typeof completeCycleSchema>["params"];
+export type CompleteCycleBody = z.infer<typeof completeCycleSchema>["body"];

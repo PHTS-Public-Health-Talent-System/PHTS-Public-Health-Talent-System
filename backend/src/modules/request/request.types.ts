@@ -160,6 +160,11 @@ export interface RequestWithDetails extends PTSRequest {
     first_name?: string;
     last_name?: string;
     position?: string;
+    license_no?: string | null;
+    license_name?: string | null;
+    license_valid_from?: Date | string | null;
+    license_valid_until?: Date | string | null;
+    license_status?: "ACTIVE" | "EXPIRED" | "INACTIVE" | "UNKNOWN" | null;
   };
 }
 

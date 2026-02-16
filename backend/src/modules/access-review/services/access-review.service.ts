@@ -148,7 +148,15 @@ export async function createReviewCycle(): Promise<ReviewCycle> {
     // Get all active users with non-ADMIN roles
     const [users] = await connection.query<RowDataPacket[]>(`
       SELECT u.id, u.citizen_id, u.role, u.last_login_at,
-             COALESCE(e.employment_status, s.employment_status, 'unknown') AS employee_status
+             COALESCE(
+               NULLIF(e.original_status, ''),
+               CASE
+                 WHEN s.is_currently_active = 0 THEN 'inactive'
+                 WHEN s.is_currently_active = 1 THEN 'active'
+                 ELSE NULL
+               END,
+               'unknown'
+             ) AS employee_status
       FROM users u
       LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
       LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
@@ -367,6 +375,7 @@ export async function updateReviewItem(
 export async function completeReviewCycle(
   cycleId: number,
   completedBy: number,
+  options?: { autoKeepPending?: boolean; note?: string },
 ): Promise<void> {
   const connection = await getConnection();
 
@@ -381,11 +390,37 @@ export async function completeReviewCycle(
       [cycleId],
     );
 
-    if ((pending[0] as any).count > 0) {
+    const pendingCount = Number((pending[0] as any).count || 0);
+
+    if (pendingCount > 0 && !options?.autoKeepPending) {
       throw new Error(
-        `ยังมี ${(pending[0] as any).count} รายการที่ยังไม่ได้ตรวจทาน`,
+        `ยังมี ${pendingCount} รายการที่ยังไม่ได้ตรวจทาน`,
       );
     }
+
+    if (pendingCount > 0 && options?.autoKeepPending) {
+      await connection.execute(
+        `UPDATE audit_review_items
+         SET review_result = 'KEEP',
+             reviewed_at = NOW(),
+             reviewed_by = ?,
+             review_note = COALESCE(?, review_note)
+         WHERE cycle_id = ? AND review_result = 'PENDING'`,
+        [
+          completedBy,
+          options.note ?? "อนุมัติคงค้างอัตโนมัติขณะปิดรอบ",
+          cycleId,
+        ],
+      );
+    }
+
+    await connection.execute(
+      `UPDATE audit_review_cycles c
+       SET reviewed_users = (SELECT COUNT(*) FROM audit_review_items WHERE cycle_id = c.cycle_id AND review_result != 'PENDING'),
+           disabled_users = (SELECT COUNT(*) FROM audit_review_items WHERE cycle_id = c.cycle_id AND review_result = 'DISABLE')
+       WHERE c.cycle_id = ?`,
+      [cycleId],
+    );
 
     // Update cycle status
     await connection.execute(
@@ -404,6 +439,11 @@ export async function completeReviewCycle(
         entityType: "access_review_cycle",
         entityId: cycleId,
         actorId: completedBy,
+        actionDetail: {
+          autoKeepPending: Boolean(options?.autoKeepPending),
+          autoKeptCount: pendingCount,
+          note: options?.note ?? null,
+        },
       },
       connection,
     );

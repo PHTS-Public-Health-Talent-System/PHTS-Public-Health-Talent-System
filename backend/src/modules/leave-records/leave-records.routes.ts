@@ -5,6 +5,7 @@ import { upload } from '@config/upload.js';
 import { UserRole } from '@/types/auth.js';
 import {
   listLeaveRecordsSchema,
+  listLeavePersonnelSchema,
   createLeaveRecordSchema,
   upsertLeaveRecordExtensionSchema,
   leaveRecordIdParamSchema,
@@ -12,6 +13,7 @@ import {
 } from './leave-records.schema.js';
 import {
   listLeaveRecords,
+  listLeavePersonnel,
   createLeaveRecord,
   getLeaveRecordStats,
   upsertLeaveRecordExtension,
@@ -30,6 +32,12 @@ router.get(
   '/',
   validate(listLeaveRecordsSchema),
   listLeaveRecords,
+);
+
+router.get(
+  '/personnel',
+  validate(listLeavePersonnelSchema),
+  listLeavePersonnel,
 );
 
 router.post(

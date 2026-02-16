@@ -131,6 +131,61 @@ export class SLARepository {
     return rows as any[];
   }
 
+  static async findClosedRequestsForKPI(
+    from: Date,
+    to: Date,
+    conn?: PoolConnection,
+  ): Promise<any[]> {
+    const executor = conn ?? db;
+    const fromDate = from.toISOString().slice(0, 10);
+    const toDate = `${to.toISOString().slice(0, 10)} 23:59:59`;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `
+      SELECT
+        r.request_id,
+        r.request_no,
+        r.status,
+        r.updated_at AS completed_at,
+        (
+          SELECT MIN(a.created_at)
+          FROM req_approvals a
+          WHERE a.request_id = r.request_id
+            AND a.action = 'SUBMIT'
+        ) AS submitted_at
+      FROM req_submissions r
+      WHERE r.status IN ('APPROVED', 'REJECTED', 'CANCELLED')
+        AND r.updated_at BETWEEN ? AND ?
+      `,
+      [fromDate, toDate],
+    );
+    return rows as any[];
+  }
+
+  static async findApprovalsInRangeForKPI(
+    from: Date,
+    to: Date,
+    conn?: PoolConnection,
+  ): Promise<any[]> {
+    const executor = conn ?? db;
+    const fromDate = from.toISOString().slice(0, 10);
+    const toDate = `${to.toISOString().slice(0, 10)} 23:59:59`;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `
+      SELECT
+        a.request_id,
+        a.step_no,
+        a.action,
+        a.comment,
+        a.created_at
+      FROM req_approvals a
+      WHERE a.created_at BETWEEN ? AND ?
+      ORDER BY a.request_id ASC, a.created_at ASC, a.action_id ASC
+      `,
+      [fromDate, toDate],
+    );
+    return rows as any[];
+  }
+
   // ── User queries for approvers ──────────────────────────────────────────────
 
   static async findUsersByRole(

@@ -4,6 +4,7 @@ import { validate } from '@shared/validate.middleware.js';
 import * as notifCtrl from '@/modules/notification/notification.controller.js';
 import {
   deleteReadSchema,
+  listNotificationsSchema,
   markReadSchema,
   notificationSettingsSchema,
 } from '@/modules/notification/notification.schema.js';
@@ -12,7 +13,7 @@ const router = Router();
 
 router.use(protect);
 
-router.get("/", notifCtrl.getMyNotifications);
+router.get("/", validate(listNotificationsSchema), notifCtrl.getMyNotifications);
 router.put("/:id/read", validate(markReadSchema), notifCtrl.markRead);
 router.delete(
   "/read",
