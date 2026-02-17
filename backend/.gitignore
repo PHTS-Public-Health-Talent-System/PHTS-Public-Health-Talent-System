@@ -45,3 +45,12 @@ uploads/
 !uploads/.gitkeep
 !uploads/documents/.gitkeep
 !uploads/signatures/.gitkeep
+
+# Backup
+/backups/
+
+# Security scan artifacts
+zap-*.html
+zap-*.json
+zap-*.txt
+zap.yaml

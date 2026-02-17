@@ -1,5 +1,5 @@
 import { Redis } from "ioredis";
-import { loadEnv } from "./env.js";
+import { loadEnv } from '@config/env.js';
 
 loadEnv();
 
@@ -11,8 +11,10 @@ interface RedisClient {
     ...args: Array<string | number>
   ): Promise<"OK" | null>;
   del(...keys: string[]): Promise<number>;
+  keys(pattern: string): Promise<string[]>;
   lpush(key: string, ...values: string[]): Promise<number>;
   brpop(key: string, timeoutSeconds: number): Promise<[string, string] | null>;
+  duplicate(): RedisClient;
   on(event: string, listener: (...args: unknown[]) => void): RedisClient;
   quit(): Promise<"OK">;
   disconnect(): void;
@@ -20,9 +22,10 @@ interface RedisClient {
 
 const isTestEnv = process.env.NODE_ENV === "test";
 
-const createTestRedisClient = (): RedisClient => {
-  const store = new Map<string, string>();
-  const lists = new Map<string, string[]>();
+const createTestRedisClient = (
+  store = new Map<string, string>(),
+  lists = new Map<string, string[]>(),
+): RedisClient => {
   const client: RedisClient = {
     get: async (key: string) => store.get(key) ?? null,
     set: async (
@@ -46,6 +49,10 @@ const createTestRedisClient = (): RedisClient => {
       }
       return removed;
     },
+    keys: async (pattern: string) => {
+      const regex = new RegExp(`^${pattern.replace(/\*/g, ".*")}$`);
+      return Array.from(store.keys()).filter((key) => regex.test(key));
+    },
     lpush: async (key: string, ...values: string[]) => {
       const list = lists.get(key) ?? [];
       for (const value of values) {
@@ -61,6 +68,7 @@ const createTestRedisClient = (): RedisClient => {
       lists.set(key, list);
       return [key, value];
     },
+    duplicate: () => createTestRedisClient(store, lists),
     on: () => client,
     quit: async () => "OK",
     disconnect: () => {},
@@ -88,7 +96,10 @@ const createLiveRedisClient = (): RedisClient => {
     console.error("[Redis] Connection error:", err);
   });
 
-  return client as unknown as RedisClient;
+  const typedClient = client as unknown as RedisClient;
+  typedClient.duplicate = () =>
+    createLiveRedisClient();
+  return typedClient;
 };
 
 const redisClient: RedisClient = isTestEnv

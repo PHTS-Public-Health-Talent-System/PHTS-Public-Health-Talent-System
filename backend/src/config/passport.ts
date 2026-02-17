@@ -9,13 +9,13 @@
 import passport from "passport";
 import {
   Strategy as JwtStrategy,
-  ExtractJwt,
   StrategyOptions,
 } from "passport-jwt";
-import { loadEnv } from "./env.js";
-import { JwtPayload, User } from "../types/auth.js";
-import { query } from "./database.js";
-import { getJwtSecret } from "./jwt.js";
+import { loadEnv } from '@config/env.js';
+import { JwtPayload, User } from '@/types/auth.js';
+import { query } from '@config/database.js';
+import { getJwtSecret } from '@config/jwt.js';
+import { extractAuthToken } from '@shared/utils/authToken.js';
 
 // Load environment variables
 loadEnv();
@@ -26,7 +26,7 @@ loadEnv();
  */
 const jwtOptions: StrategyOptions = {
   // Extract JWT from Authorization header as Bearer token
-  jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+  jwtFromRequest: (req) => (req ? extractAuthToken(req) : null),
 
   // Secret key for verifying JWT signature
   secretOrKey: getJwtSecret(),
@@ -54,9 +54,9 @@ passport.use(
       }
 
       const users = await query<User[]>(
-        `SELECT id AS user_id, citizen_id, role, is_active 
-         FROM users 
-         WHERE id = ? AND citizen_id = ? 
+        `SELECT id AS user_id, citizen_id, role, is_active
+         FROM users
+         WHERE id = ? AND citizen_id = ?
          LIMIT 1`,
         [userId, citizenId],
       );
