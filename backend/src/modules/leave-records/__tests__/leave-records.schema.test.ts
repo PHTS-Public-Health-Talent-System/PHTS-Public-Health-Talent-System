@@ -54,6 +54,16 @@ describe("leave-records schema", () => {
     expect(() => createLeaveRecordSchema.parse({ body: payload })).toThrow();
   });
 
+  test("createLeaveRecord rejects unsupported leave_type", () => {
+    const payload = {
+      citizen_id: "123",
+      leave_type: "hajj",
+      start_date: "2026-02-01",
+      end_date: "2026-02-03",
+    };
+    expect(() => createLeaveRecordSchema.parse({ body: payload })).toThrow();
+  });
+
   test("upsert rejects document dates when only one side provided", () => {
     const payload = {
       leave_record_id: 10,

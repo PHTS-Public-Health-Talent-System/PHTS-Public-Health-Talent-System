@@ -1,8 +1,9 @@
 import { RowDataPacket } from "mysql2/promise";
-import { LEAVE_RULES } from '@/modules/payroll/payroll.constants.js';
 import {
-  countBusinessDays,
-  countCalendarDays,
+  LEAVE_RULES,
+  RETURN_REPORT_REQUIRED_LEAVE_TYPES,
+} from '@/modules/payroll/payroll.constants.js';
+import {
   formatLocalDate,
   isHoliday,
 } from '@/modules/payroll/core/utils.js';
@@ -92,32 +93,23 @@ const applyNoPayLeave = (
   }
 };
 
-const calculateLeaveDuration = (
+const resolveHalfDayLeaveWeight = (
   leave: LeaveRow,
   start: Date,
-  end: Date,
   holidays: string[],
-  ruleUnit: string,
-): { duration: number; isHalfDay: boolean } => {
+): { isHalfDay: boolean } => {
   // คำนวณจำนวนวันลา โดยอ้างกฎจาก LEAVE_RULES (ไฟล์ payroll.constants.ts)
   // และใช้วันหยุดจาก core/utils.ts (isHoliday/countBusinessDays/countCalendarDays)
   const durationOverride = leave.document_duration_days ?? leave.duration_days ?? null;
   const isHalfDay = durationOverride !== null && durationOverride > 0 && durationOverride < 1;
   if (isHalfDay) {
-    const dateStr = formatLocalDate(start);
-    if (!isHoliday(dateStr, holidays) && !isWeekend(start)) {
-      return { duration: 0.5, isHalfDay: true };
+      const dateStr = formatLocalDate(start);
+      if (!isHoliday(dateStr, holidays) && !isWeekend(start)) {
+      return { isHalfDay: true };
     }
-    return { duration: 0, isHalfDay: true };
+    return { isHalfDay: true };
   }
-  if (ruleUnit === "business_days") {
-    // business_days = ไม่นับเสาร์/อาทิตย์ และไม่นับวันหยุดนักขัตฤกษ์
-    return {
-      duration: countBusinessDays(start, end, holidays),
-      isHalfDay: false,
-    };
-  }
-  return { duration: countCalendarDays(start, end), isHalfDay: false };
+  return { isHalfDay: false };
 };
 
 type PenaltyContext = {
@@ -138,7 +130,7 @@ export type QuotaDecision = {
   exceedDate: Date | null;
 };
 
-const applyPenalty = ({
+const applyOverQuotaPenalty = ({
   deductionMap,
   reasonsByDate,
   exceedDate,
@@ -154,7 +146,7 @@ const applyPenalty = ({
   const monthEndStr = formatLocalDate(monthEnd);
   // ใช้ลงโทษช่วงลาเกินสิทธิ โดยหักตั้งแต่ exceedDate ถึง end
   // ฟังก์ชันนี้ถูกเรียกจาก applyLeaveDeduction()
-  // และ end มาจาก resolvePenaltyEnd() เพื่อรองรับกรณีลาศึกษา + วันรายงานตัวกลับ
+  // และ end มาจาก resolveOverQuotaPenaltyEnd() เพื่อรองรับกรณีลาศึกษา + วันรายงานตัวกลับ
   const penaltyCursor = new Date(exceedDate);
   while (penaltyCursor <= end) {
     const dateStr = formatLocalDate(penaltyCursor);
@@ -267,12 +259,10 @@ function applyLeaveDeduction(leave: LeaveRow, context: LeaveDeductionContext) {
 
   const decision = context.quotaDecisions.get(Number(leave.id));
 
-  const { isHalfDay } = calculateLeaveDuration(
+  const { isHalfDay } = resolveHalfDayLeaveWeight(
     leave,
     context.start,
-    context.end,
     context.holidays,
-    rule.unit,
   );
 
   if (!decision) {
@@ -285,13 +275,12 @@ function applyLeaveDeduction(leave: LeaveRow, context: LeaveDeductionContext) {
   // (ถูกสร้างใน calculator.ts แล้วส่งเข้ามาใน quotaDecisions)
   if (decision.overQuota && decision.exceedDate) {
     const weight = isHalfDay ? 0.5 : 1;
-    const penaltyEnd = resolvePenaltyEnd(
+    const penaltyEnd = resolveOverQuotaPenaltyEnd(
       leave,
       context.end,
-      context.monthEnd,
       context.returnReports,
     );
-    applyPenalty({
+    applyOverQuotaPenalty({
       deductionMap: context.deductionMap,
       reasonsByDate: context.reasonsByDate,
       exceedDate: decision.exceedDate,
@@ -335,17 +324,16 @@ function applyNoSalaryPeriods(
   }
 }
 
-function resolvePenaltyEnd(
+function resolveOverQuotaPenaltyEnd(
   leave: LeaveRow,
   leaveEnd: Date,
-  monthEnd: Date,
   returnReports: Map<number, Date>,
 ): Date {
   // return report ใช้กับกลุ่มลาที่ต้อง "กลับมารายงานตัว":
   // - education (ลาศึกษาต่อ/อบรม)
   // - ordain (ลาอุปสมบท)
   // - military (ลาเข้ารับการตรวจเลือก/เตรียมพล)
-  const returnReportTypes = new Set(["education", "ordain", "military"]);
+  const returnReportTypes = new Set(RETURN_REPORT_REQUIRED_LEAVE_TYPES);
   if (!returnReportTypes.has(String(leave.leave_type ?? ""))) return leaveEnd;
   if (!leave.id) return leaveEnd;
 

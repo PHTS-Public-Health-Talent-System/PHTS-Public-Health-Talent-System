@@ -11,16 +11,16 @@ jest.mock("../repositories/leave-records.repository", () => ({
 import { createLeaveRecord, calculateFiscalYear } from "../services/leave-records.service";
 
 describe("leave-records service", () => {
-  test("createLeaveRecord keeps leave_type as provided", async () => {
+  test("createLeaveRecord keeps leave_type ordain as provided", async () => {
     await createLeaveRecord({
       citizen_id: "123",
-      leave_type: "hajj",
+      leave_type: "ordain",
       start_date: "2024-10-01",
       end_date: "2024-10-03",
     });
 
     expect(insertLeaveRecordMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ leave_type: "hajj" }),
+      expect.objectContaining({ leave_type: "ordain" }),
     );
   });
 

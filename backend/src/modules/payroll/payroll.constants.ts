@@ -34,3 +34,9 @@ export const LEAVE_RULES: Record<
   education: { limit: 60, unit: "calendar_days", rule_type: "per_event" },
   rehab: { limit: 60, unit: "calendar_days", rule_type: "per_event" },
 };
+
+export const RETURN_REPORT_REQUIRED_LEAVE_TYPES = [
+  "education",
+  "ordain",
+  "military",
+] as const;

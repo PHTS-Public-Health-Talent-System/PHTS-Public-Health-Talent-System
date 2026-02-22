@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ALLOWED_LEAVE_TYPES } from "./leave-types.js";
 
 const dateStringSchema = z
   .string()
@@ -7,7 +8,7 @@ const dateStringSchema = z
 export const listLeaveRecordsSchema = z.object({
   query: z.object({
     citizen_id: z.string().optional(),
-    leave_type: z.string().optional(),
+    leave_type: z.enum(ALLOWED_LEAVE_TYPES).optional(),
     profession_code: z.string().optional(),
     fiscal_year: z.coerce.number().int().optional(),
     pending_report: z
@@ -37,7 +38,7 @@ export const listLeavePersonnelSchema = z.object({
 export const createLeaveRecordSchema = z.object({
   body: z.object({
     citizen_id: z.string().min(1),
-    leave_type: z.string().min(1),
+    leave_type: z.enum(ALLOWED_LEAVE_TYPES),
     start_date: dateStringSchema,
     end_date: dateStringSchema,
     duration_days: z.number().optional(),

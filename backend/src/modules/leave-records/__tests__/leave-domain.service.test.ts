@@ -160,31 +160,6 @@ test("ordain leave has no paid quota if service < 1 year", () => {
   expect(result.perType.ordain.overQuota).toBe(true);
 });
 
-test("hajj leave is ignored by current policy map", () => {
-  const result = calculateLeaveQuotaStatus({
-    leaveRows: [
-      {
-        id: 7,
-        citizen_id: "123",
-        leave_type: "hajj",
-        start_date: "2026-06-01",
-        end_date: "2026-06-05",
-        document_start_date: null,
-        document_end_date: null,
-        is_no_pay: 0,
-        pay_exception: 0,
-      },
-    ],
-    holidays: [],
-    quota: { quota_vacation: 10, quota_personal: 45, quota_sick: 60 },
-    rules: baseRules,
-    serviceStartDate: new Date("2026-01-01"),
-  });
-
-  expect(result.perType.ordain).toBeUndefined();
-  expect(result.perLeave[7]).toBeUndefined();
-});
-
 test("ignores leaves after range end when calculating usage", () => {
   const result = calculateLeaveQuotaStatus({
     leaveRows: [

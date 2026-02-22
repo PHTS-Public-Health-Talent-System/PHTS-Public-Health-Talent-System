@@ -13,7 +13,10 @@ import {
   ReturnReportRow,
 } from '@/modules/payroll/core/deductions.js';
 import { formatLocalDate, makeLocalDate } from '@/modules/payroll/core/utils.js';
-import { LEAVE_RULES } from '@/modules/payroll/payroll.constants.js';
+import {
+  LEAVE_RULES,
+  RETURN_REPORT_REQUIRED_LEAVE_TYPES,
+} from '@/modules/payroll/payroll.constants.js';
 import { calculateLeaveQuotaStatus } from '@/modules/leave-records/services/leave-domain.service.js';
 
 export interface EligibilityRow extends RowDataPacket {
@@ -386,7 +389,7 @@ export async function calculateMonthlyWithData(
 
   // สร้าง map วันรายงานตัวกลับ (เอาวันที่เร็วที่สุดต่อ 1 ใบลา)
   // ข้อมูลนี้ถูกส่งต่อให้ deductions.ts ผ่านตัวแปร returnReports
-  // เพื่อใช้หยุดช่วงหักใน resolvePenaltyEnd()
+  // เพื่อใช้หยุดช่วงหักใน resolveOverQuotaPenaltyEnd()
   for (const row of returnReportRows) {
     const existing = returnReports.get(row.leave_record_id);
     const candidate = new Date(row.return_date);
@@ -397,8 +400,8 @@ export async function calculateMonthlyWithData(
 
   // สร้างใบลา education จาก movement_type = STUDY
   // แล้วรวมกับ leave จริงจากฐานข้อมูล
-  const studyLeaves = buildStudyLeaves(movements, endOfMonth);
-  const mergedLeaves = assignSyntheticLeaveIds([...leaves, ...studyLeaves]);
+  const studyLeaveRows = buildStudyLeaveRowsFromMovements(movements, endOfMonth);
+  const mergedLeaves = assignSyntheticIdsToLeaves([...leaves, ...studyLeaveRows]);
 
   const { periods, remark } = resolveWorkPeriods(
     movements,
@@ -528,7 +531,7 @@ export async function calculateMonthlyWithData(
     agg.endDate = lastWorkDay ?? formatLocalDate(endOfMonth);
   }
 
-  const returnReportRequiredTypes = new Set(["education", "ordain", "military"]);
+  const returnReportRequiredTypes = new Set(RETURN_REPORT_REQUIRED_LEAVE_TYPES);
   const monthEndStr = formatLocalDate(endOfMonth);
   for (const leave of mergedLeaves) {
     const leaveType = String(leave.leave_type ?? "");
@@ -1141,7 +1144,7 @@ function resolveWorkPeriods(
   };
 }
 
-function buildStudyLeaves(
+function buildStudyLeaveRowsFromMovements(
   movements: MovementRow[],
   monthEnd: Date,
 ): LeaveRow[] {
@@ -1198,7 +1201,7 @@ function buildStudyLeaves(
   return studyLeaves;
 }
 
-function assignSyntheticLeaveIds(leaves: LeaveRow[]): LeaveRow[] {
+function assignSyntheticIdsToLeaves(leaves: LeaveRow[]): LeaveRow[] {
   // ใบลาที่ไม่มี id (เช่นใบลาที่สร้างจาก movement) จะถูกใส่ id ติดลบ
   // เพื่อให้เชื่อมกับ quotaDecisions ใน deductions.ts ได้
   let syntheticId = -1;

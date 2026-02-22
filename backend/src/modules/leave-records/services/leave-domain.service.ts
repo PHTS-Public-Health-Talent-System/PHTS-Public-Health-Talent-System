@@ -17,7 +17,7 @@ export type LeaveQuotaRow = {
   quota_sick?: number | string | null;
 };
 
-export type LeaveQuotaLeaveRow = {
+export type LeavePolicyInputRow = {
   id?: number;
   citizen_id?: string;
   leave_type: string;
@@ -88,7 +88,7 @@ const resolveLeaveLimit = (
 };
 
 const calculateDuration = (
-  leave: LeaveQuotaLeaveRow,
+  leave: LeavePolicyInputRow,
   start: Date,
   end: Date,
   ruleUnit: LeaveUnit,
@@ -156,18 +156,19 @@ const resolveEffectiveDate = (
   fallback: string | Date,
 ) => (primary ? new Date(primary) : new Date(fallback));
 
-const normalizeLeaveTypeForPolicy = (leaveType: string): string =>
-  String(leaveType ?? "").trim().toLowerCase();
+const normalizeLeaveTypeForPolicy = (leaveType: string): string => {
+  return String(leaveType ?? "").trim().toLowerCase();
+};
 
-const normalizeCourseText = (value: unknown): string =>
+const normalizeTextKey = (value: unknown): string =>
   String(value ?? "").trim().toLowerCase();
 
-const resolveSeriesKey = (row: LeaveQuotaLeaveRow): string | null => {
+const buildLeaveSeriesKey = (row: LeavePolicyInputRow): string | null => {
   const leaveType = normalizeLeaveTypeForPolicy(String(row.leave_type ?? ""));
   if (leaveType === "education") {
-    const institution = normalizeCourseText(row.study_institution);
-    const program = normalizeCourseText(row.study_program);
-    const major = normalizeCourseText(row.study_major);
+    const institution = normalizeTextKey(row.study_institution);
+    const program = normalizeTextKey(row.study_program);
+    const major = normalizeTextKey(row.study_major);
     if (!institution && !program && !major) return null;
     return `education:${institution}|${program}|${major}`;
   }
@@ -175,7 +176,7 @@ const resolveSeriesKey = (row: LeaveQuotaLeaveRow): string | null => {
   // ordain / military: ใช้ remark เป็นตัวผูกเหตุการณ์เดียวกัน
   // ถ้าไม่ระบุ remark จะคงพฤติกรรมเดิมแบบ per_event
   if (leaveType === "ordain" || leaveType === "military") {
-    const remark = normalizeCourseText(row.remark);
+    const remark = normalizeTextKey(row.remark);
     if (!remark) return null;
     return `${leaveType}:${remark}`;
   }
@@ -191,7 +192,7 @@ export function calculateLeaveQuotaStatus({
   rangeStart,
   rangeEnd,
 }: {
-  leaveRows: LeaveQuotaLeaveRow[];
+  leaveRows: LeavePolicyInputRow[];
   holidays: string[];
   quota: LeaveQuotaRow;
   rules: LeaveRulesMap;
@@ -257,7 +258,7 @@ export function calculateLeaveQuotaStatus({
     }
 
     const { duration, isHalfDay } = calculateDuration(row, start, end, rule.unit, holidays);
-    const seriesKey = resolveSeriesKey(row);
+    const seriesKey = buildLeaveSeriesKey(row);
     const useSeriesCumulative = Boolean(seriesKey);
     const useCumulativeQuota = rule.rule_type === "cumulative" || useSeriesCumulative;
     const currentUsage = useSeriesCumulative
