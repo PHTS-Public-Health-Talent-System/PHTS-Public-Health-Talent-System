@@ -29,48 +29,7 @@ export class NotificationOutboxService {
       for (const row of rows) {
         processed += 1;
         try {
-          await NotificationOutboxRepository.markProcessing(row.outbox_id, conn);
-
-          const payload = row.payload;
-          const title = payload.title;
-          const message = payload.message;
-          const link = payload.link ?? "#";
-          const type = (payload.type as NotificationType) || NotificationType.SYSTEM;
-
-          if (payload.kind === "USER") {
-            if (!payload.userId) {
-              throw new Error("Missing userId for USER notification");
-            }
-            await NotificationRepository.create(
-              payload.userId,
-              title,
-              message,
-              link,
-              type,
-              conn,
-            );
-          } else if (payload.kind === "ROLE") {
-            if (!payload.role) {
-              throw new Error("Missing role for ROLE notification");
-            }
-            const userIds = await NotificationRepository.findUserIdsByRole(
-              payload.role,
-              conn,
-            );
-            if (userIds.length > 0) {
-              const notifications = userIds.map((userId) => ({
-                userId,
-                title,
-                message,
-                link,
-                type,
-              }));
-              await NotificationRepository.createBulk(notifications, conn);
-            }
-          } else {
-            throw new Error(`Unknown notification kind: ${payload.kind}`);
-          }
-
+          await this.processRow(row, conn);
           await NotificationOutboxRepository.markSent(row.outbox_id, conn);
           sent += 1;
         } catch (err: any) {
@@ -89,5 +48,66 @@ export class NotificationOutboxService {
     }
 
     return { processed, sent, failed };
+  }
+
+  private static async processRow(
+    row: Awaited<ReturnType<typeof NotificationOutboxRepository.fetchPending>>[number],
+    conn: PoolConnection,
+  ): Promise<void> {
+    await NotificationOutboxRepository.markProcessing(row.outbox_id, conn);
+    const payload = row.payload;
+    const title = payload.title;
+    const message = payload.message;
+    const link = payload.link ?? "#";
+    const type = (payload.type as NotificationType) || NotificationType.SYSTEM;
+
+    if (payload.kind === "USER") {
+      await this.createForUser(payload.userId, title, message, link, type, conn);
+      return;
+    }
+    if (payload.kind === "ROLE") {
+      await this.createForRole(payload.role, title, message, link, type, conn);
+      return;
+    }
+    throw new Error(`Unknown notification kind: ${payload.kind}`);
+  }
+
+  private static async createForUser(
+    userId: number | undefined,
+    title: string,
+    message: string,
+    link: string,
+    type: NotificationType,
+    conn: PoolConnection,
+  ): Promise<void> {
+    if (!userId) {
+      throw new Error("Missing userId for USER notification");
+    }
+    await NotificationRepository.create(userId, title, message, link, type, conn);
+  }
+
+  private static async createForRole(
+    role: string | undefined,
+    title: string,
+    message: string,
+    link: string,
+    type: NotificationType,
+    conn: PoolConnection,
+  ): Promise<void> {
+    if (!role) {
+      throw new Error("Missing role for ROLE notification");
+    }
+    const userIds = await NotificationRepository.findUserIdsByRole(role, conn);
+    if (userIds.length === 0) {
+      return;
+    }
+    const notifications = userIds.map((userId) => ({
+      userId,
+      title,
+      message,
+      link,
+      type,
+    }));
+    await NotificationRepository.createBulk(notifications, conn);
   }
 }

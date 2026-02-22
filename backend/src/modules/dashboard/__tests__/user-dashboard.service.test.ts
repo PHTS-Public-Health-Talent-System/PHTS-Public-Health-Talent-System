@@ -1,5 +1,5 @@
 import { buildUserDashboard } from '@/modules/dashboard/user-dashboard.service.js';
-import { RequestStatus } from '@/modules/request/request.types.js';
+import { RequestStatus } from '@/modules/request-contracts/request.types.js';
 
 describe('buildUserDashboard', () => {
   beforeEach(() => {

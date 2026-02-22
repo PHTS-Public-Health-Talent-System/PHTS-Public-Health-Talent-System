@@ -4,12 +4,12 @@
  */
 import { UserRole } from "@/types/auth.js";
 import { NotificationService } from "@/modules/notification/services/notification.service.js";
-import { requestQueryService } from "@/modules/request/services/query.service.js";
+import { requestQueryService } from "@/modules/request-read/services/query.service.js";
 import { PayrollRepository } from "@/modules/payroll/repositories/payroll.repository.js";
 import { PeriodStatus } from "@/modules/payroll/entities/payroll.entity.js";
 import { AuthRepository } from "@/modules/auth/repositories/auth.repository.js";
 import { FinanceRepository } from "@/modules/finance/repositories/finance.repository.js";
-import type { RequestWithDetails } from "@/modules/request/request.types.js";
+import type { RequestWithDetails } from "@/modules/request-contracts/request.types.js";
 
 export type NavigationBadgeKey =
   | "notifications"
@@ -37,7 +37,7 @@ export type NavigationPayload = {
 };
 
 const isPendingStatus = (status?: string | null) =>
-  Boolean(status && status.startsWith("PENDING"));
+  status?.startsWith("PENDING") ?? false;
 
 const countPendingForUser = (requests: RequestWithDetails[]) =>
   requests.filter((req) => isPendingStatus(req.status)).length;
@@ -53,6 +53,47 @@ const roleBasePath: Record<UserRole, string> = {
   [UserRole.DIRECTOR]: "/director",
   [UserRole.ADMIN]: "/admin",
 };
+
+const buildApprovalFlowMenu = (basePath: string): NavigationItem[] => [
+  { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
+  {
+    label: "คำขอรออนุมัติ",
+    href: `${basePath}/requests`,
+    iconKey: "FileCheck",
+    badgeKey: "pendingRequests",
+  },
+  {
+    label: "รอบจ่ายเงิน",
+    href: `${basePath}/payroll`,
+    iconKey: "Calculator",
+    badgeKey: "pendingPayroll",
+  },
+  {
+    label: "ประวัติการอนุมัติ",
+    href: `${basePath}/history`,
+    iconKey: "Clock",
+  },
+];
+
+const buildHeadScopeMenu = (basePath: string): NavigationItem[] => [
+  { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
+  {
+    label: "คำขอรออนุมัติ",
+    href: `${basePath}/requests`,
+    iconKey: "FileCheck",
+    badgeKey: "pendingRequests",
+  },
+  {
+    label: "ขอบเขตที่ดูแล",
+    href: `${basePath}/scopes`,
+    iconKey: "Users",
+  },
+  {
+    label: "ประวัติการอนุมัติ",
+    href: `${basePath}/history`,
+    iconKey: "Clock",
+  },
+];
 
 const buildMenu = (
   role: UserRole,
@@ -117,27 +158,9 @@ const buildMenu = (
         secondaryLabel: "รายงาน",
       };
     case UserRole.DIRECTOR:
+    case UserRole.HEAD_FINANCE:
       return {
-        menu: [
-          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
-          {
-            label: "คำขอรออนุมัติ",
-            href: `${basePath}/requests`,
-            iconKey: "FileCheck",
-            badgeKey: "pendingRequests",
-          },
-          {
-            label: "รอบจ่ายเงิน",
-            href: `${basePath}/payroll`,
-            iconKey: "Calculator",
-            badgeKey: "pendingPayroll",
-          },
-          {
-            label: "ประวัติการอนุมัติ",
-            href: `${basePath}/history`,
-            iconKey: "Clock",
-          },
-        ],
+        menu: buildApprovalFlowMenu(basePath),
         secondaryMenu: [
           {
             label: "รายงาน SLA",
@@ -273,93 +296,10 @@ const buildMenu = (
         ],
         secondaryLabel: "การจัดการ",
       };
-    case UserRole.HEAD_FINANCE:
-      return {
-        menu: [
-          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
-          {
-            label: "คำขอรออนุมัติ",
-            href: `${basePath}/requests`,
-            iconKey: "FileCheck",
-            badgeKey: "pendingRequests",
-          },
-          {
-            label: "รอบจ่ายเงิน",
-            href: `${basePath}/payroll`,
-            iconKey: "Calculator",
-            badgeKey: "pendingPayroll",
-          },
-          {
-            label: "ประวัติการอนุมัติ",
-            href: `${basePath}/history`,
-            iconKey: "Clock",
-          },
-        ],
-        secondaryMenu: [
-          {
-            label: "รายงาน SLA",
-            href: `${basePath}/sla-report`,
-            iconKey: "Clock",
-          },
-          {
-            label: "ดาวน์โหลดรายงาน",
-            href: `${basePath}/reports`,
-            iconKey: "FileBarChart",
-          },
-        ],
-        secondaryLabel: "รายงาน",
-      };
     case UserRole.HEAD_WARD:
-      return {
-        menu: [
-          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
-          {
-            label: "คำขอรออนุมัติ",
-            href: `${basePath}/requests`,
-            iconKey: "FileCheck",
-            badgeKey: "pendingRequests",
-          },
-          {
-            label: "ขอบเขตที่ดูแล",
-            href: `${basePath}/scopes`,
-            iconKey: "Users",
-          },
-          {
-            label: "ประวัติการอนุมัติ",
-            href: `${basePath}/history`,
-            iconKey: "Clock",
-          },
-        ],
-        secondaryMenu: [
-          {
-            label: "คำขอของฉัน",
-            href: `${basePath}/my-requests`,
-            iconKey: "FileText",
-          },
-        ],
-        secondaryLabel: "งานของฉัน",
-      };
     case UserRole.HEAD_DEPT:
       return {
-        menu: [
-          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
-          {
-            label: "คำขอรออนุมัติ",
-            href: `${basePath}/requests`,
-            iconKey: "FileCheck",
-            badgeKey: "pendingRequests",
-          },
-          {
-            label: "ขอบเขตที่ดูแล",
-            href: `${basePath}/scopes`,
-            iconKey: "Users",
-          },
-          {
-            label: "ประวัติการอนุมัติ",
-            href: `${basePath}/history`,
-            iconKey: "Clock",
-          },
-        ],
+        menu: buildHeadScopeMenu(basePath),
         secondaryMenu: [
           {
             label: "คำขอของฉัน",

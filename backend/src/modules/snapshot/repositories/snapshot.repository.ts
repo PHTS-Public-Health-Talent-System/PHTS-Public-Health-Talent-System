@@ -77,27 +77,29 @@ export class SnapshotRepository {
     return (rows[0] as any).is_frozen === 1;
   }
 
-  static async updatePeriodFrozen(
+  static async freezePeriod(
     periodId: number,
-    isFrozen: boolean,
     frozenBy: number | null,
     conn: PoolConnection,
   ): Promise<void> {
-    if (isFrozen) {
-      await conn.execute(
-        `UPDATE pay_periods
-         SET is_frozen = 1, frozen_at = NOW(), frozen_by = ?
-         WHERE period_id = ?`,
-        [frozenBy, periodId],
-      );
-    } else {
-      await conn.execute(
-        `UPDATE pay_periods
-         SET is_frozen = 0, frozen_at = NULL, frozen_by = NULL
-         WHERE period_id = ?`,
-        [periodId],
-      );
-    }
+    await conn.execute(
+      `UPDATE pay_periods
+       SET is_frozen = 1, frozen_at = NOW(), frozen_by = ?
+       WHERE period_id = ?`,
+      [frozenBy, periodId],
+    );
+  }
+
+  static async unfreezePeriod(
+    periodId: number,
+    conn: PoolConnection,
+  ): Promise<void> {
+    await conn.execute(
+      `UPDATE pay_periods
+       SET is_frozen = 0, frozen_at = NULL, frozen_by = NULL
+       WHERE period_id = ?`,
+      [periodId],
+    );
   }
 
   // ── Payout queries for snapshot ─────────────────────────────────────────────

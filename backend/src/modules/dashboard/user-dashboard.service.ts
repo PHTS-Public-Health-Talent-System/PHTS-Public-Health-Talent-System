@@ -4,11 +4,11 @@
  */
 import { NotificationService } from "@/modules/notification/services/notification.service.js";
 import { announcementRepository } from "@/modules/announcement/repositories/announcement.repository.js";
-import { requestQueryService } from "@/modules/request/services/query.service.js";
+import { requestQueryService } from "@/modules/request-read/services/query.service.js";
 import {
   RequestStatus,
   RequestWithDetails,
-} from "@/modules/request/request.types.js";
+} from "@/modules/request-contracts/request.types.js";
 import type { Announcement } from "@/modules/announcement/entities/announcement.entity.js";
 
 export type UserDashboardStats = {
@@ -90,7 +90,9 @@ const getStatusLabel = (status: RequestStatus, step?: number | null) => {
   }
 };
 
-const formatThaiMonthYear = (value?: string | Date | null) => {
+type DateInput = string | Date | null;
+
+const formatThaiMonthYear = (value?: DateInput) => {
   if (!value) return "-";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
@@ -101,7 +103,7 @@ const formatThaiMonthYear = (value?: string | Date | null) => {
   });
 };
 
-const formatRelativeDays = (value?: string | Date | null) => {
+const formatRelativeDays = (value?: DateInput) => {
   if (!value) return "-";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
@@ -113,7 +115,7 @@ const formatRelativeDays = (value?: string | Date | null) => {
   return `${diffDays} วันที่แล้ว`;
 };
 
-const formatThaiDate = (value?: string | Date | null) => {
+const formatThaiDate = (value?: DateInput) => {
   if (!value) return "-";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
@@ -141,7 +143,7 @@ const getPrimaryDate = (request: RequestWithDetails) =>
 
 const buildDisplayId = (
   requestId: number,
-  createdAt?: string | Date | null,
+  createdAt?: DateInput,
 ) => {
   const createdDate = createdAt ? new Date(createdAt) : new Date();
   const beYear = createdDate.getFullYear() + 543;

@@ -58,6 +58,86 @@ async function logAlert(
   });
 }
 
+async function handleLicenseExpired(
+  citizenId: string,
+  expiryDate: string,
+  asOf: Date,
+): Promise<boolean> {
+  const referenceId = `${citizenId}:${expiryDate}`;
+  if (!(await shouldSendAlert("LICENSE_EXPIRED", "citizen", referenceId, asOf))) {
+    return false;
+  }
+  await AlertsRepository.setEligibilityExpiry(citizenId, expiryDate);
+  await emitAuditEvent({
+    eventType: AuditEventType.OTHER,
+    entityType: "eligibility",
+    entityId: null,
+    actorId: null,
+    actorRole: null,
+    actionDetail: {
+      reason: "LICENSE_EXPIRED",
+      citizen_id: citizenId,
+      expiry_date: expiryDate,
+    },
+  });
+  const userId = await AlertsRepository.findUserIdByCitizenId(citizenId);
+  if (userId) {
+    await NotificationService.notifyUser(
+      userId,
+      "ใบอนุญาตหมดอายุ",
+      `ใบอนุญาตของท่านหมดอายุแล้ว (วันหมดอายุ: ${expiryDate})`,
+      "/dashboard/user/requests",
+      "LICENSE",
+    );
+  }
+  await logAlert("LICENSE_EXPIRED", "citizen", referenceId, userId ?? null);
+  return true;
+}
+
+async function handleLicenseRestored(
+  citizenId: string,
+  asOf: Date,
+  retirementSet: Set<string>,
+  movementOutSet: Set<string>,
+): Promise<boolean> {
+  if (!(await shouldSendAlert("LICENSE_RESTORED", "citizen", citizenId, asOf))) {
+    return false;
+  }
+  if (retirementSet.has(citizenId) || movementOutSet.has(citizenId)) {
+    return false;
+  }
+  const updated = await AlertsRepository.restoreLatestEligibility(citizenId);
+  if (updated <= 0) {
+    return false;
+  }
+
+  await emitAuditEvent({
+    eventType: AuditEventType.OTHER,
+    entityType: "eligibility",
+    entityId: null,
+    actorId: null,
+    actorRole: null,
+    actionDetail: {
+      reason: "LICENSE_RESTORED",
+      citizen_id: citizenId,
+    },
+  });
+
+  const userId = await AlertsRepository.findUserIdByCitizenId(citizenId);
+  if (userId) {
+    await NotificationService.notifyUser(
+      userId,
+      "ใบอนุญาตต่ออายุแล้ว",
+      "ระบบเปิดสิทธิรับเงินเพิ่มให้ท่านอีกครั้งหลังต่ออายุใบอนุญาต",
+      "/dashboard/user/requests",
+      "LICENSE",
+    );
+  }
+
+  await logAlert("LICENSE_RESTORED", "citizen", citizenId, userId ?? null);
+  return true;
+}
+
 export async function runLicenseAutoCutRestore(): Promise<{
   cut: number;
   restored: number;
@@ -70,38 +150,9 @@ export async function runLicenseAutoCutRestore(): Promise<{
   for (const row of expiredList) {
     const citizenId = row.citizen_id;
     const expiryDate = row.license_expiry ?? DATE_FMT(asOf);
-    const referenceId = `${citizenId}:${expiryDate}`;
-    if (!(await shouldSendAlert("LICENSE_EXPIRED", "citizen", referenceId, asOf))) {
-      continue;
+    if (await handleLicenseExpired(citizenId, expiryDate, asOf)) {
+      cut += 1;
     }
-
-    await AlertsRepository.setEligibilityExpiry(citizenId, expiryDate);
-    await emitAuditEvent({
-      eventType: AuditEventType.OTHER,
-      entityType: "eligibility",
-      entityId: null,
-      actorId: null,
-      actorRole: null,
-      actionDetail: {
-        reason: "LICENSE_EXPIRED",
-        citizen_id: citizenId,
-        expiry_date: expiryDate,
-      },
-    });
-
-    const userId = await AlertsRepository.findUserIdByCitizenId(citizenId);
-    if (userId) {
-      await NotificationService.notifyUser(
-        userId,
-        "ใบอนุญาตหมดอายุ",
-        `ใบอนุญาตของท่านหมดอายุแล้ว (วันหมดอายุ: ${expiryDate})`,
-        "/dashboard/user/requests",
-        "LICENSE",
-      );
-    }
-
-    await logAlert("LICENSE_EXPIRED", "citizen", referenceId, userId ?? null);
-    cut += 1;
   }
 
   // Auto-restore (only if currently valid and no retirement/movement-out signals)
@@ -118,40 +169,14 @@ export async function runLicenseAutoCutRestore(): Promise<{
   const movementOutSet = new Set(movementOuts.map((m) => m.citizen_id));
 
   for (const citizenId of validSet) {
-    if (!(await shouldSendAlert("LICENSE_RESTORED", "citizen", citizenId, asOf))) {
-      continue;
-    }
-
-    // Skip restore if retirement/movement-out exists
-    if (retirementSet.has(citizenId)) continue;
-    if (movementOutSet.has(citizenId)) continue;
-
-    const updated = await AlertsRepository.restoreLatestEligibility(citizenId);
-    if (updated > 0) {
-      await emitAuditEvent({
-        eventType: AuditEventType.OTHER,
-        entityType: "eligibility",
-        entityId: null,
-        actorId: null,
-        actorRole: null,
-        actionDetail: {
-          reason: "LICENSE_RESTORED",
-          citizen_id: citizenId,
-        },
-      });
-
-      const userId = await AlertsRepository.findUserIdByCitizenId(citizenId);
-      if (userId) {
-        await NotificationService.notifyUser(
-          userId,
-          "ใบอนุญาตต่ออายุแล้ว",
-          "ระบบเปิดสิทธิรับเงินเพิ่มให้ท่านอีกครั้งหลังต่ออายุใบอนุญาต",
-          "/dashboard/user/requests",
-          "LICENSE",
-        );
-      }
-
-      await logAlert("LICENSE_RESTORED", "citizen", citizenId, userId ?? null);
+    if (
+      await handleLicenseRestored(
+        citizenId,
+        asOf,
+        retirementSet,
+        movementOutSet,
+      )
+    ) {
       restored += 1;
     }
   }

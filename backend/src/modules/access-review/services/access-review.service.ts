@@ -11,6 +11,13 @@ import { RowDataPacket } from "mysql2/promise";
 import { query, getConnection } from '@config/database.js';
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
+import { RoleAssignmentService } from '@/modules/system/services/roleAssignmentService.js';
+import {
+  inferScopeType,
+  parseSpecialPositionScopes,
+  removeOverlaps,
+} from '@/modules/scope/utils.js';
+import { getSyncRuntimeStatus } from '@/modules/sync/services/sync-status.service.js';
 
 /**
  * Review cycle status
@@ -93,6 +100,46 @@ function getQuarterDates(
   return { startDate, dueDate };
 }
 
+const INACTIVE_STATUS_KEYWORDS = [
+  "ลาออก",
+  "เกษียณ",
+  "เสียชีวิต",
+  "โอนออก",
+  "not working",
+  "inactive",
+  "resigned",
+  "retired",
+  "deceased",
+  "terminated",
+];
+
+function isInactiveEmployeeStatus(status: string | null | undefined): boolean {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  if (!normalized) return false;
+  return INACTIVE_STATUS_KEYWORDS.some((keyword) =>
+    normalized.includes(keyword.toLowerCase()),
+  );
+}
+
+function buildScopeExplanation(
+  role: string,
+  specialPosition: string | null | undefined,
+): string | null {
+  if (role !== "HEAD_WARD" && role !== "HEAD_DEPT") return null;
+  const rawScopes = parseSpecialPositionScopes(specialPosition ?? null);
+  if (rawScopes.length === 0) return "ไม่พบ special_position ที่ใช้คำนวณ scope";
+
+  const wardScopes = rawScopes.filter((scope) => inferScopeType(scope) === "UNIT");
+  const deptScopes = rawScopes.filter((scope) => inferScopeType(scope) === "DEPT");
+  const cleanedWardScopes = removeOverlaps(wardScopes, deptScopes);
+
+  return [
+    `special_position: ${String(specialPosition ?? "-")}`,
+    `ward_scopes: ${cleanedWardScopes.length ? cleanedWardScopes.join(", ") : "-"}`,
+    `dept_scopes: ${deptScopes.length ? deptScopes.join(", ") : "-"}`,
+  ].join(" | ");
+}
+
 /**
  * Get all review cycles
  */
@@ -128,24 +175,15 @@ export async function getReviewCycle(
 export async function createReviewCycle(): Promise<ReviewCycle> {
   const { quarter, year } = getCurrentQuarter();
   const { startDate, dueDate } = getQuarterDates(quarter, year);
+  const syncStatus = await getSyncRuntimeStatus();
+  const syncTimestampRaw = getTimestamp(syncStatus.lastResult);
+  const syncTimestamp = syncTimestampRaw ? new Date(syncTimestampRaw) : null;
 
   const connection = await getConnection();
 
   try {
     await connection.beginTransaction();
-
-    // Check if cycle already exists
-    const [existing] = await connection.query<RowDataPacket[]>(
-      "SELECT * FROM audit_review_cycles WHERE quarter = ? AND year = ?",
-      [quarter, year],
-    );
-
-    if (existing.length > 0) {
-      await connection.rollback();
-      return existing[0] as ReviewCycle;
-    }
-
-    // Get all active users with non-ADMIN roles
+    // Sync-driven mode: build review list from users that may be impacted by latest sync.
     const [users] = await connection.query<RowDataPacket[]>(`
       SELECT u.id, u.citizen_id, u.role, u.last_login_at,
              COALESCE(
@@ -156,30 +194,93 @@ export async function createReviewCycle(): Promise<ReviewCycle> {
                  ELSE NULL
                END,
                'unknown'
-             ) AS employee_status
+             ) AS employee_status,
+             COALESCE(e.position_name, s.position_name) AS position_name,
+             COALESCE(e.special_position, s.special_position) AS special_position,
+             COALESCE(e.department, s.department) AS department,
+             COALESCE(e.sub_department, s.sub_department) AS sub_department,
+             GREATEST(
+               COALESCE(e.last_synced_at, '1970-01-01'),
+               COALESCE(s.last_synced_at, '1970-01-01')
+             ) AS profile_synced_at
       FROM users u
       LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
       LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
       WHERE u.role != 'ADMIN' AND u.is_active = 1
     `);
 
+    const reviewCandidates = (users as any[])
+      .map((user) => {
+        const hrRow = {
+          citizen_id: String(user.citizen_id ?? ""),
+          position_name: user.position_name ?? null,
+          special_position: user.special_position ?? null,
+          department: user.department ?? null,
+          sub_department: user.sub_department ?? null,
+        };
+
+        const currentRole = String(user.role ?? "");
+        const isProtectedRole = RoleAssignmentService.PROTECTED_ROLES.has(currentRole);
+        const expectedRole = isProtectedRole
+          ? currentRole
+          : RoleAssignmentService.deriveRole(hrRow as any);
+        const roleMismatch = expectedRole !== currentRole;
+        const inactiveStatus = isInactiveEmployeeStatus(user.employee_status);
+        const scopeExplanation = buildScopeExplanation(
+          currentRole,
+          user.special_position,
+        );
+
+        const profileSyncedAt = user.profile_synced_at
+          ? new Date(user.profile_synced_at)
+          : null;
+        const changedByLatestSync =
+          syncTimestamp && profileSyncedAt
+            ? profileSyncedAt.getTime() >= syncTimestamp.getTime()
+            : true;
+
+        const shouldReview = roleMismatch || inactiveStatus || changedByLatestSync;
+        const reviewNoteParts = [
+          `sync_at=${syncTimestamp ? syncTimestamp.toISOString() : "unknown"}`,
+          `current_role=${currentRole || "-"}`,
+          `expected_role=${expectedRole || "-"}`,
+          `role_mismatch=${roleMismatch ? "yes" : "no"}`,
+          `employee_status=${String(user.employee_status ?? "-")}`,
+          scopeExplanation ? `scope=${scopeExplanation}` : null,
+        ].filter(Boolean);
+
+        return {
+          ...user,
+          shouldReview,
+          reviewNote: reviewNoteParts.join(" | "),
+        };
+      })
+      .filter((user) => user.shouldReview);
+
     // Create cycle
     const [cycleResult] = await connection.execute(
       `INSERT INTO audit_review_cycles
        (quarter, year, status, start_date, due_date, total_users)
        VALUES (?, ?, 'PENDING', ?, ?, ?)`,
-      [quarter, year, startDate, dueDate, users.length],
+      [quarter, year, startDate, dueDate, reviewCandidates.length],
     );
 
     const cycleId = (cycleResult as any).insertId;
 
     // Create review items for each user
-    for (const user of users as any[]) {
+    for (const user of reviewCandidates) {
       await connection.execute(
         `INSERT INTO audit_review_items
-         (cycle_id, user_id, current_role, employee_status, last_login_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [cycleId, user.id, user.role, user.employee_status, user.last_login_at],
+         (cycle_id, user_id, current_role, employee_status, last_login_at, review_note)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          cycleId,
+          user.id,
+          user.role,
+          user.employee_status,
+          user.last_login_at,
+          user.reviewNote,
+        ],
       );
     }
 
@@ -194,7 +295,9 @@ export async function createReviewCycle(): Promise<ReviewCycle> {
         actionDetail: {
           quarter,
           year,
-          total_users: users.length,
+          total_users: reviewCandidates.length,
+          source: "SYNC_DELTA",
+          sync_timestamp: syncTimestamp ? syncTimestamp.toISOString() : null,
         },
       },
       connection,
@@ -209,7 +312,7 @@ export async function createReviewCycle(): Promise<ReviewCycle> {
       await NotificationService.notifyUser(
         admin.id,
         "รอบตรวจทานสิทธิ์ใหม่",
-        `สร้างรอบตรวจทานสิทธิ์ไตรมาส ${quarter}/${year} แล้ว มีผู้ใช้ทั้งหมด ${users.length} คนรอตรวจทาน`,
+        `สร้างรอบตรวจทานสิทธิ์หลัง Sync แล้ว มีผู้ใช้ทั้งหมด ${reviewCandidates.length} คนรอตรวจทาน`,
         `/dashboard/admin/access-review/${cycleId}`,
         "SYSTEM",
       );
@@ -224,7 +327,7 @@ export async function createReviewCycle(): Promise<ReviewCycle> {
       due_date: dueDate,
       completed_at: null,
       completed_by: null,
-      total_users: users.length,
+      total_users: reviewCandidates.length,
       reviewed_users: 0,
       disabled_users: 0,
     };
@@ -234,6 +337,12 @@ export async function createReviewCycle(): Promise<ReviewCycle> {
   } finally {
     connection.release();
   }
+}
+
+function getTimestamp(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const timestamp = (value as { timestamp?: unknown }).timestamp;
+  return typeof timestamp === "string" ? timestamp : null;
 }
 
 /**
