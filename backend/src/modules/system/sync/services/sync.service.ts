@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import db from '@config/database.js';
 import {
@@ -29,8 +28,14 @@ import {
   upsertEmployeeProfile,
   upsertLeaveQuota,
 } from '@/modules/system/sync/services/sync-db-helpers.service.js';
+import { syncUsersFromProfilesAndSupport } from '@/modules/system/sync/services/sync-users.service.js';
+import {
+  syncEmployees,
+  syncSupportEmployees,
+  upsertSingleEmployeeProfile,
+  upsertSingleSupportEmployee,
+} from '@/modules/system/sync/services/sync-hr.service.js';
 
-const SALT_ROUNDS = 10;
 
 export const VIEW_EMPLOYEE_COLUMNS = [
   'citizen_id',
@@ -152,9 +157,6 @@ export const buildSignaturesViewQuery = () => `
 
 // Convert undefined to null for safe DB inserts.
 const toNull = (val: any) => (val === undefined ? null : val);
-
-// Check bcrypt hash format ($2a/$2b/$2y).
-const isBcryptHash = (str: string): boolean => /^\$2[axy]\$\d{2}\$[A-Za-z0-9./]{53}$/.test(str);
 
 // ─── SQL Builder Helpers (for duplication reduction) ────────────────────────
 
@@ -343,279 +345,6 @@ const isChanged = (oldVal: any, newVal: any) => {
 const getUserIdMap = async (conn: PoolConnection) => {
   const [existingUsers] = await conn.query<RowDataPacket[]>('SELECT id, citizen_id FROM users');
   return new Map(existingUsers.map((u) => [u.citizen_id, u.id]));
-};
-
-type UserSyncSource = {
-  profileStatus: string | null;
-  supportEnable: number | null;
-  fromProfile: boolean;
-  fromSupport: boolean;
-};
-
-const loadUserSources = async (
-  conn: PoolConnection,
-  options?: { citizenId?: string },
-): Promise<Map<string, UserSyncSource>> => {
-  const profileParams: string[] = [];
-  const profileWhere = options?.citizenId ? 'WHERE citizen_id = ?' : '';
-  if (options?.citizenId) profileParams.push(options.citizenId);
-  const [profileRows] = await conn.query<RowDataPacket[]>(
-    `SELECT citizen_id, original_status FROM emp_profiles ${profileWhere}`,
-    profileParams,
-  );
-
-  const sourceMap = new Map<string, UserSyncSource>();
-  for (const row of profileRows) {
-    sourceMap.set(row.citizen_id, {
-      profileStatus: row.original_status ?? null,
-      supportEnable: null,
-      fromProfile: true,
-      fromSupport: false,
-    });
-  }
-
-  const supportParams: string[] = [];
-  const supportWhere = options?.citizenId ? 'WHERE citizen_id = ?' : '';
-  if (options?.citizenId) supportParams.push(options.citizenId);
-  const [supportRows] = await conn.query<RowDataPacket[]>(
-    `SELECT citizen_id, is_currently_active FROM emp_support_staff ${supportWhere}`,
-    supportParams,
-  );
-  for (const row of supportRows) {
-    if (!row.citizen_id) continue;
-    const existing = sourceMap.get(row.citizen_id);
-    sourceMap.set(row.citizen_id, {
-      profileStatus: existing?.profileStatus ?? null,
-      supportEnable: row.is_currently_active ?? existing?.supportEnable ?? null,
-      fromProfile: existing?.fromProfile ?? false,
-      fromSupport: true,
-    });
-  }
-
-  return sourceMap;
-};
-
-const resolvePasswordHash = async (
-  rawPassword: unknown,
-): Promise<string | null> => {
-  if (!rawPassword) return null;
-  let finalPass = String(rawPassword);
-  if (!isBcryptHash(finalPass)) {
-    finalPass = await bcrypt.hash(finalPass, SALT_ROUNDS);
-  }
-  return finalPass;
-};
-
-const createUserFromSource = async (
-  conn: PoolConnection,
-  citizenId: string,
-  desiredActive: boolean,
-  passwordMap: Map<string, unknown>,
-  stats: SyncStats,
-): Promise<void> => {
-  const finalPass = await resolvePasswordHash(passwordMap.get(citizenId));
-  if (!finalPass) {
-    stats.users.skipped++;
-    console.warn(`[SyncService] Skipping user creation without password: citizen_id=${citizenId}`);
-    return;
-  }
-  await conn.execute(
-    `
-      INSERT INTO users (citizen_id, password_hash, role, is_active)
-      VALUES (?, ?, ?, ?)
-    `,
-    [citizenId, finalPass, 'USER', desiredActive ? 1 : 0],
-  );
-  stats.users.added++;
-};
-
-const updateExistingUserFromSource = async (
-  conn: PoolConnection,
-  dbUser: RowDataPacket,
-  citizenId: string,
-  desiredActive: boolean,
-  passwordMap: Map<string, unknown>,
-  stats: SyncStats,
-): Promise<void> => {
-  let finalPass = String(dbUser.password_hash ?? '');
-  let updatePassword = false;
-  if (!finalPass || finalPass.length === 0) {
-    const resolved = await resolvePasswordHash(passwordMap.get(citizenId));
-    if (resolved) {
-      finalPass = resolved;
-      updatePassword = true;
-    }
-  }
-
-  const needsUpdate = Number(dbUser.is_active) !== Number(desiredActive) || updatePassword;
-  if (!needsUpdate) {
-    stats.users.skipped++;
-    return;
-  }
-
-  await conn.execute(
-    `
-      UPDATE users
-      SET password_hash = ?, is_active = ?, updated_at = NOW()
-      WHERE citizen_id = ?
-    `,
-    [finalPass, desiredActive ? 1 : 0, citizenId],
-  );
-  stats.users.updated++;
-};
-
-const deactivateMissingUsers = async (
-  conn: PoolConnection,
-  existingUsers: RowDataPacket[],
-  sourceMap: Map<string, UserSyncSource>,
-  stats: SyncStats,
-  options?: { citizenId?: string },
-) => {
-  for (const user of existingUsers) {
-    if (options?.citizenId && user.citizen_id !== options.citizenId) continue;
-    if (sourceMap.has(user.citizen_id)) continue;
-    if (RoleAssignmentService.PROTECTED_ROLES.has(user.role)) continue;
-    if (Number(user.is_active) === 0) continue;
-
-    await conn.execute('UPDATE users SET is_active = 0, updated_at = NOW() WHERE citizen_id = ?', [
-      user.citizen_id,
-    ]);
-    stats.users.updated++;
-  }
-};
-
-const syncUsersFromProfilesAndSupport = async (
-  conn: PoolConnection,
-  stats: SyncStats,
-  options?: { citizenId?: string },
-) => {
-  console.log('[SyncService] Processing users (from profiles/support)...');
-
-  const [existingUsers] = await conn.query<RowDataPacket[]>(
-    'SELECT id, citizen_id, role, is_active, password_hash FROM users',
-  );
-  const userMap = new Map(existingUsers.map((u) => [u.citizen_id, u]));
-
-  const [viewUsers] = await conn.query<RowDataPacket[]>(
-    'SELECT citizen_id, plain_password FROM vw_hrms_users_sync',
-  );
-  const passwordMap = new Map<string, unknown>(
-    viewUsers.map((u) => [String(u.citizen_id), u.plain_password]),
-  );
-  const sourceMap = await loadUserSources(conn, options);
-
-  for (const [citizenId, source] of sourceMap) {
-    const desiredActive = deriveUserIsActive(source.profileStatus, source.supportEnable);
-    const dbUser = userMap.get(citizenId);
-    const shouldCreateUser = desiredActive || source.fromSupport;
-
-    if (!dbUser) {
-      if (!shouldCreateUser) {
-        stats.users.skipped++;
-        continue;
-      }
-      await createUserFromSource(conn, citizenId, desiredActive, passwordMap, stats);
-      continue;
-    }
-
-    await updateExistingUserFromSource(conn, dbUser, citizenId, desiredActive, passwordMap, stats);
-  }
-
-  await deactivateMissingUsers(conn, existingUsers, sourceMap, stats, options);
-};
-
-const syncEmployees = async (
-  conn: PoolConnection,
-  stats: SyncStats,
-  userIdMap: Map<string, number>,
-) => {
-  console.log('[SyncService] Processing employees...');
-  const [existingEmps] = await conn.query<RowDataPacket[]>(
-    'SELECT citizen_id, position_name, level, department, special_position FROM emp_profiles',
-  );
-  const empMap = new Map(existingEmps.map((e) => [e.citizen_id, e]));
-
-  const [viewEmps] = await conn.query<RowDataPacket[]>(
-    `SELECT ${VIEW_EMPLOYEE_COLUMNS.join(', ')} FROM vw_hrms_employees`,
-  );
-
-  for (const vEmp of viewEmps) {
-    const dbEmp = empMap.get(vEmp.citizen_id);
-    const specialChanged = dbEmp && isChanged(dbEmp.special_position, vEmp.special_position);
-    if (
-      dbEmp &&
-      !isChanged(dbEmp.position_name, vEmp.position_name) &&
-      !isChanged(dbEmp.level, vEmp.level) &&
-      !isChanged(dbEmp.department, vEmp.department) &&
-      !specialChanged
-    ) {
-      stats.employees.skipped++;
-      continue;
-    }
-
-    await upsertEmployeeProfile(conn, vEmp);
-    stats.employees.upserted++;
-
-    const userId = userIdMap.get(vEmp.citizen_id);
-    if (specialChanged && userId !== undefined) {
-      clearScopeCache(userId);
-    }
-  }
-};
-
-const syncSupportEmployees = async (
-  conn: PoolConnection,
-  stats: SyncStats,
-  userIdMap: Map<string, number>,
-) => {
-  console.log('[SyncService] Processing support employees...');
-
-  const hasSupportLevel = await hasSupportLevelColumn(conn);
-
-  const sqlOptions: SupportEmployeeSqlOptions = { hasLevelColumn: hasSupportLevel };
-  const { sql } = buildSupportEmployeeSql(sqlOptions);
-
-  const [existingSupEmps] = await conn.query<RowDataPacket[]>(
-    `SELECT citizen_id, title, first_name, last_name, position_name,
-            level, special_position, emp_type, department,
-            is_currently_active
-     FROM emp_support_staff`,
-  );
-  const supEmpMap = new Map(existingSupEmps.map((e) => [e.citizen_id, e]));
-
-  const [viewSupEmps] = await conn.query<RowDataPacket[]>(
-    `SELECT ${VIEW_SUPPORT_COLUMNS.join(', ')} FROM vw_hrms_support_staff`,
-  );
-
-  for (const vSup of viewSupEmps) {
-    const dbSup = supEmpMap.get(vSup.citizen_id);
-
-    const supportSpecialChanged = dbSup && isChanged(dbSup.special_position, vSup.special_position);
-    if (
-      dbSup &&
-      !isChanged(dbSup.title, vSup.title) &&
-      !isChanged(dbSup.first_name, vSup.first_name) &&
-      !isChanged(dbSup.last_name, vSup.last_name) &&
-      !isChanged(dbSup.position_name, vSup.position_name) &&
-      (!hasSupportLevel || !isChanged(dbSup.level, vSup.level)) &&
-      !supportSpecialChanged &&
-      !isChanged(dbSup.emp_type, vSup.employee_type) &&
-      !isChanged(dbSup.department, vSup.department) &&
-      Number(dbSup.is_currently_active) === Number(vSup.is_currently_active)
-    ) {
-      stats.support_employees.skipped++;
-      continue;
-    }
-
-    const values = buildSupportEmployeeValues(vSup, sqlOptions);
-    await conn.execute(sql, values);
-    stats.support_employees.upserted++;
-
-    const userId = userIdMap.get(vSup.citizen_id);
-    if (supportSpecialChanged && userId !== undefined) {
-      clearScopeCache(userId);
-    }
-  }
 };
 
 const syncSignatures = async (conn: PoolConnection, stats: SyncStats) => {
@@ -893,51 +622,6 @@ const syncSpecialPositionScopesForCitizen = async (conn: PoolConnection, citizen
   }
 };
 
-const upsertSingleEmployeeProfile = async (
-  conn: PoolConnection,
-  citizenId: string,
-  userIdMap: Map<string, number>,
-  stats: SyncStats,
-): Promise<void> => {
-  const [viewEmps] = await conn.query<RowDataPacket[]>(
-    `SELECT ${VIEW_EMPLOYEE_COLUMNS.join(', ')}
-     FROM vw_hrms_employees
-     WHERE ${citizenIdWhereBinary('vw_hrms_employees', '?')}
-     LIMIT 1`,
-    [citizenId],
-  );
-  const vEmp = viewEmps[0];
-  if (!vEmp) return;
-
-  await upsertEmployeeProfile(conn, vEmp);
-  stats.employees.upserted++;
-  const userId = userIdMap.get(citizenId);
-  if (userId) clearScopeCache(userId);
-};
-
-const upsertSingleSupportEmployee = async (
-  conn: PoolConnection,
-  citizenId: string,
-  stats: SyncStats,
-): Promise<void> => {
-  const hasSupportLevel = await hasSupportLevelColumn(conn);
-  const supportSqlOptions: SupportEmployeeSqlOptions = { hasLevelColumn: hasSupportLevel };
-  const { sql: supportSql } = buildSupportEmployeeSql(supportSqlOptions);
-
-  const [viewSupEmps] = await conn.query<RowDataPacket[]>(
-    `SELECT ${VIEW_SUPPORT_COLUMNS.join(', ')}
-     FROM vw_hrms_support_staff
-     WHERE ${citizenIdWhereBinary('vw_hrms_support_staff', '?')}
-     LIMIT 1`,
-    [citizenId],
-  );
-  const vSup = viewSupEmps[0];
-  if (!vSup) return;
-  const supportValues = buildSupportEmployeeValues(vSup, supportSqlOptions);
-  await conn.execute(supportSql, supportValues);
-  stats.support_employees.upserted++;
-};
-
 const syncSingleSignature = async (
   conn: PoolConnection,
   citizenId: string,
@@ -1138,9 +822,28 @@ export class SyncService {
       await conn.beginTransaction();
 
       const userIdMap = await getUserIdMap(conn);
-      await syncEmployees(conn, stats, userIdMap);
-      await syncSupportEmployees(conn, stats, userIdMap);
-      await syncUsersFromProfilesAndSupport(conn, stats);
+      await syncEmployees(conn, stats, userIdMap, {
+        viewEmployeeColumns: VIEW_EMPLOYEE_COLUMNS,
+        isChanged,
+        upsertEmployeeProfile,
+        clearScopeCache,
+      });
+      await syncSupportEmployees(conn, stats, userIdMap, {
+        viewSupportColumns: VIEW_SUPPORT_COLUMNS,
+        isChanged,
+        hasSupportLevelColumn,
+        buildSupportEmployeeSql,
+        buildSupportEmployeeValues,
+        clearScopeCache,
+      });
+      await syncUsersFromProfilesAndSupport(
+        conn,
+        stats,
+        {
+          deriveUserIsActive,
+          protectedRoles: RoleAssignmentService.PROTECTED_ROLES,
+        },
+      );
       await syncSignatures(conn, stats);
       await syncLicensesAndQuotas(conn, stats);
       await syncLeaves(conn, stats);
@@ -1211,9 +914,28 @@ export class SyncService {
       await conn.beginTransaction();
 
       const userIdMap = new Map<string, number>([[citizenId, dbUser.id as number]]);
-      await upsertSingleEmployeeProfile(conn, citizenId, userIdMap, stats);
-      await upsertSingleSupportEmployee(conn, citizenId, stats);
-      await syncUsersFromProfilesAndSupport(conn, stats, { citizenId });
+      await upsertSingleEmployeeProfile(conn, citizenId, userIdMap, stats, {
+        viewEmployeeColumns: VIEW_EMPLOYEE_COLUMNS,
+        citizenIdWhereBinary,
+        upsertEmployeeProfile,
+        clearScopeCache,
+      });
+      await upsertSingleSupportEmployee(conn, citizenId, stats, {
+        viewSupportColumns: VIEW_SUPPORT_COLUMNS,
+        citizenIdWhereBinary,
+        hasSupportLevelColumn,
+        buildSupportEmployeeSql,
+        buildSupportEmployeeValues,
+      });
+      await syncUsersFromProfilesAndSupport(
+        conn,
+        stats,
+        {
+          deriveUserIsActive,
+          protectedRoles: RoleAssignmentService.PROTECTED_ROLES,
+        },
+        { citizenId },
+      );
       await syncSingleSignature(conn, citizenId, stats);
       await syncSingleLicenses(conn, citizenId);
       await syncSingleQuotas(conn, citizenId, stats);
