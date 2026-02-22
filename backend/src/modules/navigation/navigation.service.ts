@@ -4,12 +4,11 @@
  */
 import { UserRole } from "@/types/auth.js";
 import { NotificationService } from "@/modules/notification/services/notification.service.js";
-import { requestQueryService } from "@/modules/request-read/services/query.service.js";
-import { PayrollRepository } from "@/modules/payroll/repositories/payroll.repository.js";
-import { PeriodStatus } from "@/modules/payroll/entities/payroll.entity.js";
 import { AuthRepository } from "@/modules/auth/repositories/auth.repository.js";
-import { FinanceRepository } from "@/modules/finance/repositories/finance.repository.js";
-import type { RequestWithDetails } from "@/modules/request-contracts/request.types.js";
+import {
+  getPendingPayrollCount,
+  getPendingRequestCount,
+} from "@/modules/dashboard/counters.service.js";
 
 export type NavigationBadgeKey =
   | "notifications"
@@ -35,12 +34,6 @@ export type NavigationPayload = {
   secondaryMenu?: NavigationItem[];
   secondaryLabel?: string;
 };
-
-const isPendingStatus = (status?: string | null) =>
-  status?.startsWith("PENDING") ?? false;
-
-const countPendingForUser = (requests: RequestWithDetails[]) =>
-  requests.filter((req) => isPendingStatus(req.status)).length;
 
 const roleBasePath: Record<UserRole, string> = {
   [UserRole.USER]: "/user",
@@ -314,23 +307,6 @@ const buildMenu = (
   }
 };
 
-const resolvePayrollStatus = (role: UserRole): PeriodStatus | null => {
-  switch (role) {
-    case UserRole.HEAD_HR:
-      return PeriodStatus.WAITING_HR;
-    case UserRole.HEAD_FINANCE:
-      return PeriodStatus.WAITING_HEAD_FINANCE;
-    case UserRole.DIRECTOR:
-      return PeriodStatus.WAITING_DIRECTOR;
-    case UserRole.PTS_OFFICER:
-      return PeriodStatus.OPEN;
-    case UserRole.FINANCE_OFFICER:
-      return PeriodStatus.WAITING_HEAD_FINANCE;
-    default:
-      return null;
-  }
-};
-
 export const getNavigationPayload = async (params: {
   userId: number;
   citizenId: string;
@@ -343,47 +319,10 @@ export const getNavigationPayload = async (params: {
     AuthRepository.findEmployeeProfileByCitizenId(citizenId),
   ]);
 
-  let pendingRequests = 0;
-  if (role === UserRole.USER) {
-    const myRequests = await requestQueryService.getMyRequests(userId);
-    pendingRequests = countPendingForUser(myRequests);
-  } else if (
-    role === UserRole.HEAD_WARD ||
-    role === UserRole.HEAD_DEPT ||
-    role === UserRole.PTS_OFFICER ||
-    role === UserRole.HEAD_HR ||
-    role === UserRole.HEAD_FINANCE ||
-    role === UserRole.DIRECTOR
-  ) {
-    const pendingForApprover = await requestQueryService.getPendingForApprover(
-      role,
-      userId,
-    );
-    pendingRequests = pendingForApprover.length;
-  }
-
-  let pendingPayroll = 0;
-  if (role === UserRole.FINANCE_OFFICER) {
-    const financeSummary = await FinanceRepository.findFinanceSummary(
-      undefined,
-      undefined,
-      true,
-    );
-    pendingPayroll = financeSummary.filter((period) => {
-      const pendingCount = Number(period.pending_count ?? 0);
-      const pendingAmount = Number(period.pending_amount ?? 0);
-      return pendingCount > 0 || pendingAmount > 0;
-    }).length;
-  } else {
-    const payrollStatus = resolvePayrollStatus(role);
-    if (payrollStatus) {
-      const periods = await PayrollRepository.findPeriodsByStatus(
-        payrollStatus,
-        50,
-      );
-      pendingPayroll = periods.length;
-    }
-  }
+  const [pendingRequests, pendingPayroll] = await Promise.all([
+    getPendingRequestCount({ role, userId }),
+    getPendingPayrollCount(role),
+  ]);
 
   const name = [profile?.first_name, profile?.last_name]
     .filter(Boolean)

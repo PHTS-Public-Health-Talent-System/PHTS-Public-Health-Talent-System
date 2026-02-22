@@ -5,16 +5,18 @@
 import db from "@config/database.js";
 import { requestQueryService } from "@/modules/request-read/services/query.service.js";
 import { PayrollRepository } from "@/modules/payroll/repositories/payroll.repository.js";
-import {
-  PeriodStatus,
-  PayPeriod,
-} from "@/modules/payroll/entities/payroll.entity.js";
+import { PayPeriod } from "@/modules/payroll/entities/payroll.entity.js";
+import { UserRole } from "@/types/auth.js";
 import {
   getSLAReport,
   getPendingRequestsWithSLA,
 } from "@/modules/sla/services/sla.service.js";
 import type { RequestWithDetails } from "@/modules/request-contracts/request.types.js";
 import type { RequestSLAInfo } from "@/modules/sla/entities/sla.entity.js";
+import {
+  getPendingPayrollCount,
+  getPendingPayrollStatusForApprover,
+} from "@/modules/dashboard/counters.service.js";
 
 export type HeadHrDashboardStats = {
   pending_requests: number;
@@ -162,11 +164,19 @@ export const buildHeadHrDashboard = (params: {
   };
 };
 
-export const getHeadHrDashboard = async (userId: number) => {
-  const [pendingRequests, pendingPayrolls, slaReport, slaPending] =
+const resolveApproverRole = (role: UserRole): UserRole => {
+  if (role === UserRole.HEAD_FINANCE) return UserRole.HEAD_FINANCE;
+  return UserRole.HEAD_HR;
+};
+
+export const getHeadHrDashboard = async (userId: number, role: UserRole) => {
+  const approverRole = resolveApproverRole(role);
+  const pendingPayrollStatus = getPendingPayrollStatusForApprover(approverRole);
+  const [pendingRequests, pendingPayrolls, pendingPayrollCount, slaReport, slaPending] =
     await Promise.all([
-      requestQueryService.getPendingForApprover("HEAD_HR", userId),
-      PayrollRepository.findPeriodsByStatus(PeriodStatus.WAITING_HR, 4),
+      requestQueryService.getPendingForApprover(approverRole, userId),
+      PayrollRepository.findPeriodsByStatus(pendingPayrollStatus, 4),
+      getPendingPayrollCount(approverRole),
       getSLAReport(),
       getPendingRequestsWithSLA(),
     ]);
@@ -198,11 +208,22 @@ export const getHeadHrDashboard = async (userId: number) => {
     (rows as { count?: number }[])[0]?.count ?? 0,
   );
 
-  return buildHeadHrDashboard({
+  const payload = buildHeadHrDashboard({
     pendingRequests,
     slaInfoByRequest,
     pendingPayrolls,
     approvedMonthCount,
     slaOverdueCount: slaReport.overdueSLA,
   });
+  return {
+    ...payload,
+    stats: {
+      ...payload.stats,
+      pending_payrolls: pendingPayrollCount,
+    },
+  };
+};
+
+export const getApproverDashboard = async (userId: number, role: UserRole) => {
+  return getHeadHrDashboard(userId, role);
 };
