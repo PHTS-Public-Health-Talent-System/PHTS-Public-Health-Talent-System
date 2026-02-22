@@ -1,5 +1,5 @@
 import redis from '@config/redis.js';
-import type { SyncRuntimeStatus } from '@/modules/system/sync/services/shared/sync.types.js';
+import type { SyncRuntimeStatus } from '@/modules/sync/services/shared/sync.types.js';
 
 const SYNC_LOCK_KEY = 'system:sync:lock';
 const SYNC_RESULT_KEY = 'system:sync:last_result';

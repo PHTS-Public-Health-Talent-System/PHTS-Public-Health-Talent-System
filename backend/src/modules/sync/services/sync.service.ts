@@ -12,8 +12,8 @@ import {
   inferScopeType,
 } from '@/modules/request/scope/utils.js';
 import { applyImmediateMovementEligibilityCutoff } from '@/modules/workforce-compliance/services/immediate-rules.service.js';
-import type { SyncRuntimeStatus, SyncStats } from '@/modules/system/sync/services/shared/sync.types.js';
-import { createSyncStats } from '@/modules/system/sync/services/shared/sync-stats.service.js';
+import type { SyncRuntimeStatus, SyncStats } from '@/modules/sync/services/shared/sync.types.js';
+import { createSyncStats } from '@/modules/sync/services/shared/sync-stats.service.js';
 import {
   acquireSyncLock,
   createSyncLockValue,
@@ -21,20 +21,20 @@ import {
   releaseSyncLock,
   setLastSyncResult,
   startSyncLockHeartbeat,
-} from '@/modules/system/sync/services/shared/sync-lock.service.js';
+} from '@/modules/sync/services/shared/sync-lock.service.js';
 import {
   hasLeaveStatusColumn,
   hasSupportLevelColumn,
   upsertEmployeeProfile,
   upsertLeaveQuota,
-} from '@/modules/system/sync/services/shared/sync-db-helpers.service.js';
-import { syncUsersFromProfilesAndSupport } from '@/modules/system/sync/services/domain/sync-users.service.js';
+} from '@/modules/sync/services/shared/sync-db-helpers.service.js';
+import { syncUsersFromProfilesAndSupport } from '@/modules/sync/services/domain/sync-users.service.js';
 import {
   syncEmployees,
   syncSupportEmployees,
   upsertSingleEmployeeProfile,
   upsertSingleSupportEmployee,
-} from '@/modules/system/sync/services/domain/sync-hr.service.js';
+} from '@/modules/sync/services/domain/sync-hr.service.js';
 import {
   syncSignatures as runDomainSignaturesSync,
   syncLicensesAndQuotas as runDomainLicensesAndQuotasSync,
@@ -45,13 +45,13 @@ import {
   syncSingleQuotas as runSingleQuotasSync,
   syncSingleLeaves as runSingleLeavesSync,
   syncSingleMovements as runSingleMovementsSync,
-} from '@/modules/system/sync/services/domain/sync-domain.service.js';
+} from '@/modules/sync/services/domain/sync-domain.service.js';
 import {
   buildScopesFromSpecialPosition as buildScopesFromSpecialPositionBase,
   syncSpecialPositionScopes as runScopeSync,
   syncSpecialPositionScopesForCitizen as runScopeSyncForCitizen,
-} from '@/modules/system/sync/services/domain/sync-scope.service.js';
-import { assignRoleForSingleUser as assignRoleForSingleUserBase } from '@/modules/system/sync/services/domain/sync-role.service.js';
+} from '@/modules/sync/services/domain/sync-scope.service.js';
+import { assignRoleForSingleUser as assignRoleForSingleUserBase } from '@/modules/sync/services/domain/sync-role.service.js';
 
 
 export const VIEW_EMPLOYEE_COLUMNS = [

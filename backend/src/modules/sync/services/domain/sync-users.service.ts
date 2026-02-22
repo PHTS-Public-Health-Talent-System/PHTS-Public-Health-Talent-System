@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
-import type { SyncStats } from '@/modules/system/sync/services/shared/sync.types.js';
+import type { SyncStats } from '@/modules/sync/services/shared/sync.types.js';
 
 const SALT_ROUNDS = 10;
 

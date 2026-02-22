@@ -1,4 +1,4 @@
-import type { SyncStats } from '@/modules/system/sync/services/shared/sync.types.js';
+import type { SyncStats } from '@/modules/sync/services/shared/sync.types.js';
 
 export const createSyncStats = (): SyncStats => ({
   users: { added: 0, updated: 0, skipped: 0 },
