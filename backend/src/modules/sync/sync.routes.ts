@@ -3,7 +3,7 @@ import { protect, restrictTo } from "@middlewares/authMiddleware.js";
 import { validate } from "@shared/validate.middleware.js";
 import { UserRole } from "@/types/auth.js";
 import * as syncController from "@/modules/sync/sync.controller.js";
-import { syncUserSchema } from "@/modules/system/admin/admin.schema.js";
+import { syncUserSchema } from "@/modules/sync/sync.schema.js";
 
 const router = Router();
 const adminAuth = restrictTo(UserRole.ADMIN);

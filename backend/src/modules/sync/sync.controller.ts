@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "@middlewares/errorHandler.js";
 import { SyncService } from "@/modules/sync/services/sync.service.js";
-import type { SyncUserParams } from "@/modules/system/admin/admin.schema.js";
+import type { SyncUserParams } from "@/modules/sync/sync.schema.js";
 
 export const triggerSync = asyncHandler(async (_req: Request, res: Response) => {
   const result = await SyncService.performFullSync();

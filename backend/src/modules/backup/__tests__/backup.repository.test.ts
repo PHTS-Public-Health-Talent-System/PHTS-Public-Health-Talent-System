@@ -1,4 +1,4 @@
-import { BackupRepository } from '@/modules/system/repositories/backup.repository.js';
+import { BackupRepository } from '@/modules/backup/repositories/backup.repository.js';
 import db from '@config/database.js';
 
 jest.mock('@config/database.js', () => ({

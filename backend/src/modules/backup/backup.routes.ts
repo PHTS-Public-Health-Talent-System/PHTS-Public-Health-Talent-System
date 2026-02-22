@@ -6,7 +6,7 @@ import * as backupController from "@/modules/backup/backup.controller.js";
 import {
   backupHistorySchema,
   updateBackupScheduleSchema,
-} from "@/modules/system/admin/admin.schema.js";
+} from "@/modules/backup/backup.schema.js";
 
 const router = Router();
 const adminAuth = restrictTo(UserRole.ADMIN);

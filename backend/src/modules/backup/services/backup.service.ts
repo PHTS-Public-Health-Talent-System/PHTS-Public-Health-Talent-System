@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import crypto from "node:crypto";
 import path from "node:path";
 import { stat } from "node:fs/promises";
-import { BackupRepository } from '@/modules/system/repositories/backup.repository.js';
+import { BackupRepository } from '@/modules/backup/repositories/backup.repository.js';
 import redis from '@config/redis.js';
 
 const execFileAsync = promisify(execFile);
