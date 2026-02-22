@@ -12,9 +12,9 @@ interface AttachmentPreviewDialogProps {
   previewName: string
 }
 
-const isPdfFile = (url: string, name: string) => {
+const isPdfFile = (url: string, name?: string) => {
   const lowerUrl = url.toLowerCase()
-  const lowerName = name.toLowerCase()
+  const lowerName = String(name ?? "").toLowerCase()
   return (
     lowerUrl.endsWith(".pdf") ||
     lowerName.endsWith(".pdf") ||
@@ -22,9 +22,9 @@ const isPdfFile = (url: string, name: string) => {
   )
 }
 
-const isImageFile = (url: string, name: string) => {
+const isImageFile = (url: string, name?: string) => {
   const lowerUrl = url.toLowerCase()
-  const lowerName = name.toLowerCase()
+  const lowerName = String(name ?? "").toLowerCase()
   return (
     lowerUrl.startsWith("data:image") ||
     [".png", ".jpg", ".jpeg", ".gif", ".webp"].some((ext) =>
@@ -40,9 +40,10 @@ export function AttachmentPreviewDialog({
   previewName,
 }: AttachmentPreviewDialogProps) {
   if (!previewUrl) return null
+  const safePreviewName = previewName || "ตัวอย่างไฟล์"
 
-  const isPdf = isPdfFile(previewUrl, previewName)
-  const isImage = isImageFile(previewUrl, previewName)
+  const isPdf = isPdfFile(previewUrl, safePreviewName)
+  const isImage = isImageFile(previewUrl, safePreviewName)
 
   // Determine Icon based on type
   const FileIcon = isPdf ? FileText : isImage ? ImageIcon : FileQuestion
@@ -57,8 +58,8 @@ export function AttachmentPreviewDialog({
             <div className="p-2 bg-primary/10 rounded-md text-primary">
                 <FileIcon className="h-5 w-5" />
             </div>
-            <span className="truncate max-w-[300px] sm:max-w-md" title={previewName}>
-                {previewName || "ตัวอย่างไฟล์"}
+            <span className="truncate max-w-[300px] sm:max-w-md" title={safePreviewName}>
+                {safePreviewName}
             </span>
           </DialogTitle>
         </DialogHeader>
@@ -67,7 +68,7 @@ export function AttachmentPreviewDialog({
         <div className="flex-1 overflow-auto bg-slate-50/50 relative flex items-center justify-center p-4 w-full">
           {isPdf && (
             <iframe
-              title={previewName}
+              title={safePreviewName}
               src={previewUrl}
               className="w-full h-full rounded-lg border bg-white shadow-sm"
             />
@@ -77,7 +78,7 @@ export function AttachmentPreviewDialog({
             <div className="relative w-full h-full flex items-center justify-center">
               <Image
                 src={previewUrl}
-                alt={previewName}
+                alt={safePreviewName}
                 fill
                 className="object-contain"
                 unoptimized
@@ -92,8 +93,8 @@ export function AttachmentPreviewDialog({
               </div>
               <p>ไม่สามารถแสดงตัวอย่างไฟล์ประเภทนี้ได้</p>
               <Button asChild variant="outline" size="sm" className="mt-2">
-                <a href={previewUrl} download={previewName}>
-                    <Download className="mr-2 h-4 w-4" /> ดาวน์โหลดไฟล์
+                <a href={previewUrl} download={safePreviewName}>
+                  <Download className="mr-2 h-4 w-4" /> ดาวน์โหลดไฟล์
                 </a>
               </Button>
             </div>

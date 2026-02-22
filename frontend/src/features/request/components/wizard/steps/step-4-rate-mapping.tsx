@@ -383,7 +383,7 @@ const renderMoney = (amount: number) => formatThaiNumber(amount) + ' บาท';
           {selectedGroup && (
             <SelectionStep
               title="3. เลือกเกณฑ์/เงื่อนไข"
-              isActive={!!selectedGroup && !selectedCriteria}
+              isActive={!selectedCriteria}
               isCompleted={!!selectedCriteria}
               onEdit={() => handleCriteriaSelect(null)}
             >

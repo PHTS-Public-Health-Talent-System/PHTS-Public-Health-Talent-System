@@ -301,7 +301,7 @@ export function LeaveManagementScreen() {
           reportStatus: reportStatus,
           studyInfo: row.study_institution
             ? {
-                institution: row.study_institution ?? '-',
+                institution: row.study_institution,
                 program: row.study_program ?? '-',
                 field: row.study_major ?? '-',
                 startDate: row.study_start_date ?? '',

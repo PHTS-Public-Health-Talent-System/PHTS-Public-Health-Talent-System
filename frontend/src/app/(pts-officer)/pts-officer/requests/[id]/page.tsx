@@ -309,7 +309,7 @@ const parseChecklistStateFromSnapshot = (
             return {};
           }
         })()
-      : ((value as Record<string, unknown>) ?? {});
+      : (value as Record<string, unknown>);
 
   const checklist = raw.checklist as { items?: unknown[] } | undefined;
   const items = Array.isArray(checklist?.items) ? checklist.items : [];
@@ -761,7 +761,7 @@ export default function RequestDetailPage({
         "full_name",
         "ชื่อ-นามสกุล",
         extractNameFromMarkdown(markdown),
-        requesterName || "-",
+        requesterName,
       ),
       evaluateOcrCheckItem(
         "department",
@@ -1372,7 +1372,7 @@ export default function RequestDetailPage({
                         อัตราเงินตามสิทธิ
                       </span>
                       <span className="text-lg font-bold text-primary">
-                        {rateAmount !== null && rateAmount !== undefined
+                        {rateAmount !== null
                           ? formatThaiNumber(Number(rateAmount))
                           : "-"}
                         <span className="text-sm font-normal text-muted-foreground ml-1">

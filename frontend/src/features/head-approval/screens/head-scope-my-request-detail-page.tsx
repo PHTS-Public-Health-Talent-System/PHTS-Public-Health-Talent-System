@@ -277,7 +277,7 @@ export function HeadScopeMyRequestDetailPage({
                       <div className="sm:col-span-2 mt-2 pt-4 border-t border-border/50 flex justify-between items-center">
                         <span className="text-sm font-medium">อัตราเงินตามสิทธิ</span>
                         <span className="text-lg font-bold text-primary">
-                          {rateAmount !== null && rateAmount !== undefined ? formatThaiNumber(Number(rateAmount)) : '-'}
+                          {rateAmount !== null ? formatThaiNumber(Number(rateAmount)) : '-'}
                           <span className="text-sm font-normal text-muted-foreground ml-1">บาท/เดือน</span>
                         </span>
                       </div>

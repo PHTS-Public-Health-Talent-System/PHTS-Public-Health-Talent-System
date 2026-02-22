@@ -41,7 +41,7 @@ interface Step5Props {
 
 const isChanged = (current?: string, original?: string) => {
   if (!original) return false;
-  return String(current ?? '').trim() !== String(original ?? '').trim();
+  return String(current ?? '').trim() !== String(original).trim();
 };
 
 export function Step5Review({ data, updateData, onGoToStep, prefillOriginal }: Step5Props) {

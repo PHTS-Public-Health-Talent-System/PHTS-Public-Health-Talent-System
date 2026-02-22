@@ -152,32 +152,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 4. Login Function
   const login = async (credentials: LoginCredentials) => {
-    try {
-      // credentials should contain { citizen_id, password }
-      const { data } = await api.post<ApiResponse<{ token: string; user: User }>>("/auth/login", credentials)
+    // credentials should contain { citizen_id, password }
+    const { data } = await api.post<ApiResponse<{ token: string; user: User }>>("/auth/login", credentials)
 
-      // Backend returns { success, token, user } (no nested data)
-      if (data.success) {
-        const token = (data as unknown as { token?: string }).token ?? data.data?.token
-        const user = (data as unknown as { user?: User }).user ?? data.data?.user
-        if (!token || !user) {
-          throw new Error("Login response missing token or user")
-        }
-
-        localStorage.setItem(tokenKey, token)
-        localStorage.setItem(userKey, JSON.stringify(user))
-        setTokenCookie(token)
-
-        setUser(user)
-
-        // Redirect based on current role
-        router.push(getRoleHomePath(user.role))
-      } else {
-         throw new Error(data.error || "Login failed");
+    // Backend returns { success, token, user } (no nested data)
+    if (data.success) {
+      const token = (data as unknown as { token?: string }).token ?? data.data?.token
+      const user = (data as unknown as { user?: User }).user ?? data.data?.user
+      if (!token || !user) {
+        throw new Error("Login response missing token or user")
       }
 
-    } catch (error: unknown) {
-      throw error
+      localStorage.setItem(tokenKey, token)
+      localStorage.setItem(userKey, JSON.stringify(user))
+      setTokenCookie(token)
+
+      setUser(user)
+
+      // Redirect based on current role
+      router.push(getRoleHomePath(user.role))
+    } else {
+      throw new Error(data.error || "Login failed")
     }
   }
 

@@ -510,7 +510,7 @@ export function PayrollManagementScreen() {
                         <Button
                           variant="outline"
                           className="w-full bg-background"
-                          disabled={!currentPeriod || downloadReport.isPending}
+                          disabled={downloadReport.isPending}
                         >
                           <Download className="mr-2 h-4 w-4" /> ดาวน์โหลดรายงาน
                         </Button>
@@ -523,7 +523,7 @@ export function PayrollManagementScreen() {
                       }
                       confirmText="ดาวน์โหลด"
                       onConfirm={handleDownload}
-                      disabled={!currentPeriod || downloadReport.isPending}
+                      disabled={downloadReport.isPending}
                     />
                   </div>
                 </div>

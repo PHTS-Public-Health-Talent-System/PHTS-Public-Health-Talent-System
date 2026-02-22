@@ -174,13 +174,15 @@ export default function HolidaysPage() {
     return holidays.filter((holiday) => holiday.year.toString() === selectedYear);
   }, [holidays, selectedYear]);
 
-  const filteredHolidays = holidays.filter((holiday) => {
-    const matchesSearch = holiday.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesYear = holiday.year.toString() === selectedYear;
-    const matchesMonth =
-      selectedMonth === 'all' || holiday.date.split('-')[1] === selectedMonth.padStart(2, '0');
-    return matchesSearch && matchesYear && matchesMonth;
-  });
+  const filteredHolidays = useMemo(() => {
+    return holidays.filter((holiday) => {
+      const matchesSearch = holiday.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesYear = holiday.year.toString() === selectedYear;
+      const matchesMonth =
+        selectedMonth === 'all' || holiday.date.split('-')[1] === selectedMonth.padStart(2, '0');
+      return matchesSearch && matchesYear && matchesMonth;
+    });
+  }, [holidays, searchQuery, selectedYear, selectedMonth]);
 
   const sortedFilteredHolidays = useMemo(() => {
     return [...filteredHolidays].sort((a, b) => a.date.localeCompare(b.date));

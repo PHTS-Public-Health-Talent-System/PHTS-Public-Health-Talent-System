@@ -317,7 +317,7 @@ export function SettingsPage() {
                       type="button"
                       variant="ghost"
                       onClick={handleResetProfile}
-                      disabled={userLoading || !isProfileChanged}
+                      disabled={!isProfileChanged}
                       className="text-muted-foreground hover:text-foreground"
                     >
                       คืนค่าเดิม
@@ -325,7 +325,7 @@ export function SettingsPage() {
                     <Button
                       type="button"
                       onClick={handleSaveProfile}
-                      disabled={!isProfileChanged || userLoading || updateProfile.isPending}
+                      disabled={!isProfileChanged || updateProfile.isPending}
                       className="min-w-[120px]"
                     >
                       {updateProfile.isPending ? (

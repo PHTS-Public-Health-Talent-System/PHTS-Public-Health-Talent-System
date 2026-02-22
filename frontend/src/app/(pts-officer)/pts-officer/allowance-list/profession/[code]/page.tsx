@@ -249,7 +249,7 @@ export default function AllowanceListByProfessionPage({
   const updateQuery = (next: Record<string, string | undefined>) => {
     const sp = new URLSearchParams(searchParams.toString());
     Object.entries(next).forEach(([k, v]) => {
-      if (!v || v === '' || v === 'all') sp.delete(k);
+      if (!v || v === 'all') sp.delete(k);
       else sp.set(k, v);
     });
     router.push(

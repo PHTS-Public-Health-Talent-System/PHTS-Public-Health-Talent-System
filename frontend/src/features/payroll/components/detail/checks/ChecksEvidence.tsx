@@ -231,7 +231,7 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
             ),
             align: "right",
           },
-          ...(ev.remark ? [{ label: "หมายเหตุ", value: String(ev.remark ?? "") }] : []),
+          ...(ev.remark ? [{ label: "หมายเหตุ", value: String(ev.remark) }] : []),
         ]}
       />
     )

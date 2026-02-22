@@ -28,7 +28,7 @@ interface Step1Props {
 
 const isChanged = (current?: string, original?: string) => {
   if (!original) return false;
-  return String(current ?? '').trim() !== String(original ?? '').trim();
+  return String(current ?? '').trim() !== String(original).trim();
 };
 
 export function Step1PersonalInfo({ data, updateData, prefillOriginal }: Step1Props) {
