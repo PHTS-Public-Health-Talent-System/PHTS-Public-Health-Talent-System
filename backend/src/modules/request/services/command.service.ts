@@ -501,7 +501,7 @@ export class RequestCommandService {
         }
 
         if (data.submission_data) {
-          const keys = Object.keys(data.submission_data || {});
+          const keys = Object.keys(data.submission_data);
           const allowedKeys = new Set(['verification_checks']);
           const hasOther = keys.some((key) => !allowedKeys.has(key));
           if (hasOther) {

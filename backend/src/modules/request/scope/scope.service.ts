@@ -72,7 +72,7 @@ export async function getApproverScopes(
     userId,
     userRole,
   );
-  if (mappings.length === 0 && citizenId) {
+  if (mappings.length === 0) {
     mappings = await requestRepository.getScopeMappingsByCitizenId(
       citizenId,
       userRole,

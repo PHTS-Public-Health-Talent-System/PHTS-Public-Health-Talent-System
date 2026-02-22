@@ -7,10 +7,9 @@
  * - Payroll Processing (create period, calculate, approve)
  */
 
-import request from "supertest";
 import type { Application } from "express";
 import express from "express";
-import { query, getConnection } from "../../config/database.js";
+import { query } from "../../config/database.js";
 
 describe("Critical Workflows E2E Tests", () => {
   let app: Application;

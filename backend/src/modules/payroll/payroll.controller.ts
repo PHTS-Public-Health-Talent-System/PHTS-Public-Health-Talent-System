@@ -235,8 +235,10 @@ export const updatePayout = async (
       return;
     }
 
-    const actorId =
-      (req as any)?.user?.id ?? (req as any)?.user?.userId ?? null;
+    const user = (req as any)?.user as
+      | { id?: number | string; userId?: number | string }
+      | undefined;
+    const actorId = user?.id ?? user?.userId ?? null;
 
     const payload = req.body as {
       eligible_days?: number;

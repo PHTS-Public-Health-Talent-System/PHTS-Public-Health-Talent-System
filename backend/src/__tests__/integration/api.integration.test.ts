@@ -5,11 +5,6 @@
  * Focuses on request/response validation and workflow integration
  */
 
-import request from "supertest";
-import { query } from "../../config/database.js";
-
-const API_BASE_URL = "http://localhost:3001";
-
 describe("API Integration Tests", () => {
   describe("Health Check", () => {
     test("GET /health should return 200", async () => {

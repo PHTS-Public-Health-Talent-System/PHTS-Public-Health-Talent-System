@@ -110,11 +110,7 @@ export async function runBackupJob(options?: {
     const durationMs = Date.now() - startedAt;
     const errorMessage =
       error instanceof Error ? error.message : String(error);
-    const normalizedErrorMessage = errorMessage.includes(
-      "BACKUP_ARGS must be",
-    )
-      ? errorMessage
-      : errorMessage;
+    const normalizedErrorMessage = errorMessage;
     await SystemRepository.finishBackupJob(jobId, {
       status: "FAILED",
       durationMs,
