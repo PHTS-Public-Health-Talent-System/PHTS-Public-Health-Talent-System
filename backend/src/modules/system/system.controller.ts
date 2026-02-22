@@ -4,7 +4,7 @@
  */
 import { Request, Response } from "express";
 import { asyncHandler } from "@middlewares/errorHandler.js";
-import { SystemRepository } from "@/modules/system/repositories/system.repository.js";
+import { AdminRepository } from "@/modules/system/repositories/admin.repository.js";
 import {
   isMaintenanceModeEnabled,
   disableMaintenanceMode,
@@ -25,7 +25,7 @@ import type {
 
 export const searchUsers = asyncHandler(async (req: Request, res: Response) => {
   const { q, page, limit, role, is_active } = req.query as SearchUsersQuery;
-  const result = await SystemRepository.searchUsers({
+  const result = await AdminRepository.searchUsers({
     q: q || "",
     page: Number(page || 1),
     limit: Number(limit || 20),
@@ -37,7 +37,7 @@ export const searchUsers = asyncHandler(async (req: Request, res: Response) => {
 
 export const getUserById = asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params as unknown as GetUserByIdParams;
-  const row = await SystemRepository.findUserById(Number(userId));
+  const row = await AdminRepository.findUserById(Number(userId));
   if (!row) {
     res.status(404).json({ success: false, error: "User not found" });
     return;
@@ -51,7 +51,7 @@ export const updateUserRole = asyncHandler(
     const { role, is_active } = req.body as UpdateUserRoleBody;
     const actorId = req.user?.userId ?? null;
 
-    await SystemRepository.updateUserRole(Number(userId), role, is_active);
+    await AdminRepository.updateUserRole(Number(userId), role, is_active);
 
     await emitAuditEvent({
       eventType: AuditEventType.USER_ROLE_CHANGE,

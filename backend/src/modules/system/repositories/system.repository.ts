@@ -17,9 +17,11 @@ import {
   ViewLeaveRequest,
   ExistingLeaveRecord,
 } from '@/modules/system/entities/system.entity.js';
+import { AdminRepository } from '@/modules/system/repositories/admin.repository.js';
+import { BackupRepository } from '@/modules/system/repositories/backup.repository.js';
+import { OpsStatusRepository } from '@/modules/system/repositories/ops-status.repository.js';
 
 export class SystemRepository {
-  private static backupTableReady = false;
   // ── User queries ───────────────────────────────────────────────────────────
 
   static async findAllUsers(conn?: PoolConnection): Promise<UserRow[]> {
@@ -328,73 +330,7 @@ export class SystemRepository {
     limit: number;
     total_pages: number;
   }> {
-    const page = Number.isFinite(params.page) && params.page > 0 ? Math.floor(params.page) : 1;
-    const limitRaw = Number.isFinite(params.limit) && params.limit > 0 ? Math.floor(params.limit) : 20;
-    const limit = Math.min(limitRaw, 100);
-    const offset = (page - 1) * limit;
-
-    const sanitized = params.q.replace(/[%_]/g, '\\$&');
-    const search = `%${sanitized}%`;
-
-    const whereParts: string[] = [
-      `(u.citizen_id LIKE ? OR COALESCE(e.first_name, s.first_name, '') LIKE ? OR COALESCE(e.last_name, s.last_name, '') LIKE ?)`,
-    ];
-    const whereParams: Array<string | number> = [search, search, search];
-
-    if (params.role) {
-      whereParts.push('u.role = ?');
-      whereParams.push(params.role);
-    }
-    if (params.isActive === 0 || params.isActive === 1) {
-      whereParts.push('u.is_active = ?');
-      whereParams.push(params.isActive);
-    }
-
-    const whereClause = `WHERE ${whereParts.join(' AND ')}`;
-
-    const [countRows] = await db.query<RowDataPacket[]>(
-      `SELECT
-         COUNT(DISTINCT u.id) AS total,
-         COUNT(DISTINCT CASE WHEN u.is_active = 1 THEN u.id END) AS active_total
-       FROM users u
-       LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
-       LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
-       ${whereClause}`,
-      whereParams,
-    );
-    const total = Number((countRows[0] as { total?: number })?.total ?? 0);
-    const activeTotal = Number((countRows[0] as { active_total?: number })?.active_total ?? 0);
-    const inactiveTotal = Math.max(0, total - activeTotal);
-    const totalPages = total > 0 ? Math.ceil(total / limit) : 1;
-
-    const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT
-         u.id,
-         u.citizen_id,
-         u.role,
-         u.is_active,
-         u.last_login_at,
-         COALESCE(e.first_name, s.first_name) AS first_name,
-         COALESCE(e.last_name, s.last_name) AS last_name
-       FROM users u
-       LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
-       LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
-       ${whereClause}
-       GROUP BY u.id, u.citizen_id, u.role, u.is_active, u.last_login_at, e.first_name, s.first_name, e.last_name, s.last_name
-       ORDER BY u.id DESC
-       LIMIT ? OFFSET ?`,
-      [...whereParams, limit, offset],
-    );
-
-    return {
-      rows: rows as any[],
-      total,
-      active_total: activeTotal,
-      inactive_total: inactiveTotal,
-      page,
-      limit,
-      total_pages: totalPages,
-    };
+    return AdminRepository.searchUsers(params);
   }
 
   static async updateUserRole(
@@ -402,29 +338,7 @@ export class SystemRepository {
     role: string,
     isActive: boolean | undefined,
   ): Promise<void> {
-    const conn = await getConnection();
-    try {
-      await conn.beginTransaction();
-
-      await conn.execute('UPDATE users SET role = ?, updated_at = NOW() WHERE id = ?', [
-        role,
-        userId,
-      ]);
-
-      if (isActive !== undefined) {
-        await conn.execute('UPDATE users SET is_active = ?, updated_at = NOW() WHERE id = ?', [
-          isActive ? 1 : 0,
-          userId,
-        ]);
-      }
-
-      await conn.commit();
-    } catch (error) {
-      await conn.rollback();
-      throw error;
-    } finally {
-      conn.release();
-    }
+    return AdminRepository.updateUserRole(userId, role, isActive);
   }
 
   static async findUserById(userId: number): Promise<{
@@ -440,70 +354,20 @@ export class SystemRepository {
     updated_at: Date | null;
     created_at: Date | null;
   } | null> {
-    const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT
-        u.id,
-        u.citizen_id,
-        u.role,
-        u.is_active,
-        u.last_login_at,
-        u.updated_at,
-        u.created_at,
-        COALESCE(e.first_name, s.first_name) AS first_name,
-        COALESCE(e.last_name, s.last_name) AS last_name,
-        COALESCE(e.department, s.department) AS department,
-        COALESCE(e.position_name, s.position_name) AS position_name
-       FROM users u
-       LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
-       LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
-       WHERE u.id = ?
-       LIMIT 1`,
-      [userId],
-    );
-    return (rows[0] as any) ?? null;
+    return AdminRepository.findUserById(userId);
   }
 
   // ── Backup jobs ────────────────────────────────────────────────────────────
 
   static async ensureBackupJobsTable(): Promise<void> {
-    if (SystemRepository.backupTableReady) return;
-    await db.execute(
-      `
-      CREATE TABLE IF NOT EXISTS sys_backup_jobs (
-        job_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-        trigger_source VARCHAR(20) NOT NULL,
-        triggered_by INT NULL,
-        status VARCHAR(20) NOT NULL,
-        backup_file_path TEXT NULL,
-        backup_file_size_bytes BIGINT NULL,
-        duration_ms INT NULL,
-        stdout_text TEXT NULL,
-        stderr_text TEXT NULL,
-        error_message TEXT NULL,
-        started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        finished_at DATETIME NULL,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_backup_jobs_created_at (created_at),
-        INDEX idx_backup_jobs_status_created_at (status, created_at)
-      )
-      `,
-    );
-    SystemRepository.backupTableReady = true;
+    return BackupRepository.ensureBackupJobsTable();
   }
 
   static async createBackupJob(
     triggerSource: 'MANUAL' | 'SCHEDULED',
     triggeredBy: number | null,
   ): Promise<number> {
-    await SystemRepository.ensureBackupJobsTable();
-    const [result] = await db.execute<any>(
-      `
-      INSERT INTO sys_backup_jobs (trigger_source, triggered_by, status, started_at)
-      VALUES (?, ?, 'RUNNING', NOW())
-      `,
-      [triggerSource, triggeredBy],
-    );
-    return Number(result.insertId);
+    return BackupRepository.createBackupJob(triggerSource, triggeredBy);
   }
 
   static async finishBackupJob(
@@ -518,31 +382,7 @@ export class SystemRepository {
       errorMessage?: string | null;
     },
   ): Promise<void> {
-    await SystemRepository.ensureBackupJobsTable();
-    await db.execute(
-      `
-      UPDATE sys_backup_jobs
-      SET status = ?,
-          backup_file_path = ?,
-          backup_file_size_bytes = ?,
-          duration_ms = ?,
-          stdout_text = ?,
-          stderr_text = ?,
-          error_message = ?,
-          finished_at = NOW()
-      WHERE job_id = ?
-      `,
-      [
-        payload.status,
-        payload.backupFilePath ?? null,
-        payload.backupFileSizeBytes ?? null,
-        payload.durationMs ?? null,
-        payload.stdoutText ?? null,
-        payload.stderrText ?? null,
-        payload.errorMessage ?? null,
-        jobId,
-      ],
-    );
+    return BackupRepository.finishBackupJob(jobId, payload);
   }
 
   static async getBackupHistory(limit: number = 20): Promise<
@@ -560,41 +400,13 @@ export class SystemRepository {
       created_at: Date;
     }>
   > {
-    await SystemRepository.ensureBackupJobsTable();
-    const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
-    const [rows] = await db.query<RowDataPacket[]>(
-      `
-      SELECT job_id,
-             trigger_source,
-             triggered_by,
-             status,
-             backup_file_path,
-             backup_file_size_bytes,
-             duration_ms,
-             error_message,
-             started_at,
-             finished_at,
-             created_at
-      FROM sys_backup_jobs
-      ORDER BY created_at DESC
-      LIMIT ${safeLimit}
-      `,
-    );
-    return rows as any[];
+    return BackupRepository.getBackupHistory(limit);
   }
 
   static async countNotificationOutboxByStatus(): Promise<
     Array<{ status: string; count: number }>
   > {
-    const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT status, COUNT(*) as count
-       FROM ntf_outbox
-       GROUP BY status`,
-    );
-    return (rows as any[]).map((row) => ({
-      status: String(row.status),
-      count: Number(row.count ?? 0),
-    }));
+    return OpsStatusRepository.countNotificationOutboxByStatus();
   }
 
   static async findLatestNotificationOutbox(limit: number = 20): Promise<
@@ -608,21 +420,11 @@ export class SystemRepository {
       processed_at: Date | null;
     }>
   > {
-    const safeLimit = Math.max(1, Math.min(limit, 100));
-    const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT outbox_id, status, attempts, last_error, available_at, created_at, processed_at
-       FROM ntf_outbox
-       ORDER BY created_at DESC
-       LIMIT ${safeLimit}`,
-    );
-    return rows as any[];
+    return OpsStatusRepository.findLatestNotificationOutbox(limit);
   }
 
   static async countOpenPayrollPeriods(): Promise<number> {
-    const [rows] = await db.query<RowDataPacket[]>(
-      "SELECT COUNT(*) as count FROM pay_periods WHERE status <> 'CLOSED'",
-    );
-    return Number((rows[0] as any)?.count ?? 0);
+    return OpsStatusRepository.countOpenPayrollPeriods();
   }
 
   static async findLatestOpenPayrollPeriods(limit: number = 5): Promise<
@@ -635,14 +437,6 @@ export class SystemRepository {
       updated_at: Date;
     }>
   > {
-    const safeLimit = Math.max(1, Math.min(limit, 50));
-    const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT period_id, period_year, period_month, status, snapshot_status, updated_at
-       FROM pay_periods
-       WHERE status <> 'CLOSED'
-       ORDER BY period_year DESC, period_month DESC
-       LIMIT ${safeLimit}`,
-    );
-    return rows as any[];
+    return OpsStatusRepository.findLatestOpenPayrollPeriods(limit);
   }
 }

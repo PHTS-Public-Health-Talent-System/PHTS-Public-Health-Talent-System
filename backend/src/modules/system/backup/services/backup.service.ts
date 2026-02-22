@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import crypto from "node:crypto";
 import path from "node:path";
 import { stat } from "node:fs/promises";
-import { SystemRepository } from '@/modules/system/repositories/system.repository.js';
+import { BackupRepository } from '@/modules/system/repositories/backup.repository.js';
 import redis from '@config/redis.js';
 
 const execFileAsync = promisify(execFile);
@@ -86,7 +86,7 @@ export async function runBackupJob(options?: {
   const startedAt = Date.now();
   const triggerSource = options?.triggerSource ?? "MANUAL";
   const triggeredBy = options?.triggeredBy ?? null;
-  const jobId = await SystemRepository.createBackupJob(triggerSource, triggeredBy);
+  const jobId = await BackupRepository.createBackupJob(triggerSource, triggeredBy);
 
   try {
     validateBackupCommand(config.command);
@@ -111,7 +111,7 @@ export async function runBackupJob(options?: {
       }
     }
 
-    await SystemRepository.finishBackupJob(jobId, {
+    await BackupRepository.finishBackupJob(jobId, {
       status: "SUCCESS",
       backupFilePath,
       backupFileSizeBytes,
@@ -126,7 +126,7 @@ export async function runBackupJob(options?: {
     const errorMessage =
       error instanceof Error ? error.message : String(error);
     const normalizedErrorMessage = errorMessage;
-    await SystemRepository.finishBackupJob(jobId, {
+    await BackupRepository.finishBackupJob(jobId, {
       status: "FAILED",
       durationMs,
       errorMessage: normalizedErrorMessage.slice(0, 2000),

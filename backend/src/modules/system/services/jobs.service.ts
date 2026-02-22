@@ -1,6 +1,6 @@
 import redis from '@config/redis.js';
 import { getSyncRuntimeStatus } from '@/modules/system/sync/services/sync-status.service.js';
-import { SystemRepository } from '@/modules/system/repositories/system.repository.js';
+import { OpsStatusRepository } from '@/modules/system/repositories/ops-status.repository.js';
 import type { SyncRuntimeStatus } from '@/modules/system/sync/services/sync.service.js';
 
 type JobError = {
@@ -56,7 +56,7 @@ type JobStatusPayload = {
 };
 
 const countOutboxByStatus = async () => {
-  const rows = await SystemRepository.countNotificationOutboxByStatus();
+  const rows = await OpsStatusRepository.countNotificationOutboxByStatus();
   const summary = {
     PENDING: 0,
     PROCESSING: 0,
@@ -73,7 +73,7 @@ const countOutboxByStatus = async () => {
 };
 
 const fetchLatestOutbox = async () =>
-  (await SystemRepository.findLatestNotificationOutbox(20)) as Array<{
+  (await OpsStatusRepository.findLatestNotificationOutbox(20)) as Array<{
     outbox_id: number;
     status: string;
     attempts: number;
@@ -85,8 +85,8 @@ const fetchLatestOutbox = async () =>
 
 const fetchPayrollOpenPeriods = async () => {
   const [count, latest] = await Promise.all([
-    SystemRepository.countOpenPayrollPeriods(),
-    SystemRepository.findLatestOpenPayrollPeriods(5),
+    OpsStatusRepository.countOpenPayrollPeriods(),
+    OpsStatusRepository.findLatestOpenPayrollPeriods(5),
   ]);
   return { count, latest } as {
     count: number;

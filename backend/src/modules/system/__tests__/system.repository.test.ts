@@ -2,7 +2,7 @@
  * System Repository Tests
  */
 
-import { SystemRepository } from '@/modules/system/repositories/system.repository.js';
+import { AdminRepository } from '@/modules/system/repositories/admin.repository.js';
 import db from '@config/database.js';
 
 jest.mock('@config/database.js', () => ({
@@ -15,7 +15,7 @@ jest.mock('@config/database.js', () => ({
   query: jest.fn(),
 }));
 
-describe('SystemRepository', () => {
+describe('AdminRepository', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -26,7 +26,7 @@ describe('SystemRepository', () => {
       mockQuery.mockResolvedValueOnce([[{ total: 0, active_total: 0 }]]);
       mockQuery.mockResolvedValueOnce([[]]);
 
-      await SystemRepository.searchUsers({
+      await AdminRepository.searchUsers({
         q: 'test%user_name',
         page: 1,
         limit: 20,
@@ -58,7 +58,7 @@ describe('SystemRepository', () => {
       mockQuery.mockResolvedValueOnce([[{ total: 1, active_total: 1 }]]);
       mockQuery.mockResolvedValueOnce([mockUsers]);
 
-      const result = await SystemRepository.searchUsers({
+      const result = await AdminRepository.searchUsers({
         q: 'สมชาย',
         page: 1,
         limit: 20,
@@ -78,7 +78,7 @@ describe('SystemRepository', () => {
       mockQuery.mockResolvedValueOnce([[{ total: 0, active_total: 0 }]]);
       mockQuery.mockResolvedValueOnce([[]]);
 
-      await SystemRepository.searchUsers({
+      await AdminRepository.searchUsers({
         q: 'test',
         page: 1,
         limit: 20,
@@ -105,7 +105,7 @@ describe('SystemRepository', () => {
       const getConnection = require('@config/database.js').getConnection as jest.Mock;
       getConnection.mockResolvedValue(mockConn);
 
-      await SystemRepository.updateUserRole(1, 'DIRECTOR', true);
+      await AdminRepository.updateUserRole(1, 'DIRECTOR', true);
 
       expect(mockConn.beginTransaction).toHaveBeenCalled();
       expect(mockConn.execute).toHaveBeenCalledTimes(2);
@@ -125,7 +125,7 @@ describe('SystemRepository', () => {
       const getConnection = require('@config/database.js').getConnection as jest.Mock;
       getConnection.mockResolvedValue(mockConn);
 
-      await SystemRepository.updateUserRole(1, 'HEAD_DEPT', undefined);
+      await AdminRepository.updateUserRole(1, 'HEAD_DEPT', undefined);
 
       expect(mockConn.execute).toHaveBeenCalledTimes(1);
       expect(mockConn.execute).toHaveBeenCalledWith(
@@ -146,7 +146,7 @@ describe('SystemRepository', () => {
       const getConnection = require('@config/database.js').getConnection as jest.Mock;
       getConnection.mockResolvedValue(mockConn);
 
-      await expect(SystemRepository.updateUserRole(1, 'USER', false)).rejects.toThrow('DB Error');
+      await expect(AdminRepository.updateUserRole(1, 'USER', false)).rejects.toThrow('DB Error');
 
       expect(mockConn.rollback).toHaveBeenCalled();
       expect(mockConn.release).toHaveBeenCalled();

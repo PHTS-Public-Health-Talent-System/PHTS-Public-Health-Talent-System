@@ -2,8 +2,8 @@
  * Backup Service Tests
  */
 
-jest.mock('@/modules/system/repositories/system.repository.js', () => ({
-  SystemRepository: {
+jest.mock('@/modules/system/repositories/backup.repository.js', () => ({
+  BackupRepository: {
     createBackupJob: jest.fn().mockResolvedValue(99),
     finishBackupJob: jest.fn().mockResolvedValue(undefined),
     ensureBackupJobsTable: jest.fn().mockResolvedValue(undefined),

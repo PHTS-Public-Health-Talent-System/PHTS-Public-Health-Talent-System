@@ -1,4 +1,4 @@
-import { SystemRepository } from '@/modules/system/repositories/system.repository.js';
+import { BackupRepository } from '@/modules/system/repositories/backup.repository.js';
 import db from '@config/database.js';
 
 jest.mock('@config/database.js', () => ({
@@ -11,13 +11,13 @@ jest.mock('@config/database.js', () => ({
   query: jest.fn(),
 }));
 
-describe('SystemRepository backup jobs', () => {
+describe('BackupRepository', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('provides backup job repository methods', () => {
-    const repo: any = SystemRepository;
+    const repo: any = BackupRepository;
     expect(typeof repo.createBackupJob).toBe('function');
     expect(typeof repo.finishBackupJob).toBe('function');
     expect(typeof repo.getBackupHistory).toBe('function');
@@ -27,7 +27,7 @@ describe('SystemRepository backup jobs', () => {
     const mockQuery = db.query as jest.Mock;
     mockQuery.mockResolvedValue([[]]);
 
-    const repo: any = SystemRepository;
+    const repo: any = BackupRepository;
     await repo.getBackupHistory(1000);
 
     expect(mockQuery).toHaveBeenCalled();
@@ -35,4 +35,3 @@ describe('SystemRepository backup jobs', () => {
     expect(sql).toContain('LIMIT 100');
   });
 });
-

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "@middlewares/errorHandler.js";
-import { SystemRepository } from "@/modules/system/repositories/system.repository.js";
+import { BackupRepository } from "@/modules/system/repositories/backup.repository.js";
 import { runBackupJob } from "@/modules/system/backup/services/backup.service.js";
 import type { BackupHistoryQuery } from "@/modules/system/system.schema.js";
 
@@ -16,7 +16,7 @@ export const triggerBackup = asyncHandler(async (req: Request, res: Response) =>
 export const getBackupHistory = asyncHandler(
   async (req: Request, res: Response) => {
     const { limit } = req.query as unknown as BackupHistoryQuery;
-    const rows = await SystemRepository.getBackupHistory(Number(limit || 20));
+    const rows = await BackupRepository.getBackupHistory(Number(limit || 20));
     res.json({ success: true, data: rows });
   },
 );
