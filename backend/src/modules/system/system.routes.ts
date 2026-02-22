@@ -7,6 +7,8 @@ import { protect, restrictTo } from "@middlewares/authMiddleware.js";
 import { validate } from "@shared/validate.middleware.js";
 import { UserRole } from "@/types/auth.js";
 import * as systemController from "@/modules/system/system.controller.js";
+import syncRoutes from "@/modules/system/sync/sync.routes.js";
+import backupRoutes from "@/modules/system/backup/backup.routes.js";
 import {
   searchUsersSchema,
   getUserByIdSchema,
@@ -50,5 +52,7 @@ router.post(
 router.get("/maintenance", adminAuth, systemController.getMaintenanceMode);
 router.get("/jobs", adminAuth, systemController.getJobStatus);
 router.get("/version", adminAuth, systemController.getVersionInfo);
+router.use(syncRoutes);
+router.use(backupRoutes);
 
 export default router;

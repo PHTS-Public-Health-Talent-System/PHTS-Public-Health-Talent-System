@@ -1,5 +1,5 @@
 /**
- * src/modules/request-data/repositories/request.repository.ts
+ * src/modules/request/data/repositories/request.repository.ts
  */
 import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import pool from '@config/database.js';

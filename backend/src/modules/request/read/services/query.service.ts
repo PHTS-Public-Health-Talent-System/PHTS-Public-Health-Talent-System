@@ -1,5 +1,5 @@
 /**
- * src/modules/request-read/services/query.service.ts
+ * src/modules/request/read/services/query.service.ts
  */
 import {
   RequestStatus,

@@ -23,8 +23,6 @@ import signatureRoutes from '@/modules/signature/signature.routes.js';
 import payrollRoutes from '@/modules/payroll/payroll.routes.js';
 import reportRoutes from '@/modules/report/report.routes.js';
 import systemRoutes from '@/modules/system/system.routes.js';
-import syncRoutes from '@/modules/system/sync/sync.routes.js';
-import backupRoutes from '@/modules/system/backup/backup.routes.js';
 import masterDataRoutes from '@/modules/master-data/master-data.routes.js';
 import leaveManagementRoutes from '@/modules/leave-management/leave-management.routes.js';
 import notificationRoutes from '@/modules/notification/notification.routes.js';
@@ -232,8 +230,6 @@ app.use('/api/signatures', signatureRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/system', systemRoutes);
-app.use('/api/system', syncRoutes);
-app.use('/api/system', backupRoutes);
 app.use('/api/config', masterDataRoutes);
 app.use('/api/leave-management', leaveManagementRoutes);
 // Backward-compatible alias for legacy frontend clients.
