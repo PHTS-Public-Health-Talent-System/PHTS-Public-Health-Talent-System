@@ -13,7 +13,7 @@ import {
   STEP_ROLE_MAP,
   ROLE_STEP_MAP,
   RequestWithDetails,
-} from '@/modules/request-contracts/request.types.js';
+} from '@/modules/request/contracts/request.types.js';
 import { CreateRequestDTO, UpdateRequestDTO } from '@/modules/request/dto/index.js';
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import {
@@ -23,10 +23,10 @@ import {
   getRequestLinkForRole,
   parseJsonField,
 } from '@/modules/request/services/helpers.js';
-import { requestQueryService } from '@/modules/request-read/services/query.service.js'; // Use the class instance
+import { requestQueryService } from '@/modules/request/read/services/query.service.js'; // Use the class instance
 import { enqueueRequestOcrPrecheck } from '@/modules/request/services/ocr-precheck.service.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
-import { requestRepository } from '@/modules/request-data/repositories/request.repository.js'; // [NEW]
+import { requestRepository } from '@/modules/request/data/repositories/request.repository.js'; // [NEW]
 import { resolveProfessionCode } from '@shared/utils/profession.js';
 import {
   AuthorizationError,

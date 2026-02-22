@@ -1,6 +1,6 @@
 import { UserRole } from "@/types/auth.js";
-import type { RequestWithDetails } from "@/modules/request-contracts/request.types.js";
-import { requestQueryService } from "@/modules/request-read/services/query.service.js";
+import type { RequestWithDetails } from "@/modules/request/contracts/request.types.js";
+import { requestQueryService } from "@/modules/request/read/services/query.service.js";
 import { PayrollRepository } from "@/modules/payroll/repositories/payroll.repository.js";
 import { PeriodStatus } from "@/modules/payroll/entities/payroll.entity.js";
 import { FinanceRepository } from "@/modules/finance/repositories/finance.repository.js";

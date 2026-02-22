@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import redis from "@config/redis.js";
 import { getConnection } from "@config/database.js";
-import { requestRepository } from "@/modules/request-data/repositories/request.repository.js";
-import { FileType } from "@/modules/request-contracts/request.types.js";
+import { requestRepository } from "@/modules/request/data/repositories/request.repository.js";
+import { FileType } from "@/modules/request/contracts/request.types.js";
 
 const OCR_QUEUE_KEY = "request:ocr:precheck:queue";
 const OCR_WORKER_BRPOP_TIMEOUT_SEC = 5;

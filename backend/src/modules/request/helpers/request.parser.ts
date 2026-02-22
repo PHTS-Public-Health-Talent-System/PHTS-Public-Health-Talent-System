@@ -3,7 +3,7 @@ import {
   PersonnelType,
   RequestType,
   WorkAttributes,
-} from '@/modules/request-contracts/request.types.js';
+} from '@/modules/request/contracts/request.types.js';
 import { CreateRequestDTO } from '@/modules/request/dto/index.js';
 
 /**

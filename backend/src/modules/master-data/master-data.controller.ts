@@ -4,7 +4,7 @@
  */
 import { Request, Response } from "express";
 import * as masterDataService from "@/modules/master-data/services/master-data.service.js";
-import { requestRepository } from "@/modules/request-data/repositories/request.repository.js";
+import { requestRepository } from "@/modules/request/data/repositories/request.repository.js";
 import { UserRole } from "@/types/auth.js";
 import {
   AuthorizationError,

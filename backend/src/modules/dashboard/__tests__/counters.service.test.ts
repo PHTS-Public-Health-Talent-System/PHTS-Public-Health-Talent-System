@@ -6,7 +6,7 @@ import {
   getPendingPayrollStatusForApprover,
 } from "@/modules/dashboard/counters.service.js";
 
-jest.mock("@/modules/request-read/services/query.service.js", () => ({
+jest.mock("@/modules/request/read/services/query.service.js", () => ({
   requestQueryService: {
     getMyRequests: jest.fn(),
     getPendingForApprover: jest.fn(),
@@ -26,7 +26,7 @@ jest.mock("@/modules/payroll/repositories/payroll.repository.js", () => ({
 }));
 
 const { requestQueryService } = jest.requireMock(
-  "@/modules/request-read/services/query.service.js",
+  "@/modules/request/read/services/query.service.js",
 ) as {
   requestQueryService: {
     getMyRequests: jest.Mock;

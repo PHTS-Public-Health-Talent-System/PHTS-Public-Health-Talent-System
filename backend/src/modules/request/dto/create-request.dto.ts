@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PersonnelType, RequestType } from '@/modules/request-contracts/request.types.js';
+import { PersonnelType, RequestType } from '@/modules/request/contracts/request.types.js';
 
 // Helper to parse JSON string
 const jsonPreprocess = (val: unknown) => {

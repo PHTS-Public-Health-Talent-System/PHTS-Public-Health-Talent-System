@@ -3,7 +3,7 @@
  *
  */
 import db from "@config/database.js";
-import { requestQueryService } from "@/modules/request-read/services/query.service.js";
+import { requestQueryService } from "@/modules/request/read/services/query.service.js";
 import { PayrollRepository } from "@/modules/payroll/repositories/payroll.repository.js";
 import { PayPeriod } from "@/modules/payroll/entities/payroll.entity.js";
 import { UserRole } from "@/types/auth.js";
@@ -11,7 +11,7 @@ import {
   getSLAReport,
   getPendingRequestsWithSLA,
 } from "@/modules/sla/services/sla.service.js";
-import type { RequestWithDetails } from "@/modules/request-contracts/request.types.js";
+import type { RequestWithDetails } from "@/modules/request/contracts/request.types.js";
 import type { RequestSLAInfo } from "@/modules/sla/entities/sla.entity.js";
 import {
   getPendingPayrollCount,

@@ -9,15 +9,15 @@ import { Request, Response } from "express";
 import { ApiResponse, UserRole } from '@/types/auth.js';
 
 // Services
-import { requestQueryService } from '@/modules/request-read/services/query.service.js';
+import { requestQueryService } from '@/modules/request/read/services/query.service.js';
 import { requestCommandService } from '@/modules/request/services/command.service.js';
 import { requestApprovalService } from '@/modules/request/services/approval.service.js';
 import * as reassignService from '@/modules/request/reassign/reassign.service.js';
 import * as rateService from '@/modules/master-data/services/rate.service.js';
 
-import { getUserScopesForDisplay, getUserScopesWithMembers } from '@/modules/scope/scope.service.js';
+import { getUserScopesForDisplay, getUserScopesWithMembers } from '@/modules/request/scope/scope.service.js';
 
-import { requestRepository } from '@/modules/request-data/repositories/request.repository.js';
+import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 import {
   cleanupUploadSession,
 } from '@/modules/request/helpers/utils.js';
@@ -34,7 +34,7 @@ import {
   ValidationError,
 } from '@shared/utils/errors.js';
 import { resolveProfessionCode } from '@shared/utils/profession.js';
-import { ELIGIBILITY_EXPIRING_DAYS } from '@/modules/request-contracts/request.constants.js';
+import { ELIGIBILITY_EXPIRING_DAYS } from '@/modules/request/contracts/request.constants.js';
 
 const decodeSignatureBase64 = (payload?: string): Buffer | null => {
   if (!payload || typeof payload !== "string") return null;

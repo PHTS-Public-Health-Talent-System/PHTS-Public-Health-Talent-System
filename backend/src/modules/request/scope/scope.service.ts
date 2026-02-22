@@ -6,14 +6,14 @@
  */
 
 import { delCache, setJsonCache } from '@shared/utils/cache.js';
-import { requestRepository } from '@/modules/request-data/repositories/request.repository.js';
+import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 import {
   ApproverScopes,
   parseSpecialPositionScopes,
   removeOverlaps,
   resolveApproverRole,
   inferScopeType,
-} from '@/modules/scope/utils.js';
+} from '@/modules/request/scope/utils.js';
 
 const SCOPE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 

@@ -7,8 +7,8 @@ import {
   RequestSubmissionEntity,
   RequestAttachmentEntity,
   RequestApprovalEntity,
-} from '@/modules/request-contracts/request.entity.js';
-import { ELIGIBILITY_EXPIRING_DAYS } from '@/modules/request-contracts/request.constants.js';
+} from '@/modules/request/contracts/request.entity.js';
+import { ELIGIBILITY_EXPIRING_DAYS } from '@/modules/request/contracts/request.constants.js';
 
 export class RequestRepository {
   // Helper to choose between Connection (Transaction) or Pool (Auto-commit)

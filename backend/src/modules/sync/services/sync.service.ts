@@ -6,13 +6,13 @@ import {
   assignRoles,
   RoleAssignmentService,
 } from '@/modules/system/services/roleAssignmentService.js';
-import { clearScopeCache } from '@/modules/scope/scope.service.js';
-import { requestRepository } from '@/modules/request-data/repositories/request.repository.js';
+import { clearScopeCache } from '@/modules/request/scope/scope.service.js';
+import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 import {
   parseSpecialPositionScopes,
   removeOverlaps,
   inferScopeType,
-} from '@/modules/scope/utils.js';
+} from '@/modules/request/scope/utils.js';
 import { applyImmediateMovementEligibilityCutoff } from '@/modules/alerts/services/immediate-rules.service.js';
 
 const SALT_ROUNDS = 10;

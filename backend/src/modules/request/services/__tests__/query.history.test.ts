@@ -1,5 +1,5 @@
-import { requestQueryService } from '@/modules/request-read/services/query.service.js';
-import { requestRepository } from '@/modules/request-data/repositories/request.repository.js';
+import { requestQueryService } from '@/modules/request/read/services/query.service.js';
+import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 
 describe('RequestQueryService.getApprovalHistory', () => {
   beforeEach(() => {

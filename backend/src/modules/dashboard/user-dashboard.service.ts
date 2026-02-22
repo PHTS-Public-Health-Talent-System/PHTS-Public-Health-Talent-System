@@ -4,11 +4,11 @@
  */
 import { NotificationService } from "@/modules/notification/services/notification.service.js";
 import { announcementRepository } from "@/modules/announcement/repositories/announcement.repository.js";
-import { requestQueryService } from "@/modules/request-read/services/query.service.js";
+import { requestQueryService } from "@/modules/request/read/services/query.service.js";
 import {
   RequestStatus,
   RequestWithDetails,
-} from "@/modules/request-contracts/request.types.js";
+} from "@/modules/request/contracts/request.types.js";
 import type { Announcement } from "@/modules/announcement/entities/announcement.entity.js";
 
 export type UserDashboardStats = {

@@ -11,7 +11,7 @@ import {
   PTSRequest,
   STEP_ROLE_MAP,
   ROLE_STEP_MAP,
-} from '@/modules/request-contracts/request.types.js';
+} from '@/modules/request/contracts/request.types.js';
 import { BatchApproveParams, BatchApproveResult } from '@/modules/request/dto/index.js';
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import {
@@ -22,9 +22,9 @@ import {
 import {
   canApproverAccessRequest,
   isRequestOwner,
-} from '@/modules/scope/scope.service.js';
+} from '@/modules/request/scope/scope.service.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
-import { requestRepository } from '@/modules/request-data/repositories/request.repository.js';
+import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 
 // ============================================================================
 // Finalization
