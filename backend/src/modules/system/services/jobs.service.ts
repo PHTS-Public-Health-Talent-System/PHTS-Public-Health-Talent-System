@@ -1,6 +1,6 @@
 import { query } from '@config/database.js';
 import redis from '@config/redis.js';
-import { SyncService } from '@/modules/system/services/syncService.js';
+import { getSyncRuntimeStatus } from '@/modules/sync/services/sync-status.service.js';
 
 type JobError = {
   source: 'sync' | 'notifications' | 'payroll' | 'redis';
@@ -118,7 +118,7 @@ const buildSyncStatus = (syncStatus: {
   lastResult: { success?: boolean } | null;
 }): 'RUNNING' | 'IDLE' | 'FAILED' | 'UNKNOWN' => {
   if (syncStatus.isSyncing) return 'RUNNING';
-  if (syncStatus.lastResult && syncStatus.lastResult.success === false) {
+  if (syncStatus.lastResult?.success === false) {
     return 'FAILED';
   }
   if (syncStatus.lastResult) return 'IDLE';
@@ -154,7 +154,7 @@ export const getJobStatus = async (): Promise<JobStatusPayload> => {
   };
 
   try {
-    syncStatus = await SyncService.getLastSyncStatus();
+    syncStatus = await getSyncRuntimeStatus();
   } catch (err) {
     partial = true;
     errors.push({

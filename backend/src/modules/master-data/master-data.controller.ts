@@ -4,7 +4,7 @@
  */
 import { Request, Response } from "express";
 import * as masterDataService from "@/modules/master-data/services/master-data.service.js";
-import { requestRepository } from "@/modules/request/repositories/request.repository.js";
+import { requestRepository } from "@/modules/request-data/repositories/request.repository.js";
 import { UserRole } from "@/types/auth.js";
 import {
   AuthorizationError,
@@ -93,25 +93,43 @@ export const updateMasterRate = async (req: Request, res: Response) => {
       return;
     }
 
+    const existingRate = existing as Record<string, unknown>;
+    const hasItemNo = Object.hasOwn(body, "item_no");
+    const hasSubItemNo = Object.hasOwn(body, "sub_item_no");
+
+    let itemNo: string | null;
+    if (hasItemNo) {
+      itemNo = body.item_no ?? null;
+    } else if (existingRate.item_no != null) {
+      itemNo = String(existingRate.item_no);
+    } else {
+      itemNo = null;
+    }
+
+    let subItemNo: string | null;
+    if (hasSubItemNo) {
+      subItemNo = body.sub_item_no ?? null;
+    } else if (existingRate.sub_item_no != null) {
+      subItemNo = String(existingRate.sub_item_no);
+    } else {
+      subItemNo = null;
+    }
+
     const merged = {
       profession_code:
-        body.profession_code ?? (existing as any).profession_code,
-      group_no: body.group_no ?? Number((existing as any).group_no),
-      item_no: Object.prototype.hasOwnProperty.call(body, "item_no")
-        ? (body.item_no ?? null)
-        : ((existing as any).item_no ?? null),
-      sub_item_no: Object.prototype.hasOwnProperty.call(body, "sub_item_no")
-        ? (body.sub_item_no ?? null)
-        : ((existing as any).sub_item_no ?? null),
-      amount: body.amount ?? Number((existing as any).amount),
+        String(body.profession_code ?? existingRate.profession_code ?? ""),
+      group_no: body.group_no ?? Number(existingRate.group_no),
+      item_no: itemNo,
+      sub_item_no: subItemNo,
+      amount: body.amount ?? Number(existingRate.amount),
       condition_desc:
-        body.condition_desc ?? (existing as any).condition_desc ?? "",
+        String(body.condition_desc ?? existingRate.condition_desc ?? ""),
       detailed_desc:
-        body.detailed_desc ?? (existing as any).detailed_desc ?? "",
+        String(body.detailed_desc ?? existingRate.detailed_desc ?? ""),
       is_active:
         typeof body.is_active === "boolean"
           ? body.is_active
-          : Boolean((existing as any).is_active ?? true),
+          : Boolean(existingRate.is_active ?? true),
     };
 
     await masterDataService.updateMasterRate(Number(rateId), merged, actorId);

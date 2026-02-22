@@ -84,8 +84,9 @@ export function validateFieldLengths(
   }
 
   if (errors.length > 0) {
+    const details = errors.map((e) => `  - ${e}`).join("\n");
     throw new Error(
-      `Input validation failed:\n${errors.map((e) => `  - ${e}`).join("\n")}`,
+      `Input validation failed:\n${details}`,
     );
   }
 }
@@ -164,8 +165,14 @@ export function sanitizeString(value: string): string {
   // Trim whitespace
   let sanitized = value.trim();
 
-  // Remove control characters (except newlines and tabs)
-  sanitized = sanitized.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, "");
+  // Remove control characters (keep TAB/LF/CR for readable multi-line text)
+  sanitized = Array.from(sanitized)
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      if (code === 9 || code === 10 || code === 13) return true;
+      return code >= 32 && code !== 127;
+    })
+    .join("");
 
   return sanitized;
 }

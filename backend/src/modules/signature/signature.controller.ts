@@ -5,7 +5,7 @@
 import { Request, Response } from "express";
 import { ApiResponse } from "@/types/auth.js";
 import * as signatureService from "@/modules/signature/services/signature.service.js";
-import { SyncService } from "@/modules/system/services/syncService.js";
+import { SyncService } from "@/modules/sync/services/sync.service.js";
 
 const refreshState = new Map<number, { lastAt: number; pending: boolean }>();
 
@@ -85,7 +85,7 @@ export const refreshMySignature = async (
         })
         .finally(() => {
           const state = refreshState.get(userId);
-          if (state && state.lastAt === now) {
+          if (state?.lastAt === now) {
             refreshState.set(userId, { lastAt: state.lastAt, pending: false });
           }
         });

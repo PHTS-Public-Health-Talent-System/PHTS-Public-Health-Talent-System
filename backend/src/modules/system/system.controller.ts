@@ -5,7 +5,11 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "@middlewares/errorHandler.js";
 import { SystemRepository } from "@/modules/system/repositories/system.repository.js";
-import * as systemService from "@/modules/system/services/system.service.js";
+import {
+  isMaintenanceModeEnabled,
+  setMaintenanceMode,
+} from "@/modules/system/services/maintenance.service.js";
+import { getJobStatus as getSystemJobStatus } from "@/modules/system/services/jobs.service.js";
 import {
   emitAuditEvent,
   AuditEventType,
@@ -16,8 +20,6 @@ import type {
   UpdateUserRoleParams,
   UpdateUserRoleBody,
   ToggleMaintenanceModeBody,
-  SyncUserParams,
-  BackupHistoryQuery,
 } from "@/modules/system/system.schema.js";
 
 export const searchUsers = asyncHandler(async (req: Request, res: Response) => {
@@ -50,42 +52,22 @@ export const updateUserRole = asyncHandler(
 
     await SystemRepository.updateUserRole(Number(userId), role, is_active);
 
-    await emitAuditEvent(
-      {
-        eventType: AuditEventType.USER_ROLE_CHANGE,
-        entityType: "USER",
-        entityId: Number(userId),
-        actorId,
-        actionDetail: { role, isActive: is_active },
-      },
-      undefined,
-    );
+    await emitAuditEvent({
+      eventType: AuditEventType.USER_ROLE_CHANGE,
+      entityType: "USER",
+      entityId: Number(userId),
+      actorId,
+      actionDetail: { role, isActive: is_active },
+    });
 
     res.json({ success: true, message: "User role updated successfully" });
-  },
-);
-
-export const triggerSync = asyncHandler(
-  async (_req: Request, res: Response) => {
-    const result = await systemService.SyncService.performFullSync();
-    res.json({ success: true, data: result });
-  },
-);
-
-export const triggerUserSync = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { userId } = req.params as unknown as SyncUserParams;
-    const result = await systemService.SyncService.performUserSync(
-      Number(userId),
-    );
-    res.json({ success: true, data: result });
   },
 );
 
 export const toggleMaintenanceMode = asyncHandler(
   async (req: Request, res: Response) => {
     const { enabled } = req.body as ToggleMaintenanceModeBody;
-    await systemService.setMaintenanceMode(Boolean(enabled));
+    await setMaintenanceMode(Boolean(enabled));
     res.json({
       success: true,
       message: `Maintenance mode ${enabled ? "enabled" : "disabled"}`,
@@ -96,7 +78,7 @@ export const toggleMaintenanceMode = asyncHandler(
 
 export const getMaintenanceMode = asyncHandler(
   async (_req: Request, res: Response) => {
-    const enabled = await systemService.isMaintenanceModeEnabled();
+    const enabled = await isMaintenanceModeEnabled();
     res.json({
       success: true,
       data: { enabled },
@@ -104,29 +86,9 @@ export const getMaintenanceMode = asyncHandler(
   },
 );
 
-export const triggerBackup = asyncHandler(
-  async (_req: Request, res: Response) => {
-    const actorId =
-      (_req as any).user?.userId ?? (_req as any).user?.id ?? null;
-    const result = await systemService.runBackupJob({
-      triggerSource: "MANUAL",
-      triggeredBy: actorId,
-    });
-    res.json({ success: true, data: result });
-  },
-);
-
-export const getBackupHistory = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { limit } = req.query as unknown as BackupHistoryQuery;
-    const rows = await SystemRepository.getBackupHistory(Number(limit || 20));
-    res.json({ success: true, data: rows });
-  },
-);
-
 export const getJobStatus = asyncHandler(
   async (_req: Request, res: Response) => {
-    const data = await systemService.getJobStatus();
+    const data = await getSystemJobStatus();
     res.json({ success: true, data });
   },
 );
