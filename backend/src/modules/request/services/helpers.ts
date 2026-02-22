@@ -51,6 +51,36 @@ export const mapRequestRow = (row: any): PTSRequest | RequestWithDetails => {
     updated_at: row.updated_at,
     step_started_at: row.step_started_at ?? null,
   };
+  const requesterFirstName =
+    (row.requester_first_name as string | undefined) ??
+    (row.first_name as string | undefined);
+  const requesterLastName =
+    (row.requester_last_name as string | undefined) ??
+    (row.last_name as string | undefined);
+  const requesterPosition =
+    (row.requester_position as string | undefined) ??
+    (row.position_name as string | undefined);
+  const requesterRole =
+    (row.requester_role as string | undefined) ??
+    (row.role as string | undefined) ??
+    "USER";
+  const requesterCitizenId =
+    (row.requester_citizen_id as string | undefined) ??
+    (row.citizen_id as string | undefined);
+
+  if (requesterFirstName || requesterLastName || requesterPosition) {
+    return {
+      ...baseRequest,
+      requester: {
+        citizen_id: requesterCitizenId ?? "",
+        role: requesterRole,
+        first_name: requesterFirstName,
+        last_name: requesterLastName,
+        position: requesterPosition,
+      },
+    } as RequestWithDetails;
+  }
+
   return baseRequest as RequestWithDetails; // Trusting the query returns necessary fields
 };
 

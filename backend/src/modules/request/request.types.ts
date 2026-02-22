@@ -154,6 +154,12 @@ export interface RequestAttachment {
 export interface RequestWithDetails extends PTSRequest {
   attachments?: RequestAttachment[];
   actions?: RequestActionWithActor[];
+  latest_verification_snapshot?: {
+    snapshot_id: number;
+    created_at?: Date | string | null;
+    created_by?: number | null;
+    snapshot_data?: Record<string, unknown> | string | null;
+  } | null;
   requester?: {
     citizen_id: string;
     role: string;

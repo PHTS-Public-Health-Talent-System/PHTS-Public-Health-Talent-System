@@ -826,6 +826,10 @@ export class RequestRepository {
     const placeholder = requestIds.map(() => "?").join(",");
     const sql = `
       SELECT r.*,
+             e.title AS requester_title,
+             e.first_name AS requester_first_name,
+             e.last_name AS requester_last_name,
+             e.position_name AS requester_position,
              e.department AS emp_department,
              e.sub_department AS emp_sub_department
       FROM req_submissions r
@@ -1037,6 +1041,22 @@ export class RequestRepository {
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT * FROM req_verification_snapshots WHERE snapshot_id = ?`,
       [snapshotId],
+    );
+    return rows[0] ?? null;
+  }
+
+  async findLatestVerificationSnapshotByRequestId(
+    requestId: number,
+    connection?: PoolConnection,
+  ) {
+    const db = this.getDb(connection);
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT snapshot_id, request_id, created_by, created_at, snapshot_data
+       FROM req_verification_snapshots
+       WHERE request_id = ?
+       ORDER BY snapshot_id DESC
+       LIMIT 1`,
+      [requestId],
     );
     return rows[0] ?? null;
   }

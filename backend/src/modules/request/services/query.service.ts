@@ -212,8 +212,7 @@ export class RequestQueryService {
       const mineIds = await requestRepository.findApprovalHistoryIds(actorId, actions);
       if (mineIds.length === 0) return [];
       const requestIds = mineIds.map((row) => row.request_id);
-      const fullRequests = await requestRepository.findByIds(requestIds);
-      return await hydrateRequests(fullRequests as any[]);
+      return await this.getHydratedHistoryRequests(requestIds);
     }
 
     if (actorRole === "HEAD_WARD" || actorRole === "HEAD_DEPT") {
@@ -237,8 +236,7 @@ export class RequestQueryService {
 
       if (historyIds.length === 0) return [];
       const requestIds = historyIds.map((row) => row.request_id);
-      const fullRequests = await requestRepository.findByIds(requestIds);
-      return await hydrateRequests(fullRequests as any[]);
+      return await this.getHydratedHistoryRequests(requestIds);
     }
 
     if (
@@ -254,8 +252,7 @@ export class RequestQueryService {
 
       if (historyIds.length === 0) return [];
       const requestIds = historyIds.map((row) => row.request_id);
-      const fullRequests = await requestRepository.findByIds(requestIds);
-      return await hydrateRequests(fullRequests as any[]);
+      return await this.getHydratedHistoryRequests(requestIds);
     }
 
     const historyIds = await requestRepository.findApprovalHistoryIds(actorId, actions);
@@ -263,9 +260,58 @@ export class RequestQueryService {
     if (historyIds.length === 0) return [];
 
     const requestIds = historyIds.map((row) => row.request_id);
-    const fullRequests = await requestRepository.findByIds(requestIds);
+    return await this.getHydratedHistoryRequests(requestIds);
+  }
 
-    return await hydrateRequests(fullRequests as any[]);
+  private mapApprovalActionWithActor(action: any): RequestActionWithActor {
+    return {
+      action_id: action.action_id,
+      request_id: action.request_id,
+      actor_id: action.actor_id,
+      action: action.action,
+      step_no: action.step_no,
+      from_step: action.step_no,
+      to_step: action.step_no,
+      comment: action.comment,
+      action_date: action.created_at,
+      created_at: action.created_at,
+      actor: {
+        citizen_id: action.actor_citizen_id,
+        role: action.actor_role,
+        first_name: action.actor_first_name,
+        last_name: action.actor_last_name,
+      },
+    };
+  }
+
+  private async getHydratedHistoryRequests(
+    requestIds: number[],
+  ): Promise<RequestWithDetails[]> {
+    if (requestIds.length === 0) return [];
+
+    const fullRequests = await requestRepository.findByIds(requestIds);
+    const hydrated = await hydrateRequests(fullRequests as any[]);
+    const orderMap = new Map(requestIds.map((id, index) => [id, index]));
+
+    const details = await Promise.all(
+      hydrated.map(async (request) => {
+        const actions = await requestRepository.findApprovalsWithActor(
+          request.request_id,
+        );
+        return {
+          ...request,
+          actions: actions.map((action) =>
+            this.mapApprovalActionWithActor(action),
+          ),
+        };
+      }),
+    );
+
+    return details.sort((a, b) => {
+      const aOrder = orderMap.get(a.request_id) ?? Number.MAX_SAFE_INTEGER;
+      const bOrder = orderMap.get(b.request_id) ?? Number.MAX_SAFE_INTEGER;
+      return aOrder - bOrder;
+    });
   }
 
   // ============================================================================
@@ -376,9 +422,11 @@ export class RequestQueryService {
       throw new Error("Request not found");
     }
 
-    const attachments =
-      await requestRepository.findAttachmentsWithMetadata(requestId);
-    const actions = await requestRepository.findApprovalsWithActor(requestId);
+    const [attachments, actions, latestVerificationSnapshot] = await Promise.all([
+      requestRepository.findAttachmentsWithMetadata(requestId),
+      requestRepository.findApprovalsWithActor(requestId),
+      requestRepository.findLatestVerificationSnapshotByRequestId(requestId),
+    ]);
 
     const actionsWithActor: RequestActionWithActor[] = actions.map(
       (action) => ({
@@ -406,6 +454,23 @@ export class RequestQueryService {
 
     return {
       ...mappedRequest,
+      latest_verification_snapshot: latestVerificationSnapshot
+        ? {
+            snapshot_id: Number((latestVerificationSnapshot as any).snapshot_id),
+            created_at: (latestVerificationSnapshot as any).created_at ?? null,
+            created_by: (latestVerificationSnapshot as any).created_by ?? null,
+            snapshot_data:
+              typeof (latestVerificationSnapshot as any).snapshot_data === "string"
+                ? (() => {
+                    try {
+                      return JSON.parse((latestVerificationSnapshot as any).snapshot_data);
+                    } catch {
+                      return (latestVerificationSnapshot as any).snapshot_data;
+                    }
+                  })()
+                : ((latestVerificationSnapshot as any).snapshot_data ?? null),
+          }
+        : null,
       attachments: attachments.map((att) => ({
         attachment_id: att.attachment_id,
         request_id: att.request_id,
