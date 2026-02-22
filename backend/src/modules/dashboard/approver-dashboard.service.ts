@@ -223,7 +223,3 @@ export const getApproverDashboard = async (userId: number, role: UserRole) => {
     },
   };
 };
-
-// Backward-compat exports during module naming transition.
-export const buildHeadHrDashboard = buildApproverDashboard;
-export const getHeadHrDashboard = getApproverDashboard;

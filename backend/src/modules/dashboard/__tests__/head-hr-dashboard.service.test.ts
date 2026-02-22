@@ -1,8 +1,8 @@
-import { buildHeadHrDashboard } from '@/modules/dashboard/head-hr-dashboard.service.js';
+import { buildApproverDashboard } from '@/modules/dashboard/approver-dashboard.service.js';
 
-describe('buildHeadHrDashboard', () => {
+describe('buildApproverDashboard', () => {
   it('maps stats and pending items with SLA status', () => {
-    const result = buildHeadHrDashboard({
+    const result = buildApproverDashboard({
       pendingRequests: [
         {
           request_id: 10,
