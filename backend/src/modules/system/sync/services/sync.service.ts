@@ -1,7 +1,6 @@
 import bcrypt from 'bcryptjs';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import db from '@config/database.js';
-import redis from '@config/redis.js';
 import {
   assignRoles,
   RoleAssignmentService,
@@ -14,13 +13,24 @@ import {
   inferScopeType,
 } from '@/modules/request/scope/utils.js';
 import { applyImmediateMovementEligibilityCutoff } from '@/modules/workforce-compliance/services/immediate-rules.service.js';
+import type { SyncRuntimeStatus, SyncStats } from '@/modules/system/sync/services/sync.types.js';
+import { createSyncStats } from '@/modules/system/sync/services/sync-stats.service.js';
+import {
+  acquireSyncLock,
+  createSyncLockValue,
+  getLastSyncStatus as getSyncStatusFromCache,
+  releaseSyncLock,
+  setLastSyncResult,
+  startSyncLockHeartbeat,
+} from '@/modules/system/sync/services/sync-lock.service.js';
+import {
+  hasLeaveStatusColumn,
+  hasSupportLevelColumn,
+  upsertEmployeeProfile,
+  upsertLeaveQuota,
+} from '@/modules/system/sync/services/sync-db-helpers.service.js';
 
 const SALT_ROUNDS = 10;
-const SYNC_LOCK_KEY = 'system:sync:lock';
-const SYNC_RESULT_KEY = 'system:sync:last_result';
-const LOCK_TTL_SECONDS = 300; // 5 minutes
-const LOCK_HEARTBEAT_MS = 60_000; // refresh lock every minute
-const RESULT_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 
 export const VIEW_EMPLOYEE_COLUMNS = [
   'citizen_id',
@@ -285,89 +295,6 @@ export const buildSupportEmployeeValues = (vSup: any, options: SupportEmployeeSq
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const hasLeaveStatusColumn = async (conn: PoolConnection): Promise<boolean> => {
-  const [leaveCols] = await conn.query<RowDataPacket[]>(
-    `SELECT COLUMN_NAME
-     FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = 'leave_records'
-       AND COLUMN_NAME IN ('status')`,
-  );
-  const leaveColumnSet = new Set((leaveCols as RowDataPacket[]).map((row) => row.COLUMN_NAME));
-  return leaveColumnSet.has('status');
-};
-
-const hasSupportLevelColumn = async (conn: PoolConnection): Promise<boolean> => {
-  const [supportCols] = await conn.query<RowDataPacket[]>(
-    `SELECT COLUMN_NAME
-     FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = 'vw_hrms_support_staff'
-       AND COLUMN_NAME IN ('level')`,
-  );
-  const supportColumnSet = new Set((supportCols as RowDataPacket[]).map((row) => row.COLUMN_NAME));
-  return supportColumnSet.has('level');
-};
-
-const upsertEmployeeProfile = async (conn: PoolConnection, vEmp: RowDataPacket): Promise<void> => {
-  await conn.execute(
-    `
-      INSERT INTO emp_profiles (
-        citizen_id, title, first_name, last_name, sex, birth_date,
-        position_name, position_number, level, special_position, emp_type,
-        department, sub_department, mission_group, specialist, expert,
-        start_work_date, first_entry_date, original_status, last_synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-      ON DUPLICATE KEY UPDATE
-        position_name = VALUES(position_name),
-        level = VALUES(level),
-        special_position = VALUES(special_position),
-        department = VALUES(department),
-        sub_department = VALUES(sub_department),
-        specialist = VALUES(specialist),
-        expert = VALUES(expert),
-        last_synced_at = NOW()
-    `,
-    [
-      vEmp.citizen_id,
-      vEmp.title,
-      vEmp.first_name,
-      vEmp.last_name,
-      vEmp.sex,
-      vEmp.birth_date,
-      vEmp.position_name,
-      vEmp.position_number,
-      vEmp.level,
-      (vEmp.special_position || '').substring(0, 65535),
-      vEmp.employee_type,
-      vEmp.department,
-      vEmp.sub_department,
-      vEmp.mission_group,
-      vEmp.specialist,
-      vEmp.expert,
-      vEmp.start_current_position,
-      vEmp.first_entry_date,
-      vEmp.original_status,
-    ],
-  );
-};
-
-const upsertLeaveQuota = async (
-  conn: PoolConnection,
-  citizenId: string,
-  fiscalYear: unknown,
-  totalQuota: unknown,
-): Promise<void> => {
-  await conn.execute(
-    `
-      INSERT INTO leave_quotas (citizen_id, fiscal_year, quota_vacation, updated_at)
-      VALUES (?, ?, ?, NOW())
-      ON DUPLICATE KEY UPDATE quota_vacation = VALUES(quota_vacation), updated_at = NOW()
-    `,
-    [citizenId, Number.parseInt(String(fiscalYear), 10), totalQuota],
-  );
-};
-
 const toDateOnly = (value: any): string | null => {
   if (!value) return null;
   if (value instanceof Date) {
@@ -411,23 +338,6 @@ const isChanged = (oldVal: any, newVal: any) => {
     return oldVal !== Number.parseFloat(newVal);
   }
   return String(oldVal ?? '') !== String(newVal ?? '');
-};
-
-type SyncStats = {
-  users: { added: number; updated: number; skipped: number };
-  employees: { upserted: number; skipped: number };
-  support_employees: { upserted: number; skipped: number };
-  signatures: { added: number; skipped: number };
-  licenses: { upserted: number };
-  quotas: { upserted: number };
-  leaves: { upserted: number; skipped: number };
-  movements: { added: number };
-  roles: { updated: number; skipped: number; missing: number };
-};
-
-export type SyncRuntimeStatus = {
-  isSyncing: boolean;
-  lastResult: { success?: boolean } | null;
 };
 
 const getUserIdMap = async (conn: PoolConnection) => {
@@ -983,18 +893,6 @@ const syncSpecialPositionScopesForCitizen = async (conn: PoolConnection, citizen
   }
 };
 
-const createSyncStats = (): SyncStats => ({
-  users: { added: 0, updated: 0, skipped: 0 },
-  employees: { upserted: 0, skipped: 0 },
-  support_employees: { upserted: 0, skipped: 0 },
-  signatures: { added: 0, skipped: 0 },
-  licenses: { upserted: 0 },
-  quotas: { upserted: 0 },
-  leaves: { upserted: 0, skipped: 0 },
-  movements: { added: 0 },
-  roles: { updated: 0, skipped: 0, missing: 0 },
-});
-
 const upsertSingleEmployeeProfile = async (
   conn: PoolConnection,
   citizenId: string,
@@ -1210,46 +1108,11 @@ const assignRoleForSingleUser = async (
 };
 
 export class SyncService {
-  private static createLockValue(): string {
-    return `lock:${Date.now()}`;
-  }
-
-  private static async acquireLock(lockValue: string): Promise<boolean> {
-    const locked = await redis.set(SYNC_LOCK_KEY, lockValue, 'EX', LOCK_TTL_SECONDS, 'NX');
-    return Boolean(locked);
-  }
-
-  private static startLockHeartbeat(lockValue: string): NodeJS.Timeout {
-    return setInterval(async () => {
-      try {
-        await redis.set(SYNC_LOCK_KEY, lockValue, 'EX', LOCK_TTL_SECONDS, 'XX');
-      } catch (err) {
-        console.warn(
-          '[SyncService] Failed to refresh sync lock TTL:',
-          err instanceof Error ? err.message : err,
-        );
-      }
-    }, LOCK_HEARTBEAT_MS);
-  }
-
-  private static parseLastResult(data: string | null): { success?: boolean } | null {
-    if (!data) return null;
-    try {
-      return JSON.parse(data) as { success?: boolean };
-    } catch {
-      return null;
-    }
-  }
-
   /**
    * Return cached status (fast path for dashboards).
    */
   static async getLastSyncStatus(): Promise<SyncRuntimeStatus> {
-    const [data, lock] = await Promise.all([redis.get(SYNC_RESULT_KEY), redis.get(SYNC_LOCK_KEY)]);
-    return {
-      isSyncing: Boolean(lock),
-      lastResult: SyncService.parseLastResult(data),
-    };
+    return getSyncStatusFromCache();
   }
 
   /**
@@ -1258,13 +1121,13 @@ export class SyncService {
   static async performFullSync() {
     console.log('[SyncService] Requesting synchronization...');
 
-    const lockValue = SyncService.createLockValue();
-    const locked = await SyncService.acquireLock(lockValue);
+    const lockValue = createSyncLockValue();
+    const locked = await acquireSyncLock(lockValue);
     if (!locked) {
       console.warn('[SyncService] Synchronization aborted: already in progress.');
       throw new Error('Synchronization is already in progress. Please wait.');
     }
-    const lockHeartbeat = SyncService.startLockHeartbeat(lockValue);
+    const lockHeartbeat = startSyncLockHeartbeat(lockValue);
 
     const startTotal = Date.now();
     const stats = createSyncStats();
@@ -1313,7 +1176,7 @@ export class SyncService {
 
       console.log(`[SyncService] Synchronization completed in ${duration}s`);
 
-      await redis.set(SYNC_RESULT_KEY, JSON.stringify(resultData), 'EX', RESULT_TTL_SECONDS);
+      await setLastSyncResult(resultData);
 
       return resultData;
     } catch (error) {
@@ -1322,7 +1185,7 @@ export class SyncService {
       throw error;
     } finally {
       clearInterval(lockHeartbeat);
-      await SyncService.releaseLock(lockValue);
+      await releaseSyncLock(lockValue);
       conn.release();
     }
   }
@@ -1372,17 +1235,6 @@ export class SyncService {
       throw error;
     } finally {
       conn.release();
-    }
-  }
-
-  private static async releaseLock(lockValue: string) {
-    try {
-      const current = await redis.get(SYNC_LOCK_KEY);
-      if (current === lockValue) {
-        await redis.del(SYNC_LOCK_KEY);
-      }
-    } catch (err) {
-      console.error('[SyncService] Failed to release sync lock:', err);
     }
   }
 }

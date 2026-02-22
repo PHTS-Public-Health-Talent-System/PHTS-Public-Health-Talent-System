@@ -1,7 +1,7 @@
 import redis from '@config/redis.js';
 import { getSyncRuntimeStatus } from '@/modules/system/sync/services/sync-status.service.js';
 import { OpsStatusRepository } from '@/modules/system/repositories/ops-status.repository.js';
-import type { SyncRuntimeStatus } from '@/modules/system/sync/services/sync.service.js';
+import type { SyncRuntimeStatus } from '@/modules/system/sync/services/sync.types.js';
 
 type JobError = {
   source: 'sync' | 'notifications' | 'payroll' | 'redis';
