@@ -4,7 +4,11 @@
  */
 import api from "@/shared/api/axios";
 import { ApiPayload, ApiParams, ApiResponse } from "@/shared/api/types";
-import type { BackupJobRecord, BackupTriggerResult } from "./types";
+import type {
+  BackupJobRecord,
+  BackupSchedule,
+  BackupTriggerResult,
+} from "./types";
 
 export async function searchUsers(params: ApiParams) {
   const res = await api.get<ApiResponse<ApiPayload>>("/system/users", {
@@ -82,6 +86,22 @@ export async function getBackupHistory(
     {
       params: { limit: safeLimit },
     },
+  );
+  return res.data.data;
+}
+
+export async function getBackupSchedule(): Promise<BackupSchedule> {
+  const res = await api.get<ApiResponse<BackupSchedule>>("/system/backup/schedule");
+  return res.data.data;
+}
+
+export async function updateBackupSchedule(payload: {
+  hour: number;
+  minute: number;
+}): Promise<BackupSchedule> {
+  const res = await api.put<ApiResponse<BackupSchedule>>(
+    "/system/backup/schedule",
+    payload,
   );
   return res.data.data;
 }

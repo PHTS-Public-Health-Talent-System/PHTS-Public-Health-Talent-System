@@ -12,11 +12,13 @@ import {
   getVersionInfo,
   getUserById,
   getBackupHistory,
+  getBackupSchedule,
   searchUsers,
   toggleMaintenance,
   triggerBackup,
   triggerSync,
   triggerUserSync,
+  updateBackupSchedule,
   updateUserRole,
 } from "./api";
 
@@ -90,6 +92,25 @@ export function useBackupHistory(limit: number = 20) {
   return useQuery({
     queryKey: ["system-backup-history", limit],
     queryFn: () => getBackupHistory(limit),
+  });
+}
+
+export function useBackupSchedule() {
+  return useQuery({
+    queryKey: ["system-backup-schedule"],
+    queryFn: getBackupSchedule,
+  });
+}
+
+export function useUpdateBackupSchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { hour: number; minute: number }) =>
+      updateBackupSchedule(payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["system-backup-schedule"] });
+      await queryClient.invalidateQueries({ queryKey: ["system-backup-history"] });
+    },
   });
 }
 

@@ -21,3 +21,9 @@ export interface BackupTriggerResult {
   status?: "SUCCESS" | "FAILED";
   output?: string;
 }
+
+export interface BackupSchedule {
+  hour: number;
+  minute: number;
+  timezone: string;
+}

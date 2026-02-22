@@ -14,6 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Server,
   Database,
@@ -25,16 +27,19 @@ import {
   Layers,
   Tag,
   History,
+  Clock3,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useBackupHistory,
+  useBackupSchedule,
   useMaintenanceStatus,
   useSystemJobStatus,
   useSystemVersionInfo,
   useToggleMaintenance,
   useTriggerBackup,
   useTriggerSync,
+  useUpdateBackupSchedule,
 } from '@/features/system';
 import { Progress } from '@/components/ui/progress';
 import { formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
@@ -117,12 +122,16 @@ export default function SystemPage() {
   // --- State ---
   const [isMaintenanceDialogOpen, setIsMaintenanceDialogOpen] = useState(false);
   const [isBackupDialogOpen, setIsBackupDialogOpen] = useState(false);
+  const [isBackupScheduleDialogOpen, setIsBackupScheduleDialogOpen] = useState(false);
   const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
+  const [backupHour, setBackupHour] = useState('02');
+  const [backupMinute, setBackupMinute] = useState('00');
 
   const queryClient = useQueryClient();
 
   // --- Data Fetching ---
   const { data: backupHistory = [], isLoading: isBackupHistoryLoading } = useBackupHistory(5); // Limit to 5 for cleaner UI
+  const backupScheduleQuery = useBackupSchedule();
   const jobsQuery = useSystemJobStatus();
   const versionQuery = useSystemVersionInfo();
   const maintenanceQuery = useMaintenanceStatus();
@@ -131,6 +140,7 @@ export default function SystemPage() {
   const triggerBackupMutation = useTriggerBackup();
   const triggerSyncMutation = useTriggerSync();
   const toggleMaintenanceMutation = useToggleMaintenance();
+  const updateBackupScheduleMutation = useUpdateBackupSchedule();
 
   // --- Data Processing ---
   const jobStatus = (jobsQuery.data ?? {
@@ -145,6 +155,7 @@ export default function SystemPage() {
 
   const versionInfo = (versionQuery.data ?? {}) as VersionResponse;
   const maintenance = (maintenanceQuery.data ?? {}) as MaintenanceResponse;
+  const backupSchedule = backupScheduleQuery.data;
   const maintenanceEnabled = Boolean(maintenance.enabled);
 
   const backlogCount =
@@ -215,6 +226,29 @@ export default function SystemPage() {
       setIsBackupDialogOpen(false);
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, 'สำรองข้อมูลไม่สำเร็จ'));
+    }
+  };
+
+  const handleUpdateBackupSchedule = async () => {
+    const hour = Number(backupHour);
+    const minute = Number(backupMinute);
+    if (
+      Number.isNaN(hour) ||
+      Number.isNaN(minute) ||
+      hour < 0 ||
+      hour > 23 ||
+      minute < 0 ||
+      minute > 59
+    ) {
+      toast.error('เวลาไม่ถูกต้อง กรุณากรอกชั่วโมง 0-23 และนาที 0-59');
+      return;
+    }
+    try {
+      await updateBackupScheduleMutation.mutateAsync({ hour, minute });
+      toast.success('อัปเดตรอบเวลาสำรองข้อมูลแล้ว');
+      setIsBackupScheduleDialogOpen(false);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'ไม่สามารถอัปเดตรอบเวลาสำรองข้อมูลได้'));
     }
   };
 
@@ -433,7 +467,40 @@ export default function SystemPage() {
         </div>
 
         {/* Right Column: Backup History */}
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 space-y-6">
+          <Card className="border-border shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock3 className="h-5 w-5 text-muted-foreground" /> เวลาสำรองข้อมูลอัตโนมัติ
+              </CardTitle>
+              <CardDescription>ระบบจะรันวันละ 1 ครั้งตามเวลาที่ตั้งไว้</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="text-sm text-muted-foreground">เวลาปัจจุบัน</div>
+              <div className="text-2xl font-semibold">
+                {backupSchedule
+                  ? `${String(backupSchedule.hour).padStart(2, '0')}:${String(
+                      backupSchedule.minute,
+                    ).padStart(2, '0')} (${backupSchedule.timezone})`
+                  : '-'}
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  if (backupSchedule) {
+                    setBackupHour(String(backupSchedule.hour).padStart(2, '0'));
+                    setBackupMinute(String(backupSchedule.minute).padStart(2, '0'));
+                  }
+                  setIsBackupScheduleDialogOpen(true);
+                }}
+                disabled={backupScheduleQuery.isLoading}
+              >
+                ปรับเวลาอัตโนมัติ
+              </Button>
+            </CardContent>
+          </Card>
+
           <Card className="border-border shadow-sm h-full flex flex-col">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -589,6 +656,58 @@ export default function SystemPage() {
               disabled={triggerSyncMutation.isPending}
             >
               ยืนยันการซิงค์
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isBackupScheduleDialogOpen}
+        onOpenChange={setIsBackupScheduleDialogOpen}
+      >
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle>ตั้งเวลาสำรองข้อมูลอัตโนมัติ</DialogTitle>
+            <DialogDescription>
+              ตั้งค่าเวลาแบบ 24 ชั่วโมง ระบบจะสำรองข้อมูลวันละ 1 ครั้ง
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="backup-hour">ชั่วโมง (0-23)</Label>
+              <Input
+                id="backup-hour"
+                type="number"
+                min={0}
+                max={23}
+                value={backupHour}
+                onChange={(event) => setBackupHour(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="backup-minute">นาที (0-59)</Label>
+              <Input
+                id="backup-minute"
+                type="number"
+                min={0}
+                max={59}
+                value={backupMinute}
+                onChange={(event) => setBackupMinute(event.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsBackupScheduleDialogOpen(false)}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={handleUpdateBackupSchedule}
+              disabled={updateBackupScheduleMutation.isPending}
+            >
+              บันทึกเวลา
             </Button>
           </DialogFooter>
         </DialogContent>
