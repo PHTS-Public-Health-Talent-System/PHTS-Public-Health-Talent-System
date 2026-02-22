@@ -148,6 +148,14 @@ export interface RequestAttachment {
   uploaded_at: Date;
 }
 
+export type DateLike = Date | string | null;
+export type RequesterLicenseStatus =
+  | "ACTIVE"
+  | "EXPIRED"
+  | "INACTIVE"
+  | "UNKNOWN"
+  | null;
+
 /**
  * Extended request with related data
  */
@@ -156,7 +164,7 @@ export interface RequestWithDetails extends PTSRequest {
   actions?: RequestActionWithActor[];
   latest_verification_snapshot?: {
     snapshot_id: number;
-    created_at?: Date | string | null;
+    created_at?: DateLike;
     created_by?: number | null;
     snapshot_data?: Record<string, unknown> | string | null;
   } | null;
@@ -168,9 +176,9 @@ export interface RequestWithDetails extends PTSRequest {
     position?: string;
     license_no?: string | null;
     license_name?: string | null;
-    license_valid_from?: Date | string | null;
-    license_valid_until?: Date | string | null;
-    license_status?: "ACTIVE" | "EXPIRED" | "INACTIVE" | "UNKNOWN" | null;
+    license_valid_from?: DateLike;
+    license_valid_until?: DateLike;
+    license_status?: RequesterLicenseStatus;
   };
 }
 

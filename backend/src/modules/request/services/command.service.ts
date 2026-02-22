@@ -13,7 +13,7 @@ import {
   STEP_ROLE_MAP,
   ROLE_STEP_MAP,
   RequestWithDetails,
-} from '@/modules/request/request.types.js';
+} from '@/modules/request-contracts/request.types.js';
 import { CreateRequestDTO, UpdateRequestDTO } from '@/modules/request/dto/index.js';
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import {
@@ -23,10 +23,10 @@ import {
   getRequestLinkForRole,
   parseJsonField,
 } from '@/modules/request/services/helpers.js';
-import { requestQueryService } from '@/modules/request/services/query.service.js'; // Use the class instance
+import { requestQueryService } from '@/modules/request-read/services/query.service.js'; // Use the class instance
 import { enqueueRequestOcrPrecheck } from '@/modules/request/services/ocr-precheck.service.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
-import { requestRepository } from '@/modules/request/repositories/request.repository.js'; // [NEW]
+import { requestRepository } from '@/modules/request-data/repositories/request.repository.js'; // [NEW]
 import { resolveProfessionCode } from '@shared/utils/profession.js';
 import {
   AuthorizationError,
@@ -47,7 +47,7 @@ export class RequestCommandService {
     const originalHasThai = this.containsThai(name);
     const decodedHasThai = this.containsThai(decoded);
     if (!originalHasThai && decodedHasThai) return decoded;
-    if (name.includes('�') && decodedHasThai) return decoded;
+    if (name.includes("\uFFFD") && decodedHasThai) return decoded;
     return name;
   }
 
@@ -79,6 +79,93 @@ export class RequestCommandService {
       }
     }
     return {};
+  }
+
+  private ensureRequestCanBeSubmitted(
+    requestEntity: Awaited<ReturnType<typeof requestRepository.findById>>,
+    userId: number,
+  ): NonNullable<Awaited<ReturnType<typeof requestRepository.findById>>> {
+    if (!requestEntity) {
+      throw new Error("Request not found");
+    }
+    if (requestEntity.user_id !== userId) {
+      throw new Error("You do not have permission to submit this request");
+    }
+    if (requestEntity.status !== RequestStatus.DRAFT) {
+      throw new Error(`Cannot submit request with status: ${requestEntity.status}`);
+    }
+    if (!requestEntity.requested_amount || requestEntity.requested_amount <= 0) {
+      throw new Error("requested_amount is required before submit");
+    }
+    return requestEntity;
+  }
+
+  private resolveSubmitStep(stepRaw: number | null | undefined, userRole: string): {
+    stepNo: number;
+    nextStep: number;
+  } {
+    const stepNo = stepRaw && stepRaw > 0 ? stepRaw : 1;
+    let nextStep = stepNo;
+    if (stepNo === 1 && userRole === "HEAD_WARD") {
+      nextStep = 2;
+    } else if (stepNo === 1 && userRole === "HEAD_DEPT") {
+      nextStep = 3;
+    }
+    return { stepNo, nextStep };
+  }
+
+  private async resolveSubmitSignature(
+    citizenId: string | null | undefined,
+    requestId: number,
+    connection: PoolConnection,
+  ): Promise<Buffer> {
+    let signatureSnapshot = citizenId
+      ? await requestRepository.findSignatureSnapshot(citizenId, connection)
+      : null;
+    if (!signatureSnapshot) {
+      const signaturePath = await requestRepository.findSignatureAttachmentPath(
+        requestId,
+        connection,
+      );
+      if (signaturePath) {
+        signatureSnapshot = await readFile(signaturePath);
+      }
+    }
+    if (!signatureSnapshot) {
+      throw new Error("ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนส่งคำขอ");
+    }
+    return signatureSnapshot;
+  }
+
+  private assertRateMappingUpdatePermission(
+    request: NonNullable<Awaited<ReturnType<typeof requestRepository.findById>>>,
+    userId: number,
+    role: string,
+  ): void {
+    const isOwner = request.user_id === userId;
+    const isOfficer = role === "PTS_OFFICER";
+    if (!isOwner && !isOfficer) {
+      throw new AuthorizationError("You do not have permission to update rate mapping");
+    }
+    if (isOwner) {
+      const canOwnerEdit =
+        request.status === RequestStatus.DRAFT ||
+        request.status === RequestStatus.RETURNED;
+      if (!canOwnerEdit) {
+        throw new Error("Rate mapping can only be updated in draft or returned status");
+      }
+    }
+    if (!isOfficer) return;
+    const officerStep = ROLE_STEP_MAP["PTS_OFFICER"];
+    const isOfficerStep =
+      request.status === RequestStatus.PENDING &&
+      request.current_step === officerStep;
+    if (!isOfficerStep) {
+      throw new Error("Request is not at PTS officer step");
+    }
+    if (request.assigned_officer_id && request.assigned_officer_id !== userId) {
+      throw new Error("Request is assigned to another officer");
+    }
   }
 
   // --- Helpers (Internal) ---
@@ -121,6 +208,122 @@ export class RequestCommandService {
         connection,
       );
     }
+  }
+
+  private hasOfficerDisallowedFields(data: UpdateRequestDTO): boolean {
+    return (
+      data.personnel_type !== undefined ||
+      data.position_number !== undefined ||
+      data.department_group !== undefined ||
+      data.main_duty !== undefined ||
+      data.work_attributes !== undefined ||
+      data.request_type !== undefined ||
+      data.requested_amount !== undefined ||
+      data.effective_date !== undefined ||
+      data.reason !== undefined
+    );
+  }
+
+  private assertOfficerSubmissionData(data: UpdateRequestDTO): void {
+    if (!data.submission_data) return;
+    const keys = Object.keys(data.submission_data);
+    const allowedKeys = new Set(['verification_checks']);
+    const hasOther = keys.some((key) => !allowedKeys.has(key));
+    if (hasOther) {
+      throw new Error('PTS_OFFICER can only update verification_checks in submission_data');
+    }
+  }
+
+  private assertOfficerCanEditRequest(
+    requestEntity: NonNullable<Awaited<ReturnType<typeof requestRepository.findById>>>,
+    userId: number,
+    data: UpdateRequestDTO,
+    files?: Express.Multer.File[],
+    signatureFile?: Express.Multer.File,
+  ): void {
+    const officerStep = ROLE_STEP_MAP['PTS_OFFICER'];
+    if (
+      requestEntity.status !== RequestStatus.PENDING ||
+      requestEntity.current_step !== officerStep
+    ) {
+      throw new Error('คำขอนี้ไม่อยู่ในขั้นตอนที่เจ้าหน้าที่สามารถแก้ไขได้');
+    }
+    if (requestEntity.assigned_officer_id && requestEntity.assigned_officer_id !== userId) {
+      throw new Error('คำขอนี้ถูกมอบหมายให้เจ้าหน้าที่ท่านอื่นแล้ว');
+    }
+    if ((files && files.length > 0) || signatureFile) {
+      throw new Error('PTS_OFFICER cannot modify attachments or signature');
+    }
+    if (this.hasOfficerDisallowedFields(data)) {
+      throw new Error('PTS_OFFICER can only update verification checks via submission_data');
+    }
+    this.assertOfficerSubmissionData(data);
+  }
+
+  private assertCanUpdateRequest(
+    requestEntity: NonNullable<Awaited<ReturnType<typeof requestRepository.findById>>>,
+    userId: number,
+    userRole: string,
+    data: UpdateRequestDTO,
+    files?: Express.Multer.File[],
+    signatureFile?: Express.Multer.File,
+  ): { isOwner: boolean; isOfficer: boolean } {
+    const isOwner = requestEntity.user_id === userId;
+    const isOfficer = userRole === 'PTS_OFFICER';
+
+    if (!isOwner && !isOfficer) {
+      throw new Error('คุณไม่มีสิทธิ์แก้ไขคำขอนี้');
+    }
+
+    if (isOwner) {
+      const canOwnerEdit =
+        requestEntity.status === RequestStatus.DRAFT ||
+        requestEntity.status === RequestStatus.RETURNED;
+      if (!canOwnerEdit) {
+        throw new Error(
+          `ไม่สามารถแก้ไขคำขอที่มีสถานะ ${requestEntity.status} ได้ (ต้องเป็น DRAFT หรือ RETURNED เท่านั้น)`,
+        );
+      }
+    }
+
+    if (isOfficer) {
+      this.assertOfficerCanEditRequest(requestEntity, userId, data, files, signatureFile);
+    }
+
+    return { isOwner, isOfficer };
+  }
+
+  private buildRequestUpdateData(
+    data: UpdateRequestDTO,
+    isOwner: boolean,
+    currentStatus: string,
+  ): Record<string, unknown> {
+    const updateData: Record<string, unknown> = {};
+
+    if (data.personnel_type !== undefined) updateData.personnel_type = data.personnel_type;
+    if (data.position_number !== undefined)
+      updateData.current_position_number = data.position_number || null;
+    if (data.department_group !== undefined)
+      updateData.current_department = data.department_group || null;
+    if (data.main_duty !== undefined) updateData.main_duty = data.main_duty || null;
+    if (data.work_attributes !== undefined) updateData.work_attributes = data.work_attributes;
+    if (data.request_type !== undefined) updateData.request_type = data.request_type;
+    if (data.requested_amount !== undefined) {
+      updateData.requested_amount = Number(data.requested_amount);
+    }
+    if (data.effective_date !== undefined) {
+      updateData.effective_date = new Date(normalizeDateToYMD(data.effective_date));
+    }
+    if (data.submission_data !== undefined) {
+      updateData.submission_data = data.submission_data;
+    }
+
+    if (isOwner && currentStatus === RequestStatus.RETURNED) {
+      updateData.status = RequestStatus.DRAFT;
+      updateData.step_started_at = null;
+    }
+
+    return updateData;
   }
 
   async confirmAttachments(requestId: number, userId: number) {
@@ -318,54 +521,18 @@ export class RequestCommandService {
       // [REFACTOR] Lock row for update check
       const requestEntity = await requestRepository.findById(requestId, connection);
 
-      if (!requestEntity) {
-        throw new Error('Request not found');
-      }
+      const requestRow = this.ensureRequestCanBeSubmitted(requestEntity, userId);
+      const { stepNo, nextStep } = this.resolveSubmitStep(
+        requestRow.current_step,
+        userRole,
+      );
+      const signatureSnapshot = await this.resolveSubmitSignature(
+        requestRow.citizen_id,
+        requestId,
+        connection,
+      );
 
-      // Check Permission
-      if (requestEntity.user_id !== userId) {
-        throw new Error('You do not have permission to submit this request');
-      }
-
-      if (requestEntity.status !== RequestStatus.DRAFT) {
-        throw new Error(`Cannot submit request with status: ${requestEntity.status}`);
-      }
-
-      if (!requestEntity.requested_amount || requestEntity.requested_amount <= 0) {
-        throw new Error('requested_amount is required before submit');
-      }
-
-      const stepNo =
-        requestEntity.current_step && requestEntity.current_step > 0
-          ? requestEntity.current_step
-          : 1;
-      const nextStep =
-        userRole === 'HEAD_WARD' && stepNo === 1
-          ? 2
-          : userRole === 'HEAD_DEPT' && stepNo === 1
-            ? 3
-            : stepNo;
-
-      // Capture signature snapshot on submit (sig_images or applicant signature)
-      const citizenId = requestEntity.citizen_id;
-      let signatureSnapshot = citizenId
-        ? await requestRepository.findSignatureSnapshot(citizenId, connection)
-        : null;
-      if (!signatureSnapshot) {
-        const signaturePath = await requestRepository.findSignatureAttachmentPath(
-          requestId,
-          connection,
-        );
-        if (signaturePath) {
-          signatureSnapshot = await readFile(signaturePath);
-        }
-      }
-
-      if (!signatureSnapshot) {
-        throw new Error('ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนส่งคำขอ');
-      }
-
-      const submissionData = this.parseSubmissionData(requestEntity.submission_data);
+      const submissionData = this.parseSubmissionData(requestRow.submission_data);
       const nowIso = new Date().toISOString();
 
       // [REFACTOR] Use Repo Update
@@ -407,7 +574,7 @@ export class RequestCommandService {
       await NotificationService.notifyRole(
         nextRole,
         'มีคำขอใหม่รออนุมัติ',
-        `มีคำขอเลขที่ ${requestEntity.request_no} รอการตรวจสอบจากท่าน`,
+        `มีคำขอเลขที่ ${requestRow.request_no} รอการตรวจสอบจากท่าน`,
         getRequestLinkForRole(nextRole, requestId),
         undefined,
         connection,
@@ -452,95 +619,15 @@ export class RequestCommandService {
         throw new Error('ไม่พบคำขอที่ต้องการแก้ไข');
       }
 
-      const isOwner = requestEntity.user_id === userId;
-      const isOfficer = userRole === 'PTS_OFFICER';
-
-      if (!isOwner && !isOfficer) {
-        throw new Error('คุณไม่มีสิทธิ์แก้ไขคำขอนี้');
-      }
-
-      if (isOwner) {
-        if (
-          requestEntity.status !== RequestStatus.DRAFT &&
-          requestEntity.status !== RequestStatus.RETURNED
-        ) {
-          throw new Error(
-            `ไม่สามารถแก้ไขคำขอที่มีสถานะ ${requestEntity.status} ได้ (ต้องเป็น DRAFT หรือ RETURNED เท่านั้น)`,
-          );
-        }
-      }
-
-      if (isOfficer) {
-        const officerStep = ROLE_STEP_MAP['PTS_OFFICER'];
-        if (
-          requestEntity.status !== RequestStatus.PENDING ||
-          requestEntity.current_step !== officerStep
-        ) {
-          throw new Error('คำขอนี้ไม่อยู่ในขั้นตอนที่เจ้าหน้าที่สามารถแก้ไขได้');
-        }
-        if (requestEntity.assigned_officer_id && requestEntity.assigned_officer_id !== userId) {
-          throw new Error('คำขอนี้ถูกมอบหมายให้เจ้าหน้าที่ท่านอื่นแล้ว');
-        }
-        if ((files && files.length > 0) || _signatureFile) {
-          throw new Error('PTS_OFFICER cannot modify attachments or signature');
-        }
-
-        const hasDisallowedFields =
-          data.personnel_type !== undefined ||
-          data.position_number !== undefined ||
-          data.department_group !== undefined ||
-          data.main_duty !== undefined ||
-          data.work_attributes !== undefined ||
-          data.request_type !== undefined ||
-          data.requested_amount !== undefined ||
-          data.effective_date !== undefined ||
-          data.reason !== undefined;
-
-        if (hasDisallowedFields) {
-          throw new Error('PTS_OFFICER can only update verification checks via submission_data');
-        }
-
-        if (data.submission_data) {
-          const keys = Object.keys(data.submission_data);
-          const allowedKeys = new Set(['verification_checks']);
-          const hasOther = keys.some((key) => !allowedKeys.has(key));
-          if (hasOther) {
-            throw new Error('PTS_OFFICER can only update verification_checks in submission_data');
-          }
-        }
-      }
-
-      // Build update object
-      const updateData: any = {};
-
-      if (data.personnel_type !== undefined) updateData.personnel_type = data.personnel_type;
-      if (data.position_number !== undefined)
-        updateData.current_position_number = data.position_number || null;
-      if (data.department_group !== undefined)
-        updateData.current_department = data.department_group || null;
-      if (data.main_duty !== undefined) updateData.main_duty = data.main_duty || null;
-      if (data.work_attributes !== undefined) updateData.work_attributes = data.work_attributes;
-      if (data.request_type !== undefined) updateData.request_type = data.request_type;
-
-      if (data.requested_amount !== undefined) {
-        const amount = Number(data.requested_amount);
-        // Rate validation skipped - allowing any amount for testing
-        updateData.requested_amount = amount;
-      }
-
-      if (data.effective_date !== undefined) {
-        updateData.effective_date = new Date(normalizeDateToYMD(data.effective_date));
-      }
-
-      if (data.submission_data !== undefined) {
-        updateData.submission_data = data.submission_data;
-      }
-
-      // Reset status if RETURNED -> DRAFT
-      if (isOwner && requestEntity.status === RequestStatus.RETURNED) {
-        updateData.status = RequestStatus.DRAFT;
-        updateData.step_started_at = null;
-      }
+      const { isOwner } = this.assertCanUpdateRequest(
+        requestEntity,
+        userId,
+        userRole,
+        data,
+        files,
+        _signatureFile,
+      );
+      const updateData = this.buildRequestUpdateData(data, isOwner, requestEntity.status);
 
       // [REFACTOR] Use Repo Update
       if (Object.keys(updateData).length > 0) {
@@ -740,34 +827,7 @@ export class RequestCommandService {
       const request = await requestRepository.findById(requestId, connection);
       if (!request) throw new Error('Request not found');
 
-      const isOwner = request.user_id === userId;
-      const isOfficer = role === 'PTS_OFFICER';
-
-      if (!isOwner && !isOfficer) {
-        throw new AuthorizationError('You do not have permission to update rate mapping');
-      }
-
-      if (isOwner) {
-        if (
-          request.status !== RequestStatus.DRAFT &&
-          request.status !== RequestStatus.RETURNED
-        ) {
-          throw new Error('Rate mapping can only be updated in draft or returned status');
-        }
-      }
-
-      if (isOfficer) {
-        const officerStep = ROLE_STEP_MAP['PTS_OFFICER'];
-        if (
-          request.status !== RequestStatus.PENDING ||
-          request.current_step !== officerStep
-        ) {
-          throw new Error('Request is not at PTS officer step');
-        }
-        if (request.assigned_officer_id && request.assigned_officer_id !== userId) {
-          throw new Error('Request is assigned to another officer');
-        }
-      }
+      this.assertRateMappingUpdatePermission(request, userId, role);
 
       // Resolve profession from position name (joined field) or fallback
       const positionName = request.position_name || '';

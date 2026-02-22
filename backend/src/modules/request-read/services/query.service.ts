@@ -1,5 +1,5 @@
 /**
- * src/modules/request/services/query.service.ts
+ * src/modules/request-read/services/query.service.ts
  */
 import {
   RequestStatus,
@@ -7,21 +7,100 @@ import {
   RequestWithDetails,
   ROLE_STEP_MAP,
   RequestActionWithActor,
-} from '@/modules/request/request.types.js';
+} from '@/modules/request-contracts/request.types.js';
 import { mapRequestRow, hydrateRequests } from '@/modules/request/services/helpers.js';
 import {
   getScopeFilterForApprover,
   getScopeFilterForSelectedScope,
   canApproverAccessRequest,
   getApproverScopes,
-} from '@/modules/request/scope/scope.service.js';
-import { requestRepository } from '@/modules/request/repositories/request.repository.js'; // [NEW]
+} from '@/modules/scope/scope.service.js';
+import { requestRepository } from '@/modules/request-data/repositories/request.repository.js'; // [NEW]
 
 // ============================================================================
 // User's Requests
 // ============================================================================
 
 export class RequestQueryService {
+  private resolveRequesterLicenseStatus(reqAny: any):
+    | "ACTIVE"
+    | "EXPIRED"
+    | "INACTIVE"
+    | "UNKNOWN"
+    | null {
+    const hasLicenseData = Boolean(
+      reqAny.license_no ||
+        reqAny.license_name ||
+        reqAny.license_valid_from ||
+        reqAny.license_valid_until,
+    );
+    if (!hasLicenseData) {
+      return null;
+    }
+
+    const licenseStatusRaw =
+      (reqAny.license_raw_status as string | null)?.toUpperCase() ?? null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const licenseValidUntil = reqAny.license_valid_until
+      ? new Date(reqAny.license_valid_until)
+      : null;
+
+    if (licenseStatusRaw && licenseStatusRaw !== "ACTIVE") {
+      return "INACTIVE";
+    }
+    if (
+      licenseValidUntil &&
+      !Number.isNaN(licenseValidUntil.getTime()) &&
+      licenseValidUntil < today
+    ) {
+      return "EXPIRED";
+    }
+    if (licenseValidUntil || licenseStatusRaw === "ACTIVE" || licenseStatusRaw === null) {
+      return "ACTIVE";
+    }
+    return "UNKNOWN";
+  }
+
+  private async ensureRequestReadAccess(
+    request: any,
+    requestId: number,
+    userId: number,
+    userRole: string,
+  ): Promise<void> {
+    const isOwner = request.user_id === userId;
+    const isAdmin = userRole === "ADMIN";
+    let isApprover =
+      ROLE_STEP_MAP[userRole as keyof typeof ROLE_STEP_MAP] !== undefined &&
+      request.status === RequestStatus.PENDING &&
+      request.current_step === ROLE_STEP_MAP[userRole as keyof typeof ROLE_STEP_MAP];
+
+    let hasScopeAccess = false;
+    if (userRole === "HEAD_WARD" || userRole === "HEAD_DEPT") {
+      hasScopeAccess = await canApproverAccessRequest(
+        userId,
+        userRole,
+        request.emp_department || request.current_department || "",
+        request.emp_sub_department || "",
+      );
+      if (!hasScopeAccess) {
+        isApprover = false;
+      }
+    }
+    if ((userRole === "HEAD_WARD" || userRole === "HEAD_DEPT") && hasScopeAccess) {
+      isApprover = true;
+    }
+    if (isOwner || isApprover || isAdmin) {
+      return;
+    }
+
+    const approvals = await requestRepository.findApprovalsWithActor(requestId);
+    const isActor = approvals.some((approval) => approval.actor_id === userId);
+    if (!isActor) {
+      throw new Error("You do not have permission to view this request");
+    }
+  }
+
   async getEligibilityList(
     activeOnly: boolean = true,
   ): Promise<Record<string, unknown>[]> {
@@ -323,77 +402,18 @@ export class RequestQueryService {
     userId: number,
     userRole: string,
   ): Promise<RequestWithDetails> {
-    const request = await requestRepository.findById(requestId); // Simple find
+    const request = await requestRepository.findById(requestId);
 
     if (!request) {
       throw new Error("Request not found");
     }
 
-    const isOwner = request.user_id === userId;
-    const isAdmin = userRole === "ADMIN";
-
-    // Check if user is approver at the current step
-    let isApprover =
-      ROLE_STEP_MAP[userRole as keyof typeof ROLE_STEP_MAP] !== undefined &&
-      request.status === RequestStatus.PENDING &&
-      request.current_step ===
-        ROLE_STEP_MAP[userRole as keyof typeof ROLE_STEP_MAP];
-
-    let hasScopeAccess = false;
-    // For HEAD_WARD and HEAD_DEPT, also verify scope access
-    if (userRole === "HEAD_WARD" || userRole === "HEAD_DEPT") {
-      const reqAny = request as any;
-      hasScopeAccess = await canApproverAccessRequest(
-        userId,
-        userRole,
-        reqAny.emp_department || request.current_department || "",
-        reqAny.emp_sub_department || "",
-      );
-      if (!hasScopeAccess) {
-        isApprover = false;
-      }
-    }
-
-    // Allow HEAD_WARD/HEAD_DEPT to view within their scope even if not current step
-    const canViewByScope =
-      (userRole === "HEAD_WARD" || userRole === "HEAD_DEPT") && hasScopeAccess;
-
-    if (canViewByScope) {
-      isApprover = true;
-    }
-
-    if (!isOwner && !isApprover && !isAdmin) {
-      // Check if actor by fetching approvals
-      const approvals =
-        await requestRepository.findApprovalsWithActor(requestId);
-      const isActor = approvals.some((a) => a.actor_id === userId);
-
-      if (!isActor) {
-        throw new Error("You do not have permission to view this request");
-      }
-    }
+    await this.ensureRequestReadAccess(request as any, requestId, userId, userRole);
 
     const details = await this.getRequestDetails(requestId);
 
     const reqAny = request as any;
-    const licenseStatusRaw = (reqAny.license_raw_status as string | null)?.toUpperCase() ?? null;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const licenseValidUntil = reqAny.license_valid_until
-      ? new Date(reqAny.license_valid_until)
-      : null;
-    let licenseStatus: "ACTIVE" | "EXPIRED" | "INACTIVE" | "UNKNOWN" | null = null;
-    if (reqAny.license_no || reqAny.license_name || reqAny.license_valid_from || reqAny.license_valid_until) {
-      if (licenseStatusRaw && licenseStatusRaw !== "ACTIVE") {
-        licenseStatus = "INACTIVE";
-      } else if (licenseValidUntil && !Number.isNaN(licenseValidUntil.getTime()) && licenseValidUntil < today) {
-        licenseStatus = "EXPIRED";
-      } else if (licenseValidUntil || licenseStatusRaw === "ACTIVE" || licenseStatusRaw === null) {
-        licenseStatus = "ACTIVE";
-      } else {
-        licenseStatus = "UNKNOWN";
-      }
-    }
+    const licenseStatus = this.resolveRequesterLicenseStatus(reqAny);
 
     details.requester = {
       citizen_id: reqAny.citizen_id,

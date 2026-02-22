@@ -6,22 +6,16 @@
  */
 
 import { delCache, setJsonCache } from '@shared/utils/cache.js';
-import { requestRepository } from '@/modules/request/repositories/request.repository.js';
+import { requestRepository } from '@/modules/request-data/repositories/request.repository.js';
 import {
   ApproverScopes,
   parseSpecialPositionScopes,
   removeOverlaps,
   resolveApproverRole,
   inferScopeType,
-} from '@/modules/request/scope/utils.js';
+} from '@/modules/scope/utils.js';
 
 const SCOPE_CACHE_TTL_SECONDS = 6 * 60 * 60;
-
-/**
- * Cache for approver scopes (in-memory, cleared on restart)
- * Key: `${userId}_${role}`, Value: ApproverScopes
- */
-const scopeCache = new Map<string, ApproverScopes>();
 
 /**
  * Get approver scopes from database based on special_position
@@ -46,7 +40,6 @@ export async function getApproverScopes(
 
   if (!citizenId) {
     const emptyScopes = { wardScopes: [], deptScopes: [] };
-    scopeCache.set(cacheKey, emptyScopes);
     await setJsonCache(redisKey, emptyScopes, SCOPE_CACHE_TTL_SECONDS);
     return emptyScopes;
   }
@@ -55,7 +48,6 @@ export async function getApproverScopes(
   const employeeExists = await requestRepository.findEmployeeExists(citizenId);
   if (!employeeExists) {
     const emptyScopes = { wardScopes: [], deptScopes: [] };
-    scopeCache.set(cacheKey, emptyScopes);
     await setJsonCache(redisKey, emptyScopes, SCOPE_CACHE_TTL_SECONDS);
     return emptyScopes;
   }
@@ -63,7 +55,6 @@ export async function getApproverScopes(
   const originalStatus = await requestRepository.findOriginalStatus(citizenId);
   if (!isActiveOriginalStatus(originalStatus)) {
     const emptyScopes = { wardScopes: [], deptScopes: [] };
-    scopeCache.set(cacheKey, emptyScopes);
     await setJsonCache(redisKey, emptyScopes, SCOPE_CACHE_TTL_SECONDS);
     return emptyScopes;
   }
@@ -86,14 +77,12 @@ export async function getApproverScopes(
       .filter((m) => m.scope_type === "DEPT")
       .map((m) => m.scope_name);
     const scopes = { wardScopes, deptScopes };
-    scopeCache.set(cacheKey, scopes);
     await setJsonCache(redisKey, scopes, SCOPE_CACHE_TTL_SECONDS);
     return scopes;
   }
 
   const specialPosition = await requestRepository.findSpecialPosition(citizenId);
   const scopes = parseAndClassifyScopes(specialPosition);
-  scopeCache.set(cacheKey, scopes);
   await setJsonCache(redisKey, scopes, SCOPE_CACHE_TTL_SECONDS);
   return scopes;
 }
@@ -233,11 +222,8 @@ export function clearScopeCache(userId?: number): void {
   if (userId) {
     const wardKey = `${userId}_HEAD_WARD`;
     const deptKey = `${userId}_HEAD_DEPT`;
-    scopeCache.delete(wardKey);
-    scopeCache.delete(deptKey);
     void delCache(`scope:${wardKey}`, `scope:${deptKey}`);
   } else {
-    scopeCache.clear();
     void delCache();
   }
 }

@@ -7,7 +7,8 @@ import { asyncHandler } from "@middlewares/errorHandler.js";
 import { SystemRepository } from "@/modules/system/repositories/system.repository.js";
 import {
   isMaintenanceModeEnabled,
-  setMaintenanceMode,
+  disableMaintenanceMode,
+  enableMaintenanceMode,
 } from "@/modules/system/services/maintenance.service.js";
 import { getJobStatus as getSystemJobStatus } from "@/modules/system/services/jobs.service.js";
 import {
@@ -67,7 +68,11 @@ export const updateUserRole = asyncHandler(
 export const toggleMaintenanceMode = asyncHandler(
   async (req: Request, res: Response) => {
     const { enabled } = req.body as ToggleMaintenanceModeBody;
-    await setMaintenanceMode(Boolean(enabled));
+    if (Boolean(enabled)) {
+      await enableMaintenanceMode();
+    } else {
+      await disableMaintenanceMode();
+    }
     res.json({
       success: true,
       message: `Maintenance mode ${enabled ? "enabled" : "disabled"}`,

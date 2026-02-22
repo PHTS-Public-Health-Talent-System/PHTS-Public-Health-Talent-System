@@ -1,5 +1,5 @@
 /**
- * src/modules/request/repositories/request.repository.ts
+ * src/modules/request-data/repositories/request.repository.ts
  */
 import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import pool from '@config/database.js';
@@ -7,8 +7,8 @@ import {
   RequestSubmissionEntity,
   RequestAttachmentEntity,
   RequestApprovalEntity,
-} from '@/modules/request/entities/request.entity.js';
-import { ELIGIBILITY_EXPIRING_DAYS } from '@/modules/request/request.constants.js';
+} from '@/modules/request-contracts/request.entity.js';
+import { ELIGIBILITY_EXPIRING_DAYS } from '@/modules/request-contracts/request.constants.js';
 
 export class RequestRepository {
   // Helper to choose between Connection (Transaction) or Pool (Auto-commit)
@@ -1205,15 +1205,6 @@ export class RequestRepository {
     );
   }
 
-  // [NEW] Find User Citizen ID
-  async findUserCitizenId(userId: number): Promise<string | null> {
-    const [rows] = await pool.query<RowDataPacket[]>(
-      "SELECT citizen_id FROM users WHERE id = ? LIMIT 1",
-      [userId],
-    );
-    return rows.length ? (rows[0].citizen_id as string) : null;
-  }
-
   // --- REASSIGN Operations ---
 
   async findAvailableOfficers(
@@ -1289,6 +1280,10 @@ export class RequestRepository {
   // --- Scope Resolution ---
 
   async findCitizenIdByUserId(userId: number): Promise<string | null> {
+    return this.findUserCitizenId(userId);
+  }
+
+  async findUserCitizenId(userId: number): Promise<string | null> {
     const [rows] = await pool.query<RowDataPacket[]>(
       "SELECT citizen_id FROM users WHERE id = ? LIMIT 1",
       [userId],

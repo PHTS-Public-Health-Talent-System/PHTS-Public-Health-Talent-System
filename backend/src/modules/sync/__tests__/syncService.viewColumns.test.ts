@@ -1,4 +1,4 @@
-const loadModule = async () => import("../services/syncService.js");
+const loadModule = async () => import("../services/sync.service.js");
 
 describe("SyncService view column lists", () => {
   test("vw_hrms_employees columns are explicit", async () => {

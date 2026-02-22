@@ -153,17 +153,17 @@ export const createMasterRate = async (req: Request, res: Response) => {
     } = req.body as CreateRateDTO;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
 
-    const rateId = await masterDataService.createMasterRate(
+    const rateId = await masterDataService.createMasterRate({
       profession_code,
       group_no,
-      item_no ?? null,
-      sub_item_no ?? null,
+      item_no: item_no ?? null,
+      sub_item_no: sub_item_no ?? null,
       amount,
       condition_desc,
       detailed_desc,
-      is_active ? 1 : 0,
+      is_active: is_active ? 1 : 0,
       actorId,
-    );
+    });
     res.json({
       success: true,
       data: { rateId },

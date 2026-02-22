@@ -2,10 +2,10 @@
  * src/modules/request/reassign/reassign.service.ts
  */
 import { getConnection } from '@config/database.js';
-import { RequestStatus, ActionType, ROLE_STEP_MAP } from '@/modules/request/request.types.js';
+import { RequestStatus, ActionType, ROLE_STEP_MAP } from '@/modules/request-contracts/request.types.js';
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import { getRequestLinkForRole } from '@/modules/request/services/helpers.js';
-import { requestRepository } from '@/modules/request/repositories/request.repository.js';
+import { requestRepository } from '@/modules/request-data/repositories/request.repository.js';
 
 export interface ReassignRequestDTO {
   targetOfficerId: number;

@@ -1,0 +1,13 @@
+{
+  "extends": "../../../../../tsconfig.jest.json",
+  "compilerOptions": {
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": [
+    "./**/*.ts",
+    "../request.repository.ts",
+    "../../../../types/**/*.d.ts"
+  ],
+  "exclude": []
+}

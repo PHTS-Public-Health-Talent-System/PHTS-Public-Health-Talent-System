@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import crypto from "node:crypto";
 import path from "node:path";
 import { stat } from "node:fs/promises";
 import { SystemRepository } from '@/modules/system/repositories/system.repository.js';
@@ -7,6 +8,49 @@ import redis from '@config/redis.js';
 
 const execFileAsync = promisify(execFile);
 const BACKUP_LOCK_KEY = 'system:backup:lock';
+
+type BackupConfig = {
+  enabled: boolean;
+  command: string;
+  argsRaw: string;
+  workdir: string;
+  timeoutMs: number;
+};
+
+const getBackupConfig = (): BackupConfig => ({
+  enabled: process.env.BACKUP_ENABLED === "true",
+  command: process.env.BACKUP_COMMAND || "",
+  argsRaw: process.env.BACKUP_ARGS || "",
+  workdir: process.env.BACKUP_WORKDIR || process.cwd(),
+  timeoutMs: Number(process.env.BACKUP_TIMEOUT_MS || 300000),
+});
+
+function validateBackupCommand(command: string): void {
+  if (!command) throw new Error("BACKUP_COMMAND is not configured");
+  if (/\s/.test(command)) {
+    throw new Error("BACKUP_COMMAND must be an executable path without spaces");
+  }
+  if (!path.isAbsolute(command)) {
+    throw new Error("BACKUP_COMMAND must be an absolute path");
+  }
+}
+
+function parseBackupArgs(raw: string): string[] {
+  if (!raw) return [];
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed) || !parsed.every((arg) => typeof arg === "string")) {
+    throw new Error("BACKUP_ARGS must be a JSON array of strings");
+  }
+  return parsed;
+}
+
+function resolveBackupFilePath(output: string, workdir: string): string | null {
+  const match = /Backup written to (.+)$/m.exec(output);
+  const backupPathRaw = match?.[1]?.trim() || null;
+  if (!backupPathRaw) return null;
+  if (path.isAbsolute(backupPathRaw)) return backupPathRaw;
+  return path.resolve(workdir, backupPathRaw);
+}
 
 export async function runBackupJob(options?: {
   triggerSource?: "MANUAL" | "SCHEDULED";
@@ -17,20 +61,16 @@ export async function runBackupJob(options?: {
   status?: "SUCCESS" | "FAILED";
   output?: string;
 }> {
-  const BACKUP_ENABLED = process.env.BACKUP_ENABLED === "true";
-  const BACKUP_COMMAND = process.env.BACKUP_COMMAND || "";
-  const BACKUP_ARGS = process.env.BACKUP_ARGS || "";
-  const BACKUP_WORKDIR = process.env.BACKUP_WORKDIR || process.cwd();
-  const BACKUP_TIMEOUT_MS = Number(process.env.BACKUP_TIMEOUT_MS || 300000);
+  const config = getBackupConfig();
 
-  if (!BACKUP_ENABLED) {
+  if (!config.enabled) {
     return { enabled: false };
   }
 
-  const lockValue = `backup:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  const lockValue = `backup:${Date.now()}:${crypto.randomUUID()}`;
   const lockTtlSeconds = Math.max(
     60,
-    Math.ceil(BACKUP_TIMEOUT_MS / 1000) + 60,
+    Math.ceil(config.timeoutMs / 1000) + 60,
   );
   const locked = await redis.set(
     BACKUP_LOCK_KEY,
@@ -49,42 +89,17 @@ export async function runBackupJob(options?: {
   const jobId = await SystemRepository.createBackupJob(triggerSource, triggeredBy);
 
   try {
-    if (!BACKUP_COMMAND) {
-      throw new Error("BACKUP_COMMAND is not configured");
-    }
-
-    if (/\s/.test(BACKUP_COMMAND)) {
-      throw new Error("BACKUP_COMMAND must be an executable path without spaces");
-    }
-
-    if (!path.isAbsolute(BACKUP_COMMAND)) {
-      throw new Error("BACKUP_COMMAND must be an absolute path");
-    }
-
-    let args: string[] = [];
-    if (BACKUP_ARGS) {
-      const parsed = JSON.parse(BACKUP_ARGS);
-      if (!Array.isArray(parsed) || !parsed.every((arg) => typeof arg === "string")) {
-        throw new Error("BACKUP_ARGS must be a JSON array of strings");
-      }
-      args = parsed;
-    }
-
-    const result = await execFileAsync(BACKUP_COMMAND, args, {
-      cwd: BACKUP_WORKDIR,
-      timeout: BACKUP_TIMEOUT_MS,
+    validateBackupCommand(config.command);
+    const args = parseBackupArgs(config.argsRaw);
+    const result = await execFileAsync(config.command, args, {
+      cwd: config.workdir,
+      timeout: config.timeoutMs,
     });
 
     const output = result.stdout?.toString() ?? "";
     const stderr = result.stderr?.toString() ?? "";
     const durationMs = Date.now() - startedAt;
-    const match = /Backup written to (.+)$/m.exec(output);
-    const backupPathRaw = match?.[1]?.trim() || null;
-    const backupFilePath = backupPathRaw
-      ? path.isAbsolute(backupPathRaw)
-        ? backupPathRaw
-        : path.resolve(BACKUP_WORKDIR, backupPathRaw)
-      : null;
+    const backupFilePath = resolveBackupFilePath(output, config.workdir);
 
     let backupFileSizeBytes: number | null = null;
     if (backupFilePath) {

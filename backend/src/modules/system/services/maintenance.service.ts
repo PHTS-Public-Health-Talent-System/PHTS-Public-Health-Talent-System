@@ -8,12 +8,22 @@ import redis from '@config/redis.js';
 
 const MAINTENANCE_KEY = 'system:maintenance:enabled';
 
-export async function setMaintenanceMode(enabled: boolean): Promise<void> {
-  if (enabled) {
-    await redis.set(MAINTENANCE_KEY, '1');
-  } else {
-    await redis.del(MAINTENANCE_KEY);
+export async function enableMaintenanceMode(): Promise<void> {
+  await redis.set(MAINTENANCE_KEY, '1');
+}
+
+export async function disableMaintenanceMode(): Promise<void> {
+  await redis.del(MAINTENANCE_KEY);
+}
+
+export async function setMaintenanceMode(
+  mode: "enabled" | "disabled",
+): Promise<void> {
+  if (mode === "enabled") {
+    await enableMaintenanceMode();
+    return;
   }
+  await disableMaintenanceMode();
 }
 
 export async function isMaintenanceModeEnabled(): Promise<boolean> {

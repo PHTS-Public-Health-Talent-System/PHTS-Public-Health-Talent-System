@@ -4,7 +4,8 @@
 
 import redis from '@config/redis.js';
 import {
-  setMaintenanceMode,
+  disableMaintenanceMode,
+  enableMaintenanceMode,
   isMaintenanceModeEnabled,
 } from '@/modules/system/services/maintenance.service.js';
 
@@ -23,14 +24,14 @@ describe('Maintenance Service', () => {
     jest.clearAllMocks();
   });
 
-  describe('setMaintenanceMode', () => {
+  describe('maintenance toggles', () => {
     it('should set maintenance mode to enabled in Redis', async () => {
-      await setMaintenanceMode(true);
+      await enableMaintenanceMode();
       expect(redis.set).toHaveBeenCalledWith('system:maintenance:enabled', '1');
     });
 
     it('should delete maintenance key when disabled', async () => {
-      await setMaintenanceMode(false);
+      await disableMaintenanceMode();
       expect(redis.del).toHaveBeenCalledWith('system:maintenance:enabled');
     });
   });

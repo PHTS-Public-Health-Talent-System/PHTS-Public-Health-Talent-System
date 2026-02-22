@@ -4,7 +4,7 @@ import {
   parseJsonField,
   mapRequestRow,
 } from '@/modules/request/services/helpers.js';
-import { RequestStatus, RequestType, PersonnelType } from '@/modules/request/request.types.js';
+import { RequestStatus, RequestType, PersonnelType } from '@/modules/request-contracts/request.types.js';
 
 describe("request helpers", () => {
   test("generateRequestNoFromId creates REQ-BE_YEAR-id", () => {

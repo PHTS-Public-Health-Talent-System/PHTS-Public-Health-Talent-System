@@ -1,4 +1,4 @@
-const loadModule = async () => import("../services/syncService.js");
+const loadModule = async () => import("../services/sync.service.js");
 
 describe("SyncService view usage", () => {
   test("licenses query does not join users", async () => {

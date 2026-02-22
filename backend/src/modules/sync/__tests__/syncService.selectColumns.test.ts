@@ -1,4 +1,4 @@
-const loadModule = async () => import("../services/syncService.js");
+const loadModule = async () => import("../services/sync.service.js");
 
 describe("SyncService selectColumns", () => {
   test("prefixes columns with alias", async () => {

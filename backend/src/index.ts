@@ -8,6 +8,7 @@
 
 import express, { Application } from 'express';
 import crypto from 'node:crypto';
+import path from 'node:path';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -22,11 +23,12 @@ import signatureRoutes from '@/modules/signature/signature.routes.js';
 import payrollRoutes from '@/modules/payroll/payroll.routes.js';
 import reportRoutes from '@/modules/report/report.routes.js';
 import systemRoutes from '@/modules/system/system.routes.js';
+import syncRoutes from '@/modules/sync/sync.routes.js';
+import backupRoutes from '@/modules/backup/backup.routes.js';
 import masterDataRoutes from '@/modules/master-data/master-data.routes.js';
 import leaveRecordsRoutes from '@/modules/leave-records/leave-records.routes.js';
 import notificationRoutes from '@/modules/notification/notification.routes.js';
 import financeRoutes from '@/modules/finance/finance.routes.js';
-// Phase 6: Compliance & Quality
 import auditRoutes from '@/modules/audit/audit.routes.js';
 import slaRoutes from '@/modules/sla/sla.routes.js';
 import accessReviewRoutes from '@/modules/access-review/access-review.routes.js';
@@ -162,7 +164,6 @@ app.use(initializePassport());
  * Static Files Middleware
  * Serve uploaded files from /uploads route with CORS headers
  */
-import path from 'path';
 app.use(
   '/uploads',
   tokenBlacklistMiddleware,
@@ -227,11 +228,12 @@ app.use('/api/signatures', signatureRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/system', systemRoutes);
+app.use('/api/system', syncRoutes);
+app.use('/api/system', backupRoutes);
 app.use('/api/config', masterDataRoutes);
 app.use('/api/leave-records', leaveRecordsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/finance', financeRoutes);
-// Phase 6: Compliance & Quality Routes
 app.use('/api/audit', auditRoutes);
 app.use('/api/sla', slaRoutes);
 app.use('/api/access-review', accessReviewRoutes);

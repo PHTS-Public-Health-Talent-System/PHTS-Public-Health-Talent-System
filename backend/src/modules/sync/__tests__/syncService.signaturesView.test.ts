@@ -1,4 +1,4 @@
-const loadModule = async () => import("../services/syncService.js");
+const loadModule = async () => import("../services/sync.service.js");
 
 describe("SyncService signatures view", () => {
   test("signatures query uses view and selects citizen_id without joining users", async () => {

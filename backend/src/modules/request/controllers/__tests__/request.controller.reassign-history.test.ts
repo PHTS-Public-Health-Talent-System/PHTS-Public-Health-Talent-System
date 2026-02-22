@@ -1,8 +1,8 @@
 import { requestController } from '@/modules/request/controllers/request.controller.js';
-import { requestQueryService } from '@/modules/request/services/query.service.js';
+import { requestQueryService } from '@/modules/request-read/services/query.service.js';
 import * as reassignService from '@/modules/request/reassign/reassign.service.js';
 
-jest.mock('@/modules/request/services/query.service.js', () => ({
+jest.mock('@/modules/request-read/services/query.service.js', () => ({
   requestQueryService: {
     getRequestById: jest.fn(),
   },
