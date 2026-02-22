@@ -1,7 +1,9 @@
 import { AuditEventType } from '@/modules/audit/entities/audit.entity.js';
 
-jest.mock('@/config/database.js', () => ({
-  query: jest.fn(),
+jest.mock('@/modules/master-data/repositories/master-data.repository.js', () => ({
+  MasterDataRepository: {
+    deactivateMasterRate: jest.fn(),
+  },
 }));
 
 jest.mock('@/modules/audit/services/audit.service.js', () => {
@@ -12,8 +14,8 @@ jest.mock('@/modules/audit/services/audit.service.js', () => {
   };
 });
 
-import { query } from '@/config/database.js';
 import { emitAuditEvent } from '@/modules/audit/services/audit.service.js';
+import { MasterDataRepository } from '@/modules/master-data/repositories/master-data.repository.js';
 import { deleteMasterRate } from '../services/rate.service.js';
 
 describe("MasterData Rate Service", () => {
@@ -26,14 +28,11 @@ describe("MasterData Rate Service", () => {
     const rateId = 123;
     const actorId = 99;
 
-    (query as jest.Mock).mockResolvedValueOnce([]);
+    (MasterDataRepository.deactivateMasterRate as jest.Mock).mockResolvedValueOnce(undefined);
 
     await deleteMasterRate(rateId, actorId);
 
-    expect(query).toHaveBeenCalledWith(
-      "UPDATE cfg_payment_rates SET is_active = ? WHERE rate_id = ?",
-      [0, rateId],
-    );
+    expect(MasterDataRepository.deactivateMasterRate).toHaveBeenCalledWith(rateId);
 
     expect(emitAuditEvent).toHaveBeenCalledWith({
       eventType: AuditEventType.MASTER_RATE_UPDATE,

@@ -1,7 +1,9 @@
 import { AuditEventType } from '@/modules/audit/entities/audit.entity.js';
 
-jest.mock('@/config/database.js', () => ({
-  query: jest.fn(),
+jest.mock('@/modules/master-data/repositories/master-data.repository.js', () => ({
+  MasterDataRepository: {
+    deactivateHoliday: jest.fn(),
+  },
 }));
 
 jest.mock('@/modules/audit/services/audit.service.js', () => {
@@ -12,8 +14,8 @@ jest.mock('@/modules/audit/services/audit.service.js', () => {
   };
 });
 
-import { query } from '@/config/database.js';
 import { emitAuditEvent } from '@/modules/audit/services/audit.service.js';
+import { MasterDataRepository } from '@/modules/master-data/repositories/master-data.repository.js';
 import { deleteHoliday } from '../services/holiday.service.js';
 
 describe('Holiday Service', () => {
@@ -25,14 +27,11 @@ describe('Holiday Service', () => {
     const date = '2026-02-15';
     const actorId = 99;
 
-    (query as jest.Mock).mockResolvedValueOnce([]);
+    (MasterDataRepository.deactivateHoliday as jest.Mock).mockResolvedValueOnce(undefined);
 
     await deleteHoliday(date, actorId);
 
-    expect(query).toHaveBeenCalledWith(
-      'UPDATE cfg_holidays SET is_active = 0 WHERE holiday_date = ? OR DATE(holiday_date) = ?',
-      [date, date],
-    );
+    expect(MasterDataRepository.deactivateHoliday).toHaveBeenCalledWith(date);
 
     expect(emitAuditEvent).toHaveBeenCalledWith({
       eventType: AuditEventType.HOLIDAY_UPDATE,
@@ -47,4 +46,3 @@ describe('Holiday Service', () => {
     });
   });
 });
-

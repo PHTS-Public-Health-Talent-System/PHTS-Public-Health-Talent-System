@@ -178,13 +178,14 @@ export class AccessReviewRepository {
     currentRole: string,
     employeeStatus: string | null,
     lastLoginAt: Date | null,
+    reviewNote: string | null,
     conn: PoolConnection,
   ): Promise<number> {
     const [result] = await conn.execute<ResultSetHeader>(
       `INSERT INTO audit_review_items
-       (cycle_id, user_id, current_role, employee_status, last_login_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [cycleId, userId, currentRole, employeeStatus, lastLoginAt],
+       (cycle_id, user_id, current_role, employee_status, last_login_at, review_note)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [cycleId, userId, currentRole, employeeStatus, lastLoginAt, reviewNote],
     );
     return result.insertId;
   }
@@ -258,13 +259,52 @@ export class AccessReviewRepository {
                  ELSE NULL
                END,
                'unknown'
-             ) AS employee_status
+             ) AS employee_status,
+             COALESCE(e.position_name, s.position_name) AS position_name,
+             COALESCE(e.special_position, s.special_position) AS special_position,
+             COALESCE(e.department, s.department) AS department,
+             COALESCE(e.sub_department, s.sub_department) AS sub_department,
+             GREATEST(
+               COALESCE(e.last_synced_at, '1970-01-01'),
+               COALESCE(s.last_synced_at, '1970-01-01')
+             ) AS profile_synced_at
       FROM users u
       LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
       LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
       WHERE u.role != 'ADMIN' AND u.is_active = 1
     `);
     return rows as any[];
+  }
+
+  static async updatePendingItemsToKeep(params: {
+    cycleId: number;
+    completedBy: number;
+    note: string;
+    conn: PoolConnection;
+  }): Promise<void> {
+    const { cycleId, completedBy, note, conn } = params;
+    await conn.execute(
+      `UPDATE audit_review_items
+       SET review_result = 'KEEP',
+           reviewed_at = NOW(),
+           reviewed_by = ?,
+           review_note = COALESCE(?, review_note)
+       WHERE cycle_id = ? AND review_result = 'PENDING'`,
+      [completedBy, note, cycleId],
+    );
+  }
+
+  static async findActiveCycleByQuarterYear(params: {
+    quarter: number;
+    year: number;
+    conn: PoolConnection;
+  }): Promise<ReviewCycle | null> {
+    const { quarter, year, conn } = params;
+    const [rows] = await conn.query<RowDataPacket[]>(
+      "SELECT * FROM audit_review_cycles WHERE quarter = ? AND year = ? AND status != ?",
+      [quarter, year, "COMPLETED"],
+    );
+    return (rows[0] as ReviewCycle) ?? null;
   }
 
   static async disableUser(

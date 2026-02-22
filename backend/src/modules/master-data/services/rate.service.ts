@@ -4,9 +4,8 @@
  * Manages position allowance rates (P.T.S. rates).
  */
 
-import { RowDataPacket, ResultSetHeader } from "mysql2/promise";
-import { query } from '@config/database.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
+import { MasterDataRepository } from '@/modules/master-data/repositories/master-data.repository.js';
 
 type CreateMasterRatePayload = {
   profession_code: string;
@@ -21,20 +20,7 @@ type CreateMasterRatePayload = {
 };
 
 export const getMasterRates = async (): Promise<any[]> => {
-  const rates = await query<RowDataPacket[]>(
-    `SELECT
-       r.*,
-       COALESCE(ec.eligible_count, 0) AS eligible_count
-     FROM cfg_payment_rates r
-     LEFT JOIN (
-       SELECT master_rate_id, COUNT(*) AS eligible_count
-       FROM req_eligibility
-       WHERE is_active = 1
-       GROUP BY master_rate_id
-     ) ec ON ec.master_rate_id = r.rate_id
-     ORDER BY r.profession_code, r.group_no, r.item_no`,
-  );
-  return rates;
+  return MasterDataRepository.findMasterRatesWithEligibility();
 };
 
 export const updateMasterRate = async (
@@ -51,29 +37,7 @@ export const updateMasterRate = async (
   },
   actorId?: number,
 ): Promise<void> => {
-  await query<ResultSetHeader>(
-    `UPDATE cfg_payment_rates
-     SET profession_code = ?,
-         group_no = ?,
-         item_no = ?,
-         sub_item_no = ?,
-         amount = ?,
-         condition_desc = ?,
-         detailed_desc = ?,
-         is_active = ?
-     WHERE rate_id = ?`,
-    [
-      payload.profession_code,
-      payload.group_no,
-      payload.item_no,
-      payload.sub_item_no,
-      payload.amount,
-      payload.condition_desc,
-      payload.detailed_desc,
-      payload.is_active ? 1 : 0,
-      rateId,
-    ],
-  );
+  await MasterDataRepository.updateMasterRate({ rateId, ...payload });
 
   await emitAuditEvent({
     eventType: AuditEventType.MASTER_RATE_UPDATE,
@@ -92,10 +56,7 @@ export const deleteMasterRate = async (
   rateId: number,
   actorId?: number,
 ): Promise<void> => {
-  await query<ResultSetHeader>(
-    "UPDATE cfg_payment_rates SET is_active = ? WHERE rate_id = ?",
-    [0, rateId],
-  );
+  await MasterDataRepository.deactivateMasterRate(rateId);
 
   await emitAuditEvent({
     eventType: AuditEventType.MASTER_RATE_UPDATE,
@@ -120,12 +81,16 @@ export const createMasterRate = async ({
   is_active,
   actorId,
 }: CreateMasterRatePayload): Promise<number> => {
-  const result = await query<ResultSetHeader>(
-    "INSERT INTO cfg_payment_rates (profession_code, group_no, item_no, sub_item_no, amount, condition_desc, detailed_desc, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    [profession_code, group_no, item_no, sub_item_no, amount, condition_desc, detailed_desc, is_active],
-  );
-
-  const rateId = result.insertId;
+  const rateId = await MasterDataRepository.createMasterRate({
+    profession_code,
+    group_no,
+    item_no,
+    sub_item_no,
+    amount,
+    condition_desc,
+    detailed_desc,
+    is_active,
+  });
 
   await emitAuditEvent({
     eventType: AuditEventType.MASTER_RATE_UPDATE,
@@ -145,11 +110,7 @@ export const createMasterRate = async ({
 };
 
 export const getMasterRateById = async (rateId: number): Promise<any | null> => {
-  const rows = await query<RowDataPacket[]>(
-    "SELECT * FROM cfg_payment_rates WHERE rate_id = ?",
-    [rateId],
-  );
-  return (rows[0] as any) ?? null;
+  return MasterDataRepository.findMasterRateById(rateId);
 };
 
 /**
@@ -159,23 +120,14 @@ export const getMasterRateById = async (rateId: number): Promise<any | null> => 
 export const getRatesByProfession = async (
   professionCode: string,
 ): Promise<any[]> => {
-  const rates = await query<RowDataPacket[]>(
-    `SELECT rate_id, profession_code, group_no, item_no, sub_item_no, amount, condition_desc
-     FROM cfg_payment_rates
-     WHERE profession_code = ? AND is_active = 1
-     ORDER BY group_no, item_no, sub_item_no`,
-    [professionCode],
-  );
-  return rates;
+  return MasterDataRepository.findRatesByProfession(professionCode);
 };
 
 /**
  * Get distinct profession codes that have active rates.
  */
 export const getProfessions = async (): Promise<string[]> => {
-  const rows = await query<RowDataPacket[]>(
-    `SELECT DISTINCT profession_code FROM cfg_payment_rates WHERE is_active = 1 ORDER BY profession_code`,
-  );
+  const rows = await MasterDataRepository.findProfessions();
   return rows.map((r) => r.profession_code);
 };
 
@@ -202,21 +154,7 @@ export interface ProfessionNode {
 
 export const getRateHierarchy = async (): Promise<ProfessionNode[]> => {
   // Fetch active rates sorted by hierarchy
-  const rows = await query<RowDataPacket[]>(
-    `SELECT
-       rate_id, profession_code, group_no, item_no, sub_item_no, amount, condition_desc, detailed_desc
-     FROM cfg_payment_rates
-     WHERE is_active = 1
-     ORDER BY
-       CASE
-         WHEN profession_code = 'DOCTOR' THEN 1
-         WHEN profession_code = 'DENTIST' THEN 2
-         WHEN profession_code = 'PHARMACIST' THEN 3
-         WHEN profession_code = 'NURSE' THEN 4
-         ELSE 5
-       END,
-       profession_code, group_no, item_no, sub_item_no`
-  );
+  const rows = await MasterDataRepository.findRateHierarchyRows();
 
   const profNameMap: Record<string, string> = {
     DOCTOR: "กลุ่มแพทย์",
