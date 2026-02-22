@@ -57,3 +57,18 @@ export const completeCycleSchema = z.object({
 
 export type CompleteCycleParams = z.infer<typeof completeCycleSchema>["params"];
 export type CompleteCycleBody = z.infer<typeof completeCycleSchema>["body"];
+
+// POST /access-review/cycles/:id/auto-review
+export const autoReviewCycleSchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
+  }),
+  body: z
+    .object({
+      disableInactive: z.boolean().optional(),
+    })
+    .optional(),
+});
+
+export type AutoReviewCycleParams = z.infer<typeof autoReviewCycleSchema>["params"];
+export type AutoReviewCycleBody = z.infer<typeof autoReviewCycleSchema>["body"];

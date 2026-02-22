@@ -6,10 +6,6 @@ import {
   runLeaveReportAlerts,
 } from '@/modules/workforce-compliance/services/workforce-compliance-jobs.service.js';
 import {
-  autoDisableTerminatedUsers,
-  sendReviewReminders,
-} from '@/modules/access-review/services/access-review.service.js';
-import {
   runBackupJob,
   shouldRunScheduledBackup,
 } from '@/modules/backup/services/backup.service.js';
@@ -25,7 +21,6 @@ type JobName =
   | "license-auto-cut"
   | "retirement-cut"
   | "movement-cut"
-  | "access-review"
   | "backup"
   | "license-alerts"
   | "notification-outbox"
@@ -39,7 +34,6 @@ const JOBS: JobName[] = [
   "retirement-cut",
   // keep as on-demand safety net; not in default run
   // "movement-cut",
-  "access-review",
   "backup",
   "license-alerts",
   "notification-outbox",
@@ -56,16 +50,6 @@ async function runJob(job: JobName): Promise<void> {
     console.log(`[job:done] ${job} duration_ms=${Date.now() - startedAt}`);
     return;
   }
-
-  if (job === "access-review") {
-    const disabled = await autoDisableTerminatedUsers();
-    const reminders = await sendReviewReminders();
-    console.log("[access-review] auto-disable", disabled);
-    console.log("[access-review] reminders", reminders);
-    console.log(`[job:done] ${job} duration_ms=${Date.now() - startedAt}`);
-    return;
-  }
-
 
   if (job === "backup") {
     const shouldRun = await shouldRunScheduledBackup();

@@ -1,7 +1,7 @@
 /**
  * Access Review Module - Entity Definitions
  *
- * TypeScript interfaces for quarterly access review
+ * TypeScript interfaces for post-sync access review
  */
 
 // ─── Review cycle status ──────────────────────────────────────────────────────
@@ -30,6 +30,10 @@ export interface ReviewCycle {
   status: ReviewCycleStatus;
   start_date: Date;
   due_date: Date;
+  opened_at?: Date | null;
+  expires_at?: Date | null;
+  sync_source?: 'SYNC' | null;
+  cycle_code?: string | null;
   completed_at: Date | null;
   completed_by: number | null;
   total_users: number;
@@ -55,9 +59,3 @@ export interface ReviewItem {
   auto_disabled: boolean;
 }
 
-// ─── Auto disable result ──────────────────────────────────────────────────────
-
-export interface AutoDisableResult {
-  disabled: number;
-  errors: string[];
-}

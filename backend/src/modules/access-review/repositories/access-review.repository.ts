@@ -14,6 +14,26 @@ import {
 } from '@/modules/access-review/entities/access-review.entity.js';
 
 export class AccessReviewRepository {
+  private static hasSupportSubDepartmentColumnCache: boolean | null = null;
+
+  private static async hasSupportSubDepartmentColumn(
+    conn: PoolConnection,
+  ): Promise<boolean> {
+    if (this.hasSupportSubDepartmentColumnCache !== null) {
+      return this.hasSupportSubDepartmentColumnCache;
+    }
+    const [rows] = await conn.query<RowDataPacket[]>(
+      `SELECT 1
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'emp_support_staff'
+         AND COLUMN_NAME = 'sub_department'
+       LIMIT 1`,
+    );
+    this.hasSupportSubDepartmentColumnCache = rows.length > 0;
+    return this.hasSupportSubDepartmentColumnCache;
+  }
+
   // ── Cycle queries ───────────────────────────────────────────────────────────
 
   static async findCycles(
@@ -73,7 +93,26 @@ export class AccessReviewRepository {
        VALUES (?, ?, 'PENDING', ?, ?, ?)`,
       [quarter, year, startDate, dueDate, totalUsers],
     );
-    return result.insertId;
+    const cycleId = result.insertId;
+
+    // Phase A compatibility:
+    // If new columns exist, populate them for post-sync contract.
+    // If schema has not migrated yet, ignore unknown-column errors.
+    try {
+      await conn.execute(
+        `UPDATE audit_review_cycles
+         SET opened_at = COALESCE(opened_at, ?),
+             expires_at = COALESCE(expires_at, ?),
+             sync_source = COALESCE(sync_source, 'SYNC'),
+             cycle_code = COALESCE(cycle_code, CONCAT('SYNC-', cycle_id))
+         WHERE cycle_id = ?`,
+        [startDate, dueDate, cycleId],
+      );
+    } catch {
+      // old schema - keep backward compatibility
+    }
+
+    return cycleId;
   }
 
   static async updateCycleStatus(
@@ -172,7 +211,7 @@ export class AccessReviewRepository {
     return (rows[0] as any) ?? null;
   }
 
-  static async createItem(
+  static async createItemIfNotExists(
     cycleId: number,
     userId: number,
     currentRole: string,
@@ -180,14 +219,14 @@ export class AccessReviewRepository {
     lastLoginAt: Date | null,
     reviewNote: string | null,
     conn: PoolConnection,
-  ): Promise<number> {
+  ): Promise<boolean> {
     const [result] = await conn.execute<ResultSetHeader>(
-      `INSERT INTO audit_review_items
+      `INSERT IGNORE INTO audit_review_items
        (cycle_id, user_id, current_role, employee_status, last_login_at, review_note)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [cycleId, userId, currentRole, employeeStatus, lastLoginAt, reviewNote],
     );
-    return result.insertId;
+    return result.affectedRows > 0;
   }
 
   static async updateItemResult(
@@ -205,20 +244,6 @@ export class AccessReviewRepository {
     );
   }
 
-  static async updateItemAutoDisabled(
-    itemId: number,
-    employeeStatus: string,
-    conn: PoolConnection,
-  ): Promise<void> {
-    await conn.execute(
-      `UPDATE audit_review_items
-       SET review_result = 'DISABLE', reviewed_at = NOW(), auto_disabled = 1,
-           review_note = ?
-       WHERE item_id = ?`,
-      [`Auto-disabled: ${employeeStatus}`, itemId],
-    );
-  }
-
   static async countPendingItems(
     cycleId: number,
     conn: PoolConnection,
@@ -232,23 +257,13 @@ export class AccessReviewRepository {
     return Number((rows[0] as any)?.count || 0);
   }
 
-  static async findTerminatedPendingItems(
-    cycleId: number,
-    conn: PoolConnection,
-  ): Promise<any[]> {
-    const [rows] = await conn.query<RowDataPacket[]>(
-      `SELECT item_id, user_id, employee_status
-       FROM audit_review_items
-       WHERE cycle_id = ? AND review_result = 'PENDING'
-         AND employee_status IN ('resigned', 'terminated', 'retired', 'deceased')`,
-      [cycleId],
-    );
-    return rows as any[];
-  }
-
   // ── User queries ────────────────────────────────────────────────────────────
 
   static async findActiveNonAdminUsers(conn: PoolConnection): Promise<any[]> {
+    const hasSupportSubDepartment = await this.hasSupportSubDepartmentColumn(conn);
+    const supportSubDepartmentExpr = hasSupportSubDepartment
+      ? "s.sub_department"
+      : "NULL";
     const [rows] = await conn.query<RowDataPacket[]>(`
       SELECT u.id, u.citizen_id, u.role, u.last_login_at,
              COALESCE(
@@ -263,7 +278,7 @@ export class AccessReviewRepository {
              COALESCE(e.position_name, s.position_name) AS position_name,
              COALESCE(e.special_position, s.special_position) AS special_position,
              COALESCE(e.department, s.department) AS department,
-             COALESCE(e.sub_department, s.sub_department) AS sub_department,
+             COALESCE(e.sub_department, ${supportSubDepartmentExpr}) AS sub_department,
              GREATEST(
                COALESCE(e.last_synced_at, '1970-01-01'),
                COALESCE(s.last_synced_at, '1970-01-01')
@@ -274,6 +289,32 @@ export class AccessReviewRepository {
       WHERE u.role != 'ADMIN' AND u.is_active = 1
     `);
     return rows as any[];
+  }
+
+  static async countItemsByCycle(
+    cycleId: number,
+    conn: PoolConnection,
+  ): Promise<number> {
+    const [rows] = await conn.query<RowDataPacket[]>(
+      `SELECT COUNT(*) as count
+       FROM audit_review_items
+       WHERE cycle_id = ?`,
+      [cycleId],
+    );
+    return Number((rows[0] as any)?.count || 0);
+  }
+
+  static async updateCycleTotalUsers(
+    cycleId: number,
+    totalUsers: number,
+    conn: PoolConnection,
+  ): Promise<void> {
+    await conn.execute(
+      `UPDATE audit_review_cycles
+       SET total_users = ?
+       WHERE cycle_id = ?`,
+      [totalUsers, cycleId],
+    );
   }
 
   static async updatePendingItemsToKeep(params: {
@@ -320,19 +361,6 @@ export class AccessReviewRepository {
       "SELECT id FROM users WHERE role = 'ADMIN' AND is_active = 1",
     );
     return (rows as any[]).map((r) => r.id);
-  }
-
-  // ── Due date queries ────────────────────────────────────────────────────────
-
-  static async findCyclesDueSoon(conn?: PoolConnection): Promise<any[]> {
-    const executor = conn ?? db;
-    const [rows] = await executor.query<RowDataPacket[]>(`
-      SELECT * FROM audit_review_cycles
-      WHERE status IN ('PENDING', 'IN_PROGRESS')
-        AND DATEDIFF(due_date, CURDATE()) <= 7
-        AND DATEDIFF(due_date, CURDATE()) >= 0
-    `);
-    return rows as any[];
   }
 
   // ── Connection helper ───────────────────────────────────────────────────────

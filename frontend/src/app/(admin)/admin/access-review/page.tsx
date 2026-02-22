@@ -20,15 +20,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Play, Send, RefreshCw, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
+import { Play, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  useAutoReviewAccessReviewCycle,
   useAccessReviewCycles,
   useAccessReviewItems,
   useCompleteAccessReviewCycle,
   useCreateAccessReviewCycle,
-  useRunAccessReviewAutoDisable,
-  useSendAccessReviewReminders,
   useUpdateAccessReviewItem,
 } from '@/features/access-review/hooks';
 import { formatThaiDate, formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
@@ -42,6 +41,11 @@ type ReviewCycle = {
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE';
   start_date: string;
   due_date: string;
+  opened_at?: string;
+  expires_at?: string;
+  cycle_code?: string;
+  source?: 'SYNC' | string;
+  is_open?: boolean;
   total_users: number;
   reviewed_users: number;
   disabled_users: number;
@@ -88,9 +92,8 @@ export default function AccessReviewPage() {
   // Mutations
   const createCycleMutation = useCreateAccessReviewCycle();
   const completeCycleMutation = useCompleteAccessReviewCycle();
-  const sendRemindersMutation = useSendAccessReviewReminders();
-  const autoDisableMutation = useRunAccessReviewAutoDisable();
   const updateItemMutation = useUpdateAccessReviewItem();
+  const autoReviewMutation = useAutoReviewAccessReviewCycle();
 
   // --- Data Processing ---
   const cycles = useMemo(() => {
@@ -128,7 +131,7 @@ export default function AccessReviewPage() {
   const handleCreateCycle = async () => {
     try {
       await createCycleMutation.mutateAsync({});
-      toast.success('สร้างรอบตรวจสอบสิทธิ์ประจำไตรมาสสำเร็จ');
+      toast.success('สร้างรอบตรวจสอบสิทธิ์จากข้อมูล Sync สำเร็จ');
       cyclesQuery.refetch();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'ไม่สามารถสร้างรอบใหม่ได้';
@@ -168,6 +171,28 @@ export default function AccessReviewPage() {
     }
   };
 
+  const handleAutoReview = async () => {
+    if (!activeCycleId) return;
+    try {
+      const result = (await autoReviewMutation.mutateAsync({
+        id: activeCycleId,
+        payload: { disableInactive: true },
+      })) as {
+        processed?: number;
+        kept?: number;
+        disabled?: number;
+        skipped?: number;
+      };
+      toast.success(
+        `ตรวจอัตโนมัติสำเร็จ: KEEP ${result?.kept ?? 0}, DISABLE ${result?.disabled ?? 0}, SKIP ${result?.skipped ?? 0}`,
+      );
+      cyclesQuery.refetch();
+      itemsQuery.refetch();
+    } catch {
+      toast.error('ตรวจอัตโนมัติไม่สำเร็จ');
+    }
+  };
+
   return (
     <div className="p-6 lg:p-8 space-y-6">
       {/* Header */}
@@ -188,7 +213,7 @@ export default function AccessReviewPage() {
               </Button>
             }
             title="สร้างรอบตรวจสอบสิทธิ์ใหม่?"
-            description="ระบบจะสร้างรอบจากข้อมูลหลัง Sync ล่าสุด และดึงรายการที่ควรตรวจสอบให้ผู้ดูแลตรวจเช็ค"
+            description="ระบบจะดึงข้อมูล Sync ล่าสุด และสร้างรายการที่ควรตรวจสอบให้ผู้ดูแลทันที"
             confirmText="สร้างรอบ"
             onConfirm={handleCreateCycle}
             disabled={createCycleMutation.isPending}
@@ -204,7 +229,7 @@ export default function AccessReviewPage() {
               <CardTitle className="text-lg">สถานะรอบปัจจุบัน</CardTitle>
               <CardDescription>
                 {activeCycle
-                  ? `ไตรมาส ${activeCycle.quarter}/${activeCycle.year} (${formatThaiDate(activeCycle.start_date)} - ${formatThaiDate(activeCycle.due_date)})`
+                  ? `${activeCycle.cycle_code ?? `SYNC-${activeCycle.cycle_id}`} (${formatThaiDate(activeCycle.opened_at ?? activeCycle.start_date)} - ${formatThaiDate(activeCycle.expires_at ?? activeCycle.due_date)})`
                   : 'กรุณาเลือกหรือสร้างรอบการตรวจสอบ'}
               </CardDescription>
             </div>
@@ -217,7 +242,7 @@ export default function AccessReviewPage() {
                 <SelectContent>
                   {cycles.map((cycle) => (
                     <SelectItem key={cycle.cycle_id} value={String(cycle.cycle_id)}>
-                      Q{cycle.quarter}/{cycle.year} ({cycle.status})
+                      {cycle.cycle_code ?? `SYNC-${cycle.cycle_id}`} ({cycle.status})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -248,30 +273,23 @@ export default function AccessReviewPage() {
 
             {/* Action Buttons */}
             <div className="flex flex-wrap gap-3 pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => sendRemindersMutation.mutateAsync()}
-                disabled={sendRemindersMutation.isPending || activeCycle.status === 'COMPLETED'}
-                className="gap-2"
-              >
-                <Send className="h-4 w-4" /> ส่งแจ้งเตือน
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => autoDisableMutation.mutateAsync()}
-                disabled={autoDisableMutation.isPending}
-                className="gap-2"
-              >
-                <RefreshCw className="h-4 w-4" /> ระงับสิทธิ์อัตโนมัติ
-              </Button>
-
               <div className="flex-1" />
 
               {activeCycle.status !== 'COMPLETED' && (
                 <>
+                  <ConfirmActionDialog
+                    trigger={
+                      <Button variant="outline" size="sm">
+                        ตรวจอัตโนมัติ
+                      </Button>
+                    }
+                    title="ยืนยันตรวจสอบอัตโนมัติ?"
+                    description="ระบบจะตรวจรายการค้างตามกติกา: inactive => DISABLE, role_mismatch=no => KEEP, ที่เหลือคงเป็น PENDING"
+                    confirmText="ยืนยันตรวจ"
+                    onConfirm={handleAutoReview}
+                    disabled={autoReviewMutation.isPending}
+                  />
+
                   <ConfirmActionDialog
                     trigger={
                       <Button variant="secondary" size="sm">

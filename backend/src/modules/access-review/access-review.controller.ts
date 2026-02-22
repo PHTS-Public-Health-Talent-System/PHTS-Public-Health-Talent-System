@@ -9,6 +9,17 @@ import { ApiResponse } from '@/types/auth.js';
 import * as accessReviewService from '@/modules/access-review/services/access-review.service.js';
 import { ReviewResult } from '@/modules/access-review/services/access-review.service.js';
 
+function mapCycleResponse(cycle: any): any {
+  return {
+    ...cycle,
+    source: cycle.sync_source ?? "SYNC",
+    cycle_code: cycle.cycle_code ?? `SYNC-${cycle.cycle_id}`,
+    opened_at: cycle.opened_at ?? cycle.start_date,
+    expires_at: cycle.expires_at ?? cycle.due_date,
+    is_open: cycle.status !== "COMPLETED",
+  };
+}
+
 /**
  * Get all review cycles
  * GET /api/access-review/cycles
@@ -22,7 +33,7 @@ export async function getCycles(
       ? Number.parseInt(req.query.year as string, 10)
       : undefined;
     const cycles = await accessReviewService.getReviewCycles(year);
-    res.json({ success: true, data: cycles });
+    res.json({ success: true, data: cycles.map((cycle) => mapCycleResponse(cycle)) });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -45,14 +56,14 @@ export async function getCycle(
       return;
     }
 
-    res.json({ success: true, data: cycle });
+    res.json({ success: true, data: mapCycleResponse(cycle) });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
 }
 
 /**
- * Create a new review cycle for current quarter
+ * Create a review cycle from latest sync context
  * POST /api/access-review/cycles
  */
 export async function createCycle(
@@ -61,7 +72,7 @@ export async function createCycle(
 ): Promise<void> {
   try {
     const cycle = await accessReviewService.createReviewCycle();
-    res.status(201).json({ success: true, data: cycle });
+    res.status(201).json({ success: true, data: mapCycleResponse(cycle) });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -143,40 +154,24 @@ export async function completeCycle(
 }
 
 /**
- * Manually trigger auto-disable job (for testing/admin)
- * POST /api/access-review/auto-disable
+ * Auto-review pending items by sync-derived rules
+ * POST /api/access-review/cycles/:id/auto-review
  */
-export async function runAutoDisable(
-  _req: Request,
+export async function autoReviewCycle(
+  req: Request,
   res: Response<ApiResponse>,
 ): Promise<void> {
   try {
-    const result = await accessReviewService.autoDisableTerminatedUsers();
-    res.json({
-      success: true,
-      data: result,
-      message: `Disabled ${result.disabled} users`,
+    const cycleId = Number.parseInt(req.params.id, 10);
+    const reviewerId = req.user!.userId;
+    const { disableInactive } = (req.body ?? {}) as {
+      disableInactive?: boolean;
+    };
+    const result = await accessReviewService.autoReviewCycle(cycleId, reviewerId, {
+      disableInactive: disableInactive ?? true,
     });
+    res.json({ success: true, data: result });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-}
-
-/**
- * Send review reminders
- * POST /api/access-review/send-reminders
- */
-export async function sendReminders(
-  _req: Request,
-  res: Response<ApiResponse>,
-): Promise<void> {
-  try {
-    const count = await accessReviewService.sendReviewReminders();
-    res.json({
-      success: true,
-      message: `Sent ${count} reminders`,
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(400).json({ success: false, error: error.message });
   }
 }

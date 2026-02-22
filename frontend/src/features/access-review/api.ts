@@ -60,16 +60,13 @@ export async function updateAccessReviewItem(
   return res.data.data;
 }
 
-export async function runAccessReviewAutoDisable() {
+export async function autoReviewAccessReviewCycle(
+  id: number | string,
+  payload?: ApiPayload,
+) {
   const res = await api.post<ApiResponse<ApiPayload>>(
-    "/access-review/auto-disable",
-  );
-  return res.data.data;
-}
-
-export async function sendAccessReviewReminders() {
-  const res = await api.post<ApiResponse<ApiPayload>>(
-    "/access-review/send-reminders",
+    `/access-review/cycles/${id}/auto-review`,
+    payload ?? {},
   );
   return res.data.data;
 }

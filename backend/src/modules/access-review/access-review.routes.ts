@@ -11,6 +11,7 @@ import { validate } from '@shared/validate.middleware.js';
 import { UserRole } from '@/types/auth.js';
 import * as accessReviewController from '@/modules/access-review/access-review.controller.js';
 import {
+  autoReviewCycleSchema,
   getCyclesSchema,
   getCycleSchema,
   getItemsSchema,
@@ -57,17 +58,17 @@ router.post(
   accessReviewController.completeCycle,
 );
 
+router.post(
+  "/cycles/:id/auto-review",
+  validate(autoReviewCycleSchema),
+  accessReviewController.autoReviewCycle,
+);
+
 // Update review result for a user
 router.put(
   "/items/:id",
   validate(updateItemSchema),
   accessReviewController.updateItem,
 );
-
-// Manual trigger for auto-disable job
-router.post("/auto-disable", accessReviewController.runAutoDisable);
-
-// Send review reminders
-router.post("/send-reminders", accessReviewController.sendReminders);
 
 export default router;

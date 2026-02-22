@@ -7,13 +7,12 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { ApiParams, ApiPayload } from "@/shared/api/types";
 import {
+  autoReviewAccessReviewCycle,
   completeAccessReviewCycle,
   createAccessReviewCycle,
   getAccessReviewCycle,
   getAccessReviewCycles,
   getAccessReviewItems,
-  runAccessReviewAutoDisable,
-  sendAccessReviewReminders,
   updateAccessReviewItem,
 } from "./api";
 
@@ -73,14 +72,14 @@ export function useUpdateAccessReviewItem() {
   });
 }
 
-export function useRunAccessReviewAutoDisable() {
+export function useAutoReviewAccessReviewCycle() {
   return useMutation({
-    mutationFn: runAccessReviewAutoDisable,
-  });
-}
-
-export function useSendAccessReviewReminders() {
-  return useMutation({
-    mutationFn: sendAccessReviewReminders,
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: number | string;
+      payload?: ApiPayload;
+    }) => autoReviewAccessReviewCycle(id, payload),
   });
 }
