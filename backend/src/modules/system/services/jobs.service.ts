@@ -1,6 +1,7 @@
 import redis from '@config/redis.js';
 import { getSyncRuntimeStatus } from '@/modules/system/sync/services/sync-status.service.js';
 import { SystemRepository } from '@/modules/system/repositories/system.repository.js';
+import type { SyncRuntimeStatus } from '@/modules/system/sync/services/sync.service.js';
 
 type JobError = {
   source: 'sync' | 'notifications' | 'payroll' | 'redis';
@@ -126,7 +127,7 @@ export const getJobStatus = async (): Promise<JobStatusPayload> => {
   const errors: JobError[] = [];
   let partial = false;
 
-  let syncStatus = { isSyncing: false, lastResult: null as unknown | null };
+  let syncStatus: SyncRuntimeStatus = { isSyncing: false, lastResult: null };
   let notifications = {
     pending: 0,
     processing: 0,
@@ -195,7 +196,7 @@ export const getJobStatus = async (): Promise<JobStatusPayload> => {
 
   const summary: JobSummary = {
     sync: {
-      status: buildSyncStatus(syncStatus as any),
+      status: buildSyncStatus(syncStatus),
       isSyncing: syncStatus.isSyncing,
       lastResult: syncStatus.lastResult,
     },

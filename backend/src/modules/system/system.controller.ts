@@ -49,7 +49,7 @@ export const updateUserRole = asyncHandler(
   async (req: Request, res: Response) => {
     const { userId } = req.params as unknown as UpdateUserRoleParams;
     const { role, is_active } = req.body as UpdateUserRoleBody;
-    const actorId = (req as any).user.userId;
+    const actorId = req.user?.userId ?? null;
 
     await SystemRepository.updateUserRole(Number(userId), role, is_active);
 

@@ -16,16 +16,6 @@ export async function disableMaintenanceMode(): Promise<void> {
   await redis.del(MAINTENANCE_KEY);
 }
 
-export async function setMaintenanceMode(
-  mode: "enabled" | "disabled",
-): Promise<void> {
-  if (mode === "enabled") {
-    await enableMaintenanceMode();
-    return;
-  }
-  await disableMaintenanceMode();
-}
-
 export async function isMaintenanceModeEnabled(): Promise<boolean> {
   const value = await redis.get(MAINTENANCE_KEY);
   return value === '1';

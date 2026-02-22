@@ -5,7 +5,7 @@ import { runBackupJob } from "@/modules/system/backup/services/backup.service.js
 import type { BackupHistoryQuery } from "@/modules/system/system.schema.js";
 
 export const triggerBackup = asyncHandler(async (req: Request, res: Response) => {
-  const actorId = (req as any).user?.userId ?? (req as any).user?.id ?? null;
+  const actorId = req.user?.userId ?? null;
   const result = await runBackupJob({
     triggerSource: "MANUAL",
     triggeredBy: actorId,
