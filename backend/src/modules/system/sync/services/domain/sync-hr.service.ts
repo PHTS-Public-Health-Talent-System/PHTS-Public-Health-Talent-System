@@ -1,5 +1,5 @@
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
-import type { SyncStats } from '@/modules/system/sync/services/sync.types.js';
+import type { SyncStats } from '@/modules/system/sync/services/shared/sync.types.js';
 
 type SupportEmployeeSqlOptions = {
   hasLevelColumn: boolean;
