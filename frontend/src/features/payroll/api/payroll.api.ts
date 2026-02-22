@@ -15,7 +15,9 @@ export type PayPeriod = {
   closed_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-  is_frozen?: number | boolean | null;
+  is_locked?: number | boolean | null;
+  snapshot_status?: "PENDING" | "PROCESSING" | "READY" | "FAILED" | string | null;
+  snapshot_ready_at?: string | null;
   frozen_at?: string | null;
   frozen_by?: number | null;
   created_by?: number | null;

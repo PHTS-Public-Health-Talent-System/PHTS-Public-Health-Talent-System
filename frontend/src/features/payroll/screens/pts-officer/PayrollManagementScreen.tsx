@@ -44,9 +44,10 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { YearPicker } from '@/components/month-year-picker';
-import { ConfirmActionDialog } from '@/components/common/confirm-action-dialog';
+import { ConfirmActionDialog } from '@/components/common';
 import { toast } from 'sonner';
 import type { AxiosError } from 'axios';
+import { usePeriodReadiness } from '@/features/snapshot/hooks';
 import {
   useCalculatePeriod,
   useCreatePeriod,
@@ -57,7 +58,12 @@ import {
   useSubmitToHR,
 } from '@/features/payroll/hooks';
 import type { PayPeriod, PeriodPayoutRow } from '@/features/payroll/api';
-import { usePayrollReviewProgress } from '@/features/payroll/usePayrollReviewProgress';
+import { isSnapshotNotReadyError } from '@/features/payroll/api/errors';
+import {
+  getSnapshotStatusUi,
+  normalizeSnapshotStatus,
+} from '@/features/payroll/domain/snapshot';
+import { usePayrollReviewProgress } from '@/features/payroll/hooks';
 import { normalizeProfessionCode, resolveProfessionLabel } from '@/shared/constants/profession';
 import { formatThaiNumber, toBuddhistYear } from '@/shared/utils/thai-locale';
 import {
@@ -66,7 +72,7 @@ import {
   getThaiMonthName,
   PAY_PERIOD_STATUS_CONFIG,
   PAY_PERIOD_STATUS_STEPS,
-} from '@/features/payroll/ui';
+} from '@/features/payroll/domain';
 import { cn } from '@/lib/utils';
 
 type PayPeriodUiModel = {
@@ -78,6 +84,7 @@ type PayPeriodUiModel = {
   totalPersons: number;
   totalAmount: number;
   createdAt: string;
+  snapshotStatus: string;
 };
 
 function toAdYear(yearNum: number): number {
@@ -97,6 +104,7 @@ function toPayPeriodUiModel(period: PayPeriod): PayPeriodUiModel {
     totalPersons: Number(period.total_headcount ?? 0),
     totalAmount: Number(period.total_amount ?? 0),
     createdAt: formatThaiDate(period.created_at ?? undefined),
+    snapshotStatus: String(period.snapshot_status ?? ''),
   };
 }
 
@@ -131,7 +139,20 @@ export function PayrollManagementScreen() {
   }, [periods, selectedPeriodId]);
 
   const { data: payoutsData } = usePeriodPayouts(currentPeriod?.id);
+  const readinessQuery = usePeriodReadiness(currentPeriod?.id);
   const { reviewedCodes } = usePayrollReviewProgress(currentPeriod?.id ?? '');
+  const readiness = (readinessQuery.data ?? {}) as {
+    is_ready?: boolean;
+    snapshot_status?: string;
+    snapshot_ready_at?: string | null;
+  };
+  const effectiveSnapshotStatus = normalizeSnapshotStatus(
+    readiness.snapshot_status ?? currentPeriod?.snapshotStatus,
+  );
+  const snapshotUi = getSnapshotStatusUi(effectiveSnapshotStatus);
+  const isSnapshotReady = Boolean(
+    readiness.is_ready ?? (effectiveSnapshotStatus === 'READY'),
+  );
 
   const professionProgress = useMemo(() => {
     const rows = (payoutsData ?? []) as PeriodPayoutRow[];
@@ -225,6 +246,10 @@ export function PayrollManagementScreen() {
 
   const handleDownload = async () => {
     if (!currentPeriod) return;
+    if (!isSnapshotReady) {
+      toast.error('ยังไม่สามารถดาวน์โหลดรายงานได้: Snapshot ยังไม่พร้อมใช้งาน');
+      return;
+    }
     try {
       const blob = await downloadReport.mutateAsync(currentPeriod.id);
       const url = URL.createObjectURL(blob);
@@ -235,7 +260,11 @@ export function PayrollManagementScreen() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-    } catch {
+    } catch (error) {
+      if (isSnapshotNotReadyError(error)) {
+        toast.error('ยังไม่สามารถดาวน์โหลดรายงานได้: Snapshot ยังไม่พร้อมใช้งาน');
+        return;
+      }
       toast.error('ไม่สามารถดาวน์โหลดรายงานได้');
     }
   };
@@ -414,6 +443,9 @@ export function PayrollManagementScreen() {
                   >
                     {PAY_PERIOD_STATUS_CONFIG[currentPeriod.status].label}
                   </Badge>
+                  <Badge variant="outline" className={cn('mt-2', snapshotUi.className)}>
+                    {snapshotUi.label}
+                  </Badge>
                 </div>
                 <AlertCircle className="h-8 w-8 text-muted-foreground/20" />
               </div>
@@ -504,13 +536,16 @@ export function PayrollManagementScreen() {
                     <h3 className="font-semibold flex items-center gap-2">
                       <FileText className="h-4 w-4" /> เอกสาร
                     </h3>
-                    <p className="text-sm text-muted-foreground">ดาวน์โหลดรายงานสรุปยอดจ่ายประจำงวด</p>
+                    <p className="text-sm text-muted-foreground">
+                      ดาวน์โหลดรายงานสรุปยอดจ่ายประจำงวด
+                      {!isSnapshotReady ? ' (รอ Snapshot พร้อมใช้งาน)' : ''}
+                    </p>
                     <ConfirmActionDialog
                       trigger={
                         <Button
                           variant="outline"
                           className="w-full bg-background"
-                          disabled={downloadReport.isPending}
+                          disabled={downloadReport.isPending || !isSnapshotReady}
                         >
                           <Download className="mr-2 h-4 w-4" /> ดาวน์โหลดรายงาน
                         </Button>
@@ -523,7 +558,7 @@ export function PayrollManagementScreen() {
                       }
                       confirmText="ดาวน์โหลด"
                       onConfirm={handleDownload}
-                      disabled={downloadReport.isPending}
+                      disabled={downloadReport.isPending || !isSnapshotReady}
                     />
                   </div>
                 </div>

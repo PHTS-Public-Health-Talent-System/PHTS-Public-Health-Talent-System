@@ -3,9 +3,11 @@
 import type React from "react"
 import { cn } from "@/lib/utils"
 import { formatThaiNumber } from "@/shared/utils/thai-locale"
+import { ReturnReportStatusBadge } from "@/components/common"
 import {
   formatThaiShortDate,
   leaveTypeLabel,
+  normalizeReturnReportStatus,
   quotaUnitLabel,
   toNumber,
 } from "./checks.helpers"
@@ -165,6 +167,7 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
     const overQuota = Boolean(ev.over_quota)
     const isNoPay = Boolean(ev.is_no_pay)
     const returnReportStatus = String(ev.return_report_status ?? "").trim()
+    const returnReportBadge = normalizeReturnReportStatus(returnReportStatus)
     const statusLabel = isNoPay ? "no-pay (ไม่รับเงินเดือน)" : overQuota ? "ลาเกินโควตา" : "ลา"
     return (
       <EvidenceGrid
@@ -181,7 +184,17 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
             ? [{ label: "จำนวนวันลา (ครั้งนี้)", value: `${formatThaiNumber(leaveDuration)} วัน` }]
             : []),
           ...(returnReportStatus
-            ? [{ label: "รายงานตัวกลับ", value: returnReportStatus, align: "right" as const }]
+            ? [
+                {
+                  label: "รายงานตัวกลับ",
+                  value: returnReportBadge ? (
+                    <ReturnReportStatusBadge status={returnReportBadge} tone="soft" />
+                  ) : (
+                    returnReportStatus
+                  ),
+                  align: "right" as const,
+                },
+              ]
             : []),
         ]}
       />

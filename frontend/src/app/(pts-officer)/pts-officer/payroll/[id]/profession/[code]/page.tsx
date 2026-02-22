@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { use } from "react"
 import Link from "next/link"
 import { PayrollDetailContent } from "@/features/payroll/components"
-import { usePayrollReviewProgress } from "@/features/payroll/usePayrollReviewProgress"
+import { usePayrollReviewProgress } from "@/features/payroll/hooks"
 import { Button } from "@/components/ui/button"
 import { Users } from "lucide-react"
 

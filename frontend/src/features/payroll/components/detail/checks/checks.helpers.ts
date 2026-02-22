@@ -1,7 +1,7 @@
 "use client"
 
 import { formatThaiDate } from "@/shared/utils/thai-locale"
-import { getLeaveTypeLabel } from "@/features/leave-records/leave-type-definitions"
+import { getLeaveTypeLabel } from "@/features/leave-management/constants/leaveTypes"
 
 export const formatThaiShortDate = (value: unknown) => {
   const raw = typeof value === "string" ? value : ""
@@ -23,4 +23,18 @@ export const quotaUnitLabel = (unit: string) => {
 export const toNumber = (value: unknown, fallback = 0) => {
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
+}
+
+export const normalizeReturnReportStatus = (
+  value: string,
+): "pending" | "reported" | null => {
+  const normalized = value.trim().toUpperCase()
+  if (!normalized) return null
+  if (["DONE", "REPORTED", "READY", "รายงานตัวแล้ว"].includes(normalized)) {
+    return "reported"
+  }
+  if (["PENDING", "WAITING", "รอรายงานตัว"].includes(normalized)) {
+    return "pending"
+  }
+  return null
 }

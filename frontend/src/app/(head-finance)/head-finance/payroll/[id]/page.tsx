@@ -2,7 +2,7 @@
 
 import { use } from 'react';
 import { PayrollDetailContent } from '@/features/payroll/components';
-import { usePayrollReviewProgress } from '@/features/payroll/usePayrollReviewProgress';
+import { usePayrollReviewProgress } from '@/features/payroll/hooks';
 
 export default function HeadFinancePayrollDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);

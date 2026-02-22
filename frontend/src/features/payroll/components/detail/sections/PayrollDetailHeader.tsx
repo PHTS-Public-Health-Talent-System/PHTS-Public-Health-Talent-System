@@ -4,7 +4,7 @@ import Link from "next/link"
 import { ArrowLeft, CheckCircle2, Download, FileText, Send, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ConfirmActionDialog } from "@/components/common/confirm-action-dialog"
+import { ConfirmActionDialog } from "@/components/common"
 import { formatThaiNumber } from "@/shared/utils/thai-locale"
 import { formatDate, formatPeriodLabel } from "../model/detail.helpers"
 
@@ -16,6 +16,7 @@ type PayrollDetailHeaderProps = {
     created_by_name?: string | null
     created_at?: string | null
     status?: string
+    snapshot_status?: string | null
   } | undefined
   activeProfessionLabel: string
   statusLabel: string
@@ -36,6 +37,10 @@ type PayrollDetailHeaderProps = {
   onExportCsv: () => void
   onExportPdf: () => Promise<void>
   isPdfPending: boolean
+  isPdfReady: boolean
+  pdfDisabledReason?: string
+  snapshotStatusLabel: string
+  snapshotStatusClassName: string
 }
 
 export function PayrollDetailHeader({
@@ -60,6 +65,10 @@ export function PayrollDetailHeader({
   onExportCsv,
   onExportPdf,
   isPdfPending,
+  isPdfReady,
+  pdfDisabledReason,
+  snapshotStatusLabel,
+  snapshotStatusClassName,
 }: PayrollDetailHeaderProps) {
   return (
     <div className="sticky top-0 z-20 border-b border-border bg-background/95 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -81,6 +90,9 @@ export function PayrollDetailHeader({
                 </h1>
                 <Badge variant="outline" className={statusClassName}>
                   {statusLabel}
+                </Badge>
+                <Badge variant="outline" className={snapshotStatusClassName}>
+                  {snapshotStatusLabel}
                 </Badge>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -206,16 +218,20 @@ export function PayrollDetailHeader({
                     variant="ghost"
                     size="icon"
                     title="ส่งออก PDF"
-                    disabled={isPdfPending}
+                    disabled={isPdfPending || !isPdfReady}
                   >
                     <FileText className="h-4 w-4" />
                   </Button>
                 }
                 title="ยืนยันดาวน์โหลดรายงาน PDF"
-                description="ระบบจะดาวน์โหลดรายงานรอบจ่ายเงินเป็นไฟล์ PDF"
+                description={
+                  isPdfReady
+                    ? "ระบบจะดาวน์โหลดรายงานรอบจ่ายเงินเป็นไฟล์ PDF"
+                    : (pdfDisabledReason ?? "Snapshot ยังไม่พร้อมสำหรับการดาวน์โหลดรายงาน")
+                }
                 confirmText="ดาวน์โหลด"
                 onConfirm={onExportPdf}
-                disabled={isPdfPending}
+                disabled={isPdfPending || !isPdfReady}
               />
             </div>
           </div>

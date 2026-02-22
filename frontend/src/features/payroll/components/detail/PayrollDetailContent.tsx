@@ -18,6 +18,11 @@ import {
   useUpdatePayout,
 } from "@/features/payroll/hooks"
 import type { PayoutDetail, PeriodDetail, PeriodPayoutRow } from "@/features/payroll/api"
+import { isSnapshotNotReadyError } from "@/features/payroll/api/errors"
+import {
+  getSnapshotStatusUi,
+  normalizeSnapshotStatus,
+} from "@/features/payroll/domain/snapshot"
 import { useRateHierarchy } from "@/features/master-data/hooks"
 import type { ProfessionHierarchy } from "@/features/master-data/api"
 import { formatThaiNumber } from "@/shared/utils/thai-locale"
@@ -108,7 +113,11 @@ export function PayrollDetailContent({
     onSubmitForReview,
   })
 
-  const canEditPayout = period?.status === "OPEN" && !Boolean(period?.is_frozen)
+  const canEditPayout = period?.status === "OPEN" && !Boolean(period?.is_locked)
+  const snapshotStatus = normalizeSnapshotStatus(period?.snapshot_status)
+  const snapshotUi = getSnapshotStatusUi(snapshotStatus)
+  const isPdfReady = snapshotStatus === "READY"
+  const pdfDisabledReason = "ยังไม่สามารถดาวน์โหลดรายงานได้: Snapshot ยังไม่พร้อมใช้งาน"
   const approvalStatus =
     approvalRole === "DIRECTOR"
       ? "WAITING_DIRECTOR"
@@ -202,6 +211,10 @@ export function PayrollDetailContent({
         }
         onExportCsv={() => actions.handleExportCsv(vm.filteredPersons)}
         onExportPdf={async () => {
+          if (!isPdfReady) {
+            toast.error(pdfDisabledReason)
+            return
+          }
           try {
             const blob = await downloadReport.mutateAsync(periodId)
             const url = window.URL.createObjectURL(blob)
@@ -211,6 +224,10 @@ export function PayrollDetailContent({
             link.click()
             window.URL.revokeObjectURL(url)
           } catch (error) {
+            if (isSnapshotNotReadyError(error)) {
+              toast.error(pdfDisabledReason)
+              return
+            }
             const message =
               error instanceof Error
                 ? error.message
@@ -219,6 +236,10 @@ export function PayrollDetailContent({
           }
         }}
         isPdfPending={downloadReport.isPending}
+        isPdfReady={isPdfReady}
+        pdfDisabledReason={pdfDisabledReason}
+        snapshotStatusLabel={snapshotUi.label}
+        snapshotStatusClassName={snapshotUi.className}
       />
 
       {!compactView && (
