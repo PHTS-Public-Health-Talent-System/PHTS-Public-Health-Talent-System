@@ -1,4 +1,4 @@
-import { calculateMonthlyWithData } from "@/modules/payroll/core/calculator";
+import { calculateMonthlyWithData } from "@/modules/payroll/core/calculator/facade/calculator.js";
 
 const makeBaseInput = (overrides: Record<string, any> = {}) => ({
   eligibilityRows: [
@@ -183,6 +183,214 @@ test("return report shortens study leave deduction window for synthetic study le
 
   expect(withoutReturn.totalDeductionDays).toBe(30);
   expect(withReturn.totalDeductionDays).toBeLessThan(withoutReturn.totalDeductionDays);
+});
+
+test("multiple return reports for same leave use earliest report date for deduction end", async () => {
+  const baseInput = {
+    eligibilityRows: [
+      {
+        effective_date: "2024-10-01",
+        expiry_date: null,
+        rate: 5000,
+        rate_id: 84,
+      },
+    ],
+    movementRows: [
+      { effective_date: "2020-01-01", movement_type: "ENTRY" },
+      { effective_date: "2024-10-01", movement_type: "STUDY" },
+    ],
+    employeeRow: {
+      position_name: "เจ้าหน้าที่",
+      start_work_date: "2020-01-01",
+    },
+    licenseRows: [
+      {
+        valid_from: "2024-01-01",
+        valid_until: "2025-12-31",
+        status: "ACTIVE",
+      },
+    ],
+    leaveRows: [],
+    quotaRow: null,
+    holidays: [],
+    noSalaryPeriods: [],
+  };
+
+  const withSingleLateReturn = await calculateMonthlyWithData(2024, 12, {
+    ...baseInput,
+    returnReportRows: [{ leave_record_id: -1, return_date: "2024-12-20" }],
+  });
+
+  const withMultipleReturns = await calculateMonthlyWithData(2024, 12, {
+    ...baseInput,
+    returnReportRows: [
+      { leave_record_id: -1, return_date: "2024-12-20" },
+      { leave_record_id: -1, return_date: "2024-12-10" },
+      { leave_record_id: -1, return_date: "2024-12-25" },
+    ],
+  });
+
+  expect(withMultipleReturns.totalDeductionDays).toBeLessThan(withSingleLateReturn.totalDeductionDays);
+});
+
+test("multiple leave records A/B/A/C/A accumulate only A-series and deduct over-quota days in target month", async () => {
+  const result = await calculateMonthlyWithData(2026, 5, {
+    eligibilityRows: [
+      {
+        effective_date: "2026-01-01",
+        expiry_date: null,
+        rate: 6200,
+        rate_id: 90,
+      },
+    ],
+    movementRows: [{ effective_date: "2020-01-01", movement_type: "ENTRY" }],
+    employeeRow: {
+      position_name: "นายแพทย์",
+      start_work_date: "2020-01-01",
+    },
+    licenseRows: [
+      {
+        valid_from: "2026-01-01",
+        valid_until: "2026-12-31",
+        status: "ACTIVE",
+      },
+    ],
+    leaveRows: [
+      {
+        id: 101,
+        leave_type: "education",
+        start_date: "2026-01-01",
+        end_date: "2026-01-30",
+        duration_days: 30,
+        study_institution: "A",
+        study_program: "A",
+        study_major: "A",
+      },
+      {
+        id: 102,
+        leave_type: "education",
+        start_date: "2026-02-01",
+        end_date: "2026-02-15",
+        duration_days: 15,
+        study_institution: "B",
+        study_program: "B",
+        study_major: "B",
+      },
+      {
+        id: 103,
+        leave_type: "education",
+        start_date: "2026-03-01",
+        end_date: "2026-03-20",
+        duration_days: 20,
+        study_institution: "A",
+        study_program: "A",
+        study_major: "A",
+      },
+      {
+        id: 104,
+        leave_type: "education",
+        start_date: "2026-04-01",
+        end_date: "2026-04-10",
+        duration_days: 10,
+        study_institution: "C",
+        study_program: "C",
+        study_major: "C",
+      },
+      {
+        id: 105,
+        leave_type: "education",
+        start_date: "2026-05-01",
+        end_date: "2026-05-18",
+        duration_days: 18,
+        study_institution: "A",
+        study_program: "A",
+        study_major: "A",
+      },
+    ],
+    quotaRow: null,
+    holidays: [],
+    noSalaryPeriods: [],
+    returnReportRows: [],
+  });
+
+  // A-series = 30 + 20 + 18 = 68 > 60, so May leave over-quota for 8 days (May 11-18)
+  expect(result.totalDeductionDays).toBe(8);
+  expect(result.eligibleDays).toBe(23);
+});
+
+test("single education leave with resume program A/B/A/C/A deducts only A over-quota segment", async () => {
+  const result = await calculateMonthlyWithData(2026, 4, {
+    eligibilityRows: [
+      {
+        effective_date: "2026-01-01",
+        expiry_date: null,
+        rate: 6200,
+        rate_id: 90,
+      },
+    ],
+    movementRows: [{ effective_date: "2020-01-01", movement_type: "ENTRY" }],
+    employeeRow: {
+      position_name: "นายแพทย์",
+      start_work_date: "2020-01-01",
+    },
+    licenseRows: [
+      {
+        valid_from: "2026-01-01",
+        valid_until: "2026-12-31",
+        status: "ACTIVE",
+      },
+    ],
+    leaveRows: [
+      {
+        id: 901,
+        leave_type: "education",
+        start_date: "2026-01-01",
+        end_date: "2026-04-21",
+        duration_days: 111,
+        study_institution: "HOSPITAL",
+        study_program: "A",
+        study_major: "A",
+        return_report_events: [
+          {
+            report_date: "2026-01-31",
+            resume_date: "2026-02-15",
+            resume_study_institution: "HOSPITAL",
+            resume_study_program: "B",
+            resume_study_major: "B",
+          },
+          {
+            report_date: "2026-03-02",
+            resume_date: "2026-03-03",
+            resume_study_institution: "HOSPITAL",
+            resume_study_program: "A",
+            resume_study_major: "A",
+          },
+          {
+            report_date: "2026-03-23",
+            resume_date: "2026-03-24",
+            resume_study_institution: "HOSPITAL",
+            resume_study_program: "C",
+            resume_study_major: "C",
+          },
+          {
+            report_date: "2026-04-03",
+            resume_date: "2026-04-04",
+            resume_study_institution: "HOSPITAL",
+            resume_study_program: "A",
+            resume_study_major: "A",
+          },
+        ],
+      },
+    ],
+    quotaRow: null,
+    holidays: [],
+    noSalaryPeriods: [],
+    returnReportRows: [],
+  });
+
+  // A-series exceeds on 2026-04-14, so April deduction is Apr14-Apr21 = 8 days
+  expect(result.totalDeductionDays).toBe(8);
+  expect(result.eligibleDays).toBe(22);
 });
 
 test("exit status cuts payroll eligibility even if there is re-entry in the same month", async () => {

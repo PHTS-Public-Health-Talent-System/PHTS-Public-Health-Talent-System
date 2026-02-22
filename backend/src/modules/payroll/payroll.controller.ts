@@ -3,7 +3,7 @@
  *
  */
 import { Request, Response } from "express";
-import { PayrollService } from "@/modules/payroll/payroll.service.js";
+import { PayrollService } from "@/modules/payroll/services/facade/payroll.service.js";
 import { emitAuditEventWithRequest } from "@/modules/audit/services/audit.service.js";
 import { AuditEventType } from "@/modules/audit/entities/audit.entity.js";
 import { ApiResponse } from "@/types/auth.js";
@@ -611,11 +611,16 @@ export const getPeriodReport = async (req: Request, res: Response) => {
       return;
     }
     if (
+      message === "SNAPSHOT_NOT_READY" ||
       message === "Report is available only for closed and frozen periods" ||
       message === "Report requires frozen snapshot" ||
       message === "Snapshot not found for frozen period"
     ) {
-      res.status(409).json({ success: false, error: message });
+      res.status(409).json({
+        success: false,
+        error: "Snapshot is not ready for this period",
+        data: { code: "SNAPSHOT_NOT_READY" },
+      });
       return;
     }
     res.status(500).json({ success: false, error: message });

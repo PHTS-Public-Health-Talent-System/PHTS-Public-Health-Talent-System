@@ -6,7 +6,7 @@ import {
 import {
   formatLocalDate,
   isHoliday,
-} from '@/modules/payroll/core/utils.js';
+} from '@/modules/payroll/core/utils/date.utils.js';
 
 export interface LeaveRow extends RowDataPacket {
   id?: number;
@@ -36,7 +36,7 @@ export interface NoSalaryPeriodRow extends RowDataPacket {
   end_date: Date | string;
 }
 
-export interface ReturnReportRow extends RowDataPacket {
+export interface ReturnReportRow {
   leave_record_id: number;
   return_date: Date | string;
 }

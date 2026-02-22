@@ -1,7 +1,7 @@
-import { calculateRetroactive } from "@/modules/payroll/core/retroactive";
-import { calculateMonthly } from "@/modules/payroll/core/calculator";
+import { calculateRetroactive } from "@/modules/payroll/core/retroactive/retroactive.js";
+import { calculateMonthly } from "@/modules/payroll/core/calculator/facade/calculator.js";
 
-jest.mock("@/modules/payroll/core/calculator.js", () => ({
+jest.mock("@/modules/payroll/core/calculator/facade/calculator.js", () => ({
   calculateMonthly: jest.fn(),
 }));
 
