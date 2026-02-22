@@ -9,6 +9,60 @@ import db, { getConnection } from '@config/database.js';
 import { Snapshot, SnapshotType, PeriodWithSnapshot } from '@/modules/snapshot/entities/snapshot.entity.js';
 
 export class SnapshotRepository {
+  static async hasColumn(tableName: string, columnName: string): Promise<boolean> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `
+      SELECT COUNT(*) AS cnt
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+        AND column_name = ?
+      `,
+      [tableName, columnName],
+    );
+    return Number((rows[0] as any)?.cnt ?? 0) > 0;
+  }
+
+  static async executeRaw(sql: string, params: any[] = []): Promise<void> {
+    await db.query(sql, params);
+  }
+
+  static async setPeriodSnapshotPending(
+    periodId: number,
+    conn: PoolConnection,
+  ): Promise<void> {
+    await conn.execute(
+      `UPDATE pay_periods
+       SET snapshot_status = 'PENDING', snapshot_ready_at = NULL, updated_at = NOW()
+       WHERE period_id = ?`,
+      [periodId],
+    );
+  }
+
+  static async setPeriodSnapshotProcessing(
+    periodId: number,
+    conn: PoolConnection,
+  ): Promise<void> {
+    await conn.execute(
+      `UPDATE pay_periods
+       SET snapshot_status = 'PROCESSING', updated_at = NOW()
+       WHERE period_id = ?`,
+      [periodId],
+    );
+  }
+
+  static async setPeriodSnapshotFailed(
+    periodId: number,
+    conn: PoolConnection,
+  ): Promise<void> {
+    await conn.execute(
+      `UPDATE pay_periods
+       SET snapshot_status = 'FAILED', updated_at = NOW()
+       WHERE period_id = ?`,
+      [periodId],
+    );
+  }
+
   // ── Period queries ──────────────────────────────────────────────────────────
 
   static async findPeriodWithSnapshot(
@@ -112,6 +166,65 @@ export class SnapshotRepository {
     );
   }
 
+  static async insertSnapshotOutbox(
+    periodId: number,
+    requestedBy: number | null,
+    conn: PoolConnection,
+  ): Promise<void> {
+    await conn.execute(
+      `INSERT INTO pay_snapshot_outbox (period_id, requested_by, status, attempts, available_at)
+       VALUES (?, ?, 'PENDING', 0, NOW())`,
+      [periodId, requestedBy],
+    );
+  }
+
+  static async findOutboxBatchForUpdate(
+    limit: number,
+    conn: PoolConnection,
+  ): Promise<RowDataPacket[]> {
+    const safeLimit = Math.max(1, Math.min(limit, 200));
+    const [rows] = await conn.query<RowDataPacket[]>(
+      `
+      SELECT outbox_id, period_id, requested_by, attempts
+      FROM pay_snapshot_outbox
+      WHERE status IN ('PENDING', 'FAILED') AND available_at <= NOW()
+      ORDER BY status ASC, available_at ASC, outbox_id ASC
+      LIMIT ${safeLimit}
+      FOR UPDATE SKIP LOCKED
+      `,
+    );
+    return rows;
+  }
+
+  static async markOutboxProcessing(outboxId: number, conn: PoolConnection): Promise<void> {
+    await conn.execute(
+      `UPDATE pay_snapshot_outbox SET status = 'PROCESSING' WHERE outbox_id = ?`,
+      [outboxId],
+    );
+  }
+
+  static async markOutboxSent(outboxId: number, conn: PoolConnection): Promise<void> {
+    await conn.execute(
+      `UPDATE pay_snapshot_outbox
+       SET status = 'SENT', processed_at = NOW(), last_error = NULL
+       WHERE outbox_id = ?`,
+      [outboxId],
+    );
+  }
+
+  static async markOutboxFailed(
+    outboxId: number,
+    message: string,
+    conn: PoolConnection,
+  ): Promise<void> {
+    await conn.execute(
+      `UPDATE pay_snapshot_outbox
+       SET status = 'FAILED', attempts = attempts + 1, last_error = ?
+       WHERE outbox_id = ?`,
+      [message.slice(0, 2000), outboxId],
+    );
+  }
+
   // ── Payout queries for snapshot ─────────────────────────────────────────────
 
   static async findPayoutsForSnapshot(
@@ -158,6 +271,33 @@ export class SnapshotRepository {
       [periodId, snapshotType, JSON.stringify(snapshotData), recordCount, totalAmount],
     );
     return result.insertId;
+  }
+
+  static async deleteSnapshotsForPeriod(
+    periodId: number,
+    conn: PoolConnection,
+  ): Promise<void> {
+    await conn.execute("DELETE FROM pay_snapshots WHERE period_id = ?", [periodId]);
+  }
+
+  static async setPeriodSnapshotReady(params: {
+    periodId: number;
+    frozenBy: number | null;
+    conn: PoolConnection;
+  }): Promise<void> {
+    const { periodId, frozenBy, conn } = params;
+    await conn.execute(
+      `
+      UPDATE pay_periods
+      SET frozen_at = NOW(),
+          frozen_by = ?,
+          snapshot_status = 'READY',
+          snapshot_ready_at = NOW(),
+          updated_at = NOW()
+      WHERE period_id = ?
+      `,
+      [frozenBy, periodId],
+    );
   }
 
   static async findSnapshot(

@@ -6,9 +6,8 @@
  * FR-12-02: Reports must reference frozen snapshots only
  */
 
-import { RowDataPacket } from "mysql2/promise";
-import { query, getConnection } from '@config/database.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
+import { SnapshotRepository } from '@/modules/snapshot/repositories/snapshot.repository.js';
 
 /**
  * Snapshot type
@@ -58,23 +57,13 @@ let snapshotOutboxTableReady = false;
 let payPeriodsPhaseAReady = false;
 
 async function hasColumn(tableName: string, columnName: string): Promise<boolean> {
-  const rows = await query<RowDataPacket[]>(
-    `
-    SELECT COUNT(*) AS cnt
-    FROM information_schema.columns
-    WHERE table_schema = DATABASE()
-      AND table_name = ?
-      AND column_name = ?
-    `,
-    [tableName, columnName],
-  );
-  return Number((rows[0] as any)?.cnt ?? 0) > 0;
+  return SnapshotRepository.hasColumn(tableName, columnName);
 }
 
 async function ensurePayPeriodsPhaseAColumns(): Promise<void> {
   if (payPeriodsPhaseAReady) return;
   if (!(await hasColumn("pay_periods", "is_locked"))) {
-    await query(
+    await SnapshotRepository.executeRaw(
       `
       ALTER TABLE pay_periods
       ADD COLUMN is_locked TINYINT(1) NOT NULL DEFAULT 0
@@ -82,7 +71,7 @@ async function ensurePayPeriodsPhaseAColumns(): Promise<void> {
     );
   }
   if (!(await hasColumn("pay_periods", "snapshot_status"))) {
-    await query(
+    await SnapshotRepository.executeRaw(
       `
       ALTER TABLE pay_periods
       ADD COLUMN snapshot_status
@@ -92,7 +81,7 @@ async function ensurePayPeriodsPhaseAColumns(): Promise<void> {
     );
   }
   if (!(await hasColumn("pay_periods", "snapshot_ready_at"))) {
-    await query(
+    await SnapshotRepository.executeRaw(
       `
       ALTER TABLE pay_periods
       ADD COLUMN snapshot_ready_at DATETIME NULL
@@ -104,7 +93,7 @@ async function ensurePayPeriodsPhaseAColumns(): Promise<void> {
 
 async function ensureSnapshotOutboxTable(): Promise<void> {
   if (snapshotOutboxTableReady) return;
-  await query(
+  await SnapshotRepository.executeRaw(
     `
     CREATE TABLE IF NOT EXISTS pay_snapshot_outbox (
       outbox_id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -148,24 +137,14 @@ export async function getPeriodWithSnapshot(
   periodId: number,
 ): Promise<PeriodWithSnapshot | null> {
   await ensurePayPeriodsPhaseAColumns();
-  const sql = `
-    SELECT p.*,
-           (SELECT COUNT(*) FROM pay_snapshots WHERE period_id = p.period_id) AS snapshot_count
-    FROM pay_periods p
-    WHERE p.period_id = ?
-  `;
-
-  const rows = await query<RowDataPacket[]>(sql, [periodId]);
-
-  if (rows.length === 0) return null;
-
-  const row = rows[0] as any;
+  const row = await SnapshotRepository.findPeriodWithSnapshot(periodId);
+  if (!row) return null;
   return {
     period_id: row.period_id,
     period_month: row.period_month,
     period_year: row.period_year,
     status: row.status,
-    is_locked: row.is_locked === 1 || row.is_locked === true,
+    is_locked: Boolean(row.is_locked),
     snapshot_status: resolveSnapshotStatus(row),
     snapshot_ready_at: row.snapshot_ready_at ?? null,
     frozen_at: row.frozen_at,
@@ -179,11 +158,7 @@ export async function getPeriodWithSnapshot(
  */
 export async function isPeriodFrozen(periodId: number): Promise<boolean> {
   await ensurePayPeriodsPhaseAColumns();
-  const sql = "SELECT snapshot_status FROM pay_periods WHERE period_id = ?";
-  const rows = await query<RowDataPacket[]>(sql, [periodId]);
-
-  if (rows.length === 0) return false;
-  return String((rows[0] as any).snapshot_status ?? "").toUpperCase() === SnapshotStatus.READY;
+  return SnapshotRepository.isPeriodFrozen(periodId);
 }
 
 /**
@@ -202,32 +177,18 @@ export async function enqueuePeriodSnapshotGeneration(
 ): Promise<void> {
   await ensurePayPeriodsPhaseAColumns();
   await ensureSnapshotOutboxTable();
-  const connection = await getConnection();
+  const connection = await SnapshotRepository.getConnection();
   try {
     await connection.beginTransaction();
-    const [periods] = await connection.query<RowDataPacket[]>(
-      "SELECT period_id, period_month, period_year, status FROM pay_periods WHERE period_id = ? FOR UPDATE",
-      [periodId],
-    );
-    if (!periods.length) {
+    const period = await SnapshotRepository.findPeriodByIdForUpdate(periodId, connection);
+    if (!period) {
       throw new Error("Period not found");
     }
-    const period = periods[0] as any;
     if (String(period.status ?? "").toUpperCase() !== "CLOSED") {
       throw new Error("Can only enqueue snapshot for closed periods");
     }
-
-    await connection.execute(
-      `UPDATE pay_periods
-       SET snapshot_status = 'PENDING', snapshot_ready_at = NULL, updated_at = NOW()
-       WHERE period_id = ?`,
-      [periodId],
-    );
-    await connection.execute(
-      `INSERT INTO pay_snapshot_outbox (period_id, requested_by, status, attempts, available_at)
-       VALUES (?, ?, 'PENDING', 0, NOW())`,
-      [periodId, requestedBy],
-    );
+    await SnapshotRepository.setPeriodSnapshotPending(periodId, connection);
+    await SnapshotRepository.insertSnapshotOutbox(periodId, requestedBy, connection);
     await connection.commit();
   } catch (error) {
     await connection.rollback();
@@ -270,23 +231,13 @@ export async function processSnapshotOutboxBatch(limit: number = 50): Promise<{
 }> {
   await ensurePayPeriodsPhaseAColumns();
   await ensureSnapshotOutboxTable();
-  const conn = await getConnection();
+  const conn = await SnapshotRepository.getConnection();
   let processed = 0;
   let sent = 0;
   let failed = 0;
   try {
     await conn.beginTransaction();
-    const safeLimit = Math.max(1, Math.min(limit, 200));
-    const [rows] = await conn.query<RowDataPacket[]>(
-      `
-      SELECT outbox_id, period_id, requested_by, attempts
-      FROM pay_snapshot_outbox
-      WHERE status IN ('PENDING', 'FAILED') AND available_at <= NOW()
-      ORDER BY status ASC, available_at ASC, outbox_id ASC
-      LIMIT ${safeLimit}
-      FOR UPDATE SKIP LOCKED
-      `,
-    );
+    const rows = await SnapshotRepository.findOutboxBatchForUpdate(limit, conn);
 
     for (const row of rows as any[]) {
       processed += 1;
@@ -297,32 +248,18 @@ export async function processSnapshotOutboxBatch(limit: number = 50): Promise<{
           ? null
           : Number(row.requested_by);
       try {
-        await conn.execute(
-          `UPDATE pay_snapshot_outbox SET status = 'PROCESSING' WHERE outbox_id = ?`,
-          [outboxId],
-        );
+        await SnapshotRepository.markOutboxProcessing(outboxId, conn);
         await generateSnapshotForPeriod(conn, periodId, requestedBy);
-        await conn.execute(
-          `UPDATE pay_snapshot_outbox
-           SET status = 'SENT', processed_at = NOW(), last_error = NULL
-           WHERE outbox_id = ?`,
-          [outboxId],
-        );
+        await SnapshotRepository.markOutboxSent(outboxId, conn);
         sent += 1;
       } catch (error: any) {
         failed += 1;
-        await conn.execute(
-          `UPDATE pay_snapshot_outbox
-           SET status = 'FAILED', attempts = attempts + 1, last_error = ?
-           WHERE outbox_id = ?`,
-          [String(error?.message ?? "snapshot generation failed").slice(0, 2000), outboxId],
+        await SnapshotRepository.markOutboxFailed(
+          outboxId,
+          String(error?.message ?? "snapshot generation failed"),
+          conn,
         );
-        await conn.execute(
-          `UPDATE pay_periods
-           SET snapshot_status = 'FAILED', updated_at = NOW()
-           WHERE period_id = ?`,
-          [periodId],
-        );
+        await SnapshotRepository.setPeriodSnapshotFailed(periodId, conn);
         await emitAuditEvent({
           eventType: AuditEventType.OTHER,
           entityType: "snapshot",
@@ -347,59 +284,30 @@ export async function processSnapshotOutboxBatch(limit: number = 50): Promise<{
 }
 
 async function generateSnapshotForPeriod(
-  connection: Awaited<ReturnType<typeof getConnection>>,
+  connection: Awaited<ReturnType<typeof SnapshotRepository.getConnection>>,
   periodId: number,
   requestedBy: number | null,
 ): Promise<void> {
-  const [periodRows] = await connection.query<RowDataPacket[]>(
-    "SELECT * FROM pay_periods WHERE period_id = ? FOR UPDATE",
-    [periodId],
-  );
-  if (!periodRows.length) throw new Error("Period not found");
-  const period = periodRows[0] as any;
+  const period = await SnapshotRepository.findPeriodByIdForUpdate(periodId, connection);
+  if (!period) throw new Error("Period not found");
   if (String(period.status ?? "").toUpperCase() !== "CLOSED") {
     throw new Error("Can only freeze closed periods");
   }
 
-  await connection.execute(
-    `UPDATE pay_periods SET snapshot_status = 'PROCESSING', updated_at = NOW() WHERE period_id = ?`,
-    [periodId],
-  );
-
-  const [payouts] = await connection.query<RowDataPacket[]>(
-    `
-    SELECT po.*,
-           COALESCE(e.first_name, s.first_name, '') AS first_name,
-           COALESCE(e.last_name, s.last_name, '') AS last_name,
-           COALESCE(e.department, s.department, '') AS department,
-           COALESCE(e.position_name, s.position_name, '') AS position_name,
-           mr.amount AS base_rate,
-           mr.group_no,
-           mr.item_no,
-           mr.profession_code
-    FROM pay_results po
-    LEFT JOIN emp_profiles e ON po.citizen_id = e.citizen_id
-    LEFT JOIN emp_support_staff s ON po.citizen_id = s.citizen_id
-    LEFT JOIN cfg_payment_rates mr ON po.master_rate_id = mr.rate_id
-    WHERE po.period_id = ?
-    ORDER BY last_name, first_name
-  `,
-    [periodId],
-  );
+  await SnapshotRepository.setPeriodSnapshotProcessing(periodId, connection);
+  const payouts = await SnapshotRepository.findPayoutsForSnapshot(periodId, connection);
 
   let totalAmount = 0;
   for (const payout of payouts as any[]) totalAmount += payout.total_payable || 0;
 
-  await connection.execute(
-    "DELETE FROM pay_snapshots WHERE period_id = ?",
-    [periodId],
-  );
-
-  await connection.execute(
-    `INSERT INTO pay_snapshots
-     (period_id, snapshot_type, snapshot_data, record_count, total_amount)
-     VALUES (?, 'PAYOUT', ?, ?, ?)`,
-    [periodId, JSON.stringify(payouts), payouts.length, totalAmount],
+  await SnapshotRepository.deleteSnapshotsForPeriod(periodId, connection);
+  await SnapshotRepository.createSnapshot(
+    periodId,
+    SnapshotType.PAYOUT,
+    payouts,
+    payouts.length,
+    totalAmount,
+    connection,
   );
 
   const summary = {
@@ -411,25 +319,20 @@ async function generateSnapshotForPeriod(
     frozen_at: new Date().toISOString(),
     by_department: calculateDepartmentSummary(payouts as any[]),
   };
-  await connection.execute(
-    `INSERT INTO pay_snapshots
-     (period_id, snapshot_type, snapshot_data, record_count, total_amount)
-     VALUES (?, 'SUMMARY', ?, ?, ?)`,
-    [periodId, JSON.stringify(summary), payouts.length, totalAmount],
+  await SnapshotRepository.createSnapshot(
+    periodId,
+    SnapshotType.SUMMARY,
+    summary,
+    payouts.length,
+    totalAmount,
+    connection,
   );
 
-  await connection.execute(
-    `
-    UPDATE pay_periods
-    SET frozen_at = NOW(),
-        frozen_by = ?,
-        snapshot_status = 'READY',
-        snapshot_ready_at = NOW(),
-        updated_at = NOW()
-    WHERE period_id = ?
-    `,
-    [requestedBy, periodId],
-  );
+  await SnapshotRepository.setPeriodSnapshotReady({
+    periodId,
+    frozenBy: requestedBy,
+    conn: connection,
+  });
 
   await emitAuditEvent({
     eventType: AuditEventType.SNAPSHOT_FREEZE,
@@ -453,26 +356,7 @@ export async function getSnapshot(
   periodId: number,
   snapshotType: SnapshotType,
 ): Promise<Snapshot | null> {
-  const sql = `
-    SELECT * FROM pay_snapshots
-    WHERE period_id = ? AND snapshot_type = ?
-    ORDER BY created_at DESC LIMIT 1
-  `;
-
-  const rows = await query<RowDataPacket[]>(sql, [periodId, snapshotType]);
-
-  if (rows.length === 0) return null;
-
-  const row = rows[0] as any;
-  return {
-    snapshot_id: row.snapshot_id,
-    period_id: row.period_id,
-    snapshot_type: row.snapshot_type,
-    snapshot_data: JSON.parse(row.snapshot_data),
-    record_count: row.record_count,
-    total_amount: Number(row.total_amount),
-    created_at: row.created_at,
-  };
+  return SnapshotRepository.findSnapshot(periodId, snapshotType);
 }
 
 /**
@@ -552,38 +436,23 @@ export async function unfreezePeriod(
     throw new Error("Reason is required for unfreezing");
   }
 
-  const connection = await getConnection();
+  const connection = await SnapshotRepository.getConnection();
 
   try {
     await connection.beginTransaction();
 
     // Check period snapshot is currently ready
-    const [periods] = await connection.query<RowDataPacket[]>(
-      "SELECT * FROM pay_periods WHERE period_id = ? FOR UPDATE",
-      [periodId],
-    );
-
-    if (periods.length === 0) {
+    const period = await SnapshotRepository.findPeriodByIdForUpdate(periodId, connection);
+    if (!period) {
       throw new Error("Period not found");
     }
-
-    const period = periods[0] as any;
 
     if (resolveSnapshotStatus(period) !== SnapshotStatus.READY) {
       throw new Error("Period is not frozen");
     }
 
     // Unfreeze (keep snapshots for audit trail)
-    await connection.execute(
-      `UPDATE pay_periods
-       SET frozen_at = NULL,
-           frozen_by = NULL,
-           snapshot_status = 'PENDING',
-           snapshot_ready_at = NULL,
-           updated_at = NOW()
-       WHERE period_id = ?`,
-      [periodId],
-    );
+    await SnapshotRepository.unfreezePeriod(periodId, connection);
 
     await connection.commit();
 
@@ -613,21 +482,5 @@ export async function unfreezePeriod(
 export async function getSnapshotsForPeriod(
   periodId: number,
 ): Promise<Snapshot[]> {
-  const sql = `
-    SELECT * FROM pay_snapshots
-    WHERE period_id = ?
-    ORDER BY created_at DESC
-  `;
-
-  const rows = await query<RowDataPacket[]>(sql, [periodId]);
-
-  return (rows as any[]).map((row) => ({
-    snapshot_id: row.snapshot_id,
-    period_id: row.period_id,
-    snapshot_type: row.snapshot_type,
-    snapshot_data: JSON.parse(row.snapshot_data),
-    record_count: row.record_count,
-    total_amount: Number(row.total_amount),
-    created_at: row.created_at,
-  }));
+  return SnapshotRepository.findSnapshotsForPeriod(periodId);
 }
