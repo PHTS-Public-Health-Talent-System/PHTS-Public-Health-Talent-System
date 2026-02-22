@@ -97,8 +97,8 @@ describe("FinanceRepository (integration)", () => {
     const conn = await getTestConnection();
     try {
       const [periodRes] = await conn.execute<any>(
-        `INSERT INTO pay_periods (period_month, period_year, status, is_frozen)
-         VALUES (2, 2026, 'CLOSED', 1)`,
+        `INSERT INTO pay_periods (period_month, period_year, status, snapshot_status)
+         VALUES (2, 2026, 'CLOSED', 'READY')`,
       );
       const periodId = Number(periodRes.insertId);
 

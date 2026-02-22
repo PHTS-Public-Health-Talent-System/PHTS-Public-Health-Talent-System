@@ -37,5 +37,7 @@ module.exports = {
   testMatch: ['**/?(*.)+(spec|test).[jt]s?(x)'],
   // Run sequentially to prevent DB clashes between suites
   maxWorkers: 1,
+  // Ensure DB pools/workers are closed so Jest exits cleanly.
+  globalTeardown: '<rootDir>/scripts/jest-global-teardown.cjs',
   modulePathIgnorePatterns: ['<rootDir>/dist/'],
 };

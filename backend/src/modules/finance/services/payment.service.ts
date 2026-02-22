@@ -15,10 +15,13 @@ import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.s
 export { PaymentStatus } from '@/modules/finance/entities/finance.entity.js';
 export type { PayoutWithDetails } from '@/modules/finance/entities/finance.entity.js';
 
-const ensureReportablePeriod = (params: { periodStatus: string; isFrozen: number | boolean }) => {
+const ensureReportablePeriod = (params: {
+  periodStatus: string;
+  snapshotStatus: string | null | undefined;
+}) => {
   const isClosed = params.periodStatus === 'CLOSED';
-  const isFrozen = params.isFrozen === true || Number(params.isFrozen) === 1;
-  if (!isClosed || !isFrozen) {
+  const snapshotReady = String(params.snapshotStatus ?? '').toUpperCase() === 'READY';
+  if (!isClosed || !snapshotReady) {
     throw new Error('งวดนี้ยังไม่ผ่านการอนุมัติปิดรอบจากผู้บริหาร');
   }
 };
@@ -46,7 +49,7 @@ export async function markPayoutAsPaid(
     }
     ensureReportablePeriod({
       periodStatus: String(payout.period_status ?? ''),
-      isFrozen: payout.is_frozen,
+      snapshotStatus: payout.snapshot_status,
     });
     if (payout.payment_status === PaymentStatus.PAID) {
       throw new Error(`Payout ${payoutId} is already marked as paid`);
@@ -117,7 +120,7 @@ export async function batchMarkAsPaid(
         try {
           ensureReportablePeriod({
             periodStatus: String(payout.period_status ?? ''),
-            isFrozen: payout.is_frozen,
+            snapshotStatus: payout.snapshot_status,
           });
         } catch (error: any) {
           result.failed.push({ id: payoutId, reason: error.message });
@@ -193,7 +196,7 @@ export async function cancelPayout(
     }
     ensureReportablePeriod({
       periodStatus: String(payout.period_status ?? ''),
-      isFrozen: payout.is_frozen,
+      snapshotStatus: payout.snapshot_status,
     });
     if (payout.payment_status === PaymentStatus.PAID) {
       throw new Error(`Cannot cancel PAID payout ${payoutId}`);
@@ -244,7 +247,7 @@ export async function getPayoutsByPeriod(
   }
   ensureReportablePeriod({
     periodStatus: String(period.status ?? ''),
-    isFrozen: period.is_frozen,
+    snapshotStatus: period.snapshot_status,
   });
   return FinanceRepository.findPayoutsByPeriod(periodId, status, search);
 }

@@ -117,3 +117,60 @@ npx jest src/modules/request/__tests__/workflow.test.ts
 - camelCase for APIs and services
 - Domain separation is mandatory
 - Never commit secrets
+
+---
+
+## 8) Leave Return Report Events API (Frontend Contract)
+
+Purpose:
+- Support one leave record with multiple report/resume cycles.
+- `leave_return_report_events` is the source of truth for pause/resume logic.
+
+Base path:
+- `/api/leave-management`
+
+### List events
+- `GET /:leaveManagementId/return-report-events`
+- Response:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "event_id": 1,
+      "leave_record_id": 123,
+      "report_date": "2026-01-31",
+      "resume_date": "2026-02-15",
+      "resume_study_program": "B"
+    }
+  ]
+}
+```
+
+### Replace events (full replace)
+- `PUT /:leaveManagementId/return-report-events`
+- Request:
+```json
+{
+  "events": [
+    {
+      "report_date": "2026-01-31",
+      "resume_date": "2026-02-15",
+      "resume_study_program": "B"
+    },
+    {
+      "report_date": "2026-03-07",
+      "resume_date": "2026-03-17",
+      "resume_study_program": "A"
+    }
+  ]
+}
+```
+- Rules:
+  - `events` must be sorted by `report_date` ascending.
+  - `resume_date` must be strictly after `report_date`.
+  - This endpoint replaces all existing events for that leave record.
+
+Compatibility:
+- After replace, backend also syncs legacy fields in `leave_record_extensions`
+  (`return_report_status`, `return_date`) for backward compatibility.
