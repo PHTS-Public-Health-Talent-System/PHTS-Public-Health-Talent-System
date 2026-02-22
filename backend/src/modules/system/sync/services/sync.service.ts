@@ -5,7 +5,7 @@ import redis from '@config/redis.js';
 import {
   assignRoles,
   RoleAssignmentService,
-} from '@/modules/system/services/roleAssignmentService.js';
+} from '@/modules/system/identity/services/role-assignment.service.js';
 import { clearScopeCache } from '@/modules/request/scope/scope.service.js';
 import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 import {

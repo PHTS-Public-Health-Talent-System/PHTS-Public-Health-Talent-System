@@ -1,4 +1,4 @@
-import { RoleAssignmentService } from '../services/roleAssignmentService.js';
+import { RoleAssignmentService } from '../identity/services/role-assignment.service.js';
 
 describe('RoleAssignmentService.deriveRole', () => {
   test('prioritizes DIRECTOR over finance/head roles', () => {
