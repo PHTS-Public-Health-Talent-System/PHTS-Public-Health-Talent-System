@@ -1,7 +1,11 @@
-import api from '@/shared/api/axios';
-import { ApiPayload, ApiResponse } from '@/shared/api/types';
-import { RequestWithDetails } from '@/types/request.types';
-import type { DisplayScope } from './utils';
+/**
+ * request module - API client
+ *
+ */
+import api from "@/shared/api/axios";
+import { ApiPayload, ApiResponse } from "@/shared/api/types";
+import { RequestWithDetails } from "@/types/request.types";
+import type { DisplayScope } from "./utils";
 
 export interface MasterRate {
   rate_id: number;
@@ -131,30 +135,48 @@ export interface ScopeWithMembers extends DisplayScope {
 }
 
 export async function getMyRequests(): Promise<RequestWithDetails[]> {
-  const res = await api.get<ApiResponse<RequestWithDetails[]>>('/requests');
+  const res = await api.get<ApiResponse<RequestWithDetails[]>>("/requests");
   return res.data.data;
 }
 
-export async function getRequestById(id: number | string): Promise<RequestWithDetails> {
+export async function getRequestById(
+  id: number | string,
+): Promise<RequestWithDetails> {
   const res = await api.get<ApiResponse<RequestWithDetails>>(`/requests/${id}`);
   return res.data.data;
 }
 
-export async function createRequest(formData: FormData): Promise<RequestWithDetails> {
-  const res = await api.post<ApiResponse<RequestWithDetails>>('/requests', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+export async function createRequest(
+  formData: FormData,
+): Promise<RequestWithDetails> {
+  const res = await api.post<ApiResponse<RequestWithDetails>>(
+    "/requests",
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    },
+  );
   return res.data.data;
 }
 
-export async function updateRequest(id: number | string, formData: FormData): Promise<RequestWithDetails> {
-  const res = await api.put<ApiResponse<RequestWithDetails>>(`/requests/${id}`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+export async function updateRequest(
+  id: number | string,
+  formData: FormData,
+): Promise<RequestWithDetails> {
+  const res = await api.put<ApiResponse<RequestWithDetails>>(
+    `/requests/${id}`,
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    },
+  );
   return res.data.data;
 }
 
-export async function submitRequest(id: number | string, confirmed = true): Promise<void> {
+export async function submitRequest(
+  id: number | string,
+  confirmed = true,
+): Promise<void> {
   await api.post(`/requests/${id}/submit`, { confirmed });
 }
 
@@ -163,36 +185,50 @@ export async function cancelRequest(id: number | string): Promise<void> {
 }
 
 export async function getMasterRates() {
-  const res = await api.get<ApiResponse<MasterRate[]>>('/requests/master-rates');
+  const res = await api.get<ApiResponse<MasterRate[]>>(
+    "/requests/master-rates",
+  );
   return res.data.data;
 }
 
 export async function getPrefill() {
-  const res = await api.get<ApiResponse<PrefillProfile>>('/requests/prefill');
+  const res = await api.get<ApiResponse<PrefillProfile>>("/requests/prefill");
   return res.data.data;
 }
 
 export async function getMyScopes(): Promise<DisplayScope[]> {
-  const res = await api.get<ApiResponse<DisplayScope[]>>('/requests/my-scopes');
+  const res = await api.get<ApiResponse<DisplayScope[]>>("/requests/my-scopes");
   return res.data.data;
 }
 
 export async function getMyScopeMembers(): Promise<ScopeWithMembers[]> {
-  const res = await api.get<ApiResponse<ScopeWithMembers[]>>('/requests/my-scopes/members');
+  const res = await api.get<ApiResponse<ScopeWithMembers[]>>(
+    "/requests/my-scopes/members",
+  );
   return res.data.data;
 }
 
-export async function getEligibilityList(activeOnly = true): Promise<EligibilityRecord[]> {
-  const res = await api.get<ApiResponse<EligibilityRecord[]>>('/requests/eligibility', {
-    params: { active_only: activeOnly ? "1" : "0" },
-  });
+export async function getEligibilityList(
+  activeOnly = true,
+): Promise<EligibilityRecord[]> {
+  const res = await api.get<ApiResponse<EligibilityRecord[]>>(
+    "/requests/eligibility",
+    {
+      params: { active_only: activeOnly ? "1" : "0" },
+    },
+  );
   return res.data.data;
 }
 
-export async function getEligibilitySummary(activeOnly = true): Promise<EligibilitySummary> {
-  const res = await api.get<ApiResponse<EligibilitySummary>>('/requests/eligibility/summary', {
-    params: { active_only: activeOnly ? "1" : "0" },
-  });
+export async function getEligibilitySummary(
+  activeOnly = true,
+): Promise<EligibilitySummary> {
+  const res = await api.get<ApiResponse<EligibilitySummary>>(
+    "/requests/eligibility/summary",
+    {
+      params: { active_only: activeOnly ? "1" : "0" },
+    },
+  );
   return res.data.data;
 }
 
@@ -207,14 +243,21 @@ export async function getEligibilityPaged(params: {
   sub_department?: string;
   license_status?: "all" | "active" | "expiring" | "expired";
 }): Promise<EligibilityPagedResult> {
-  const res = await api.get<ApiResponse<EligibilityPagedResult>>('/requests/eligibility', {
-    params,
-  });
+  const res = await api.get<ApiResponse<EligibilityPagedResult>>(
+    "/requests/eligibility",
+    {
+      params,
+    },
+  );
   return res.data.data;
 }
 
-export async function getEligibilityById(id: number | string): Promise<EligibilityRecord> {
-  const res = await api.get<ApiResponse<EligibilityRecord>>(`/requests/eligibility/${id}`);
+export async function getEligibilityById(
+  id: number | string,
+): Promise<EligibilityRecord> {
+  const res = await api.get<ApiResponse<EligibilityRecord>>(
+    `/requests/eligibility/${id}`,
+  );
   return res.data.data;
 }
 
@@ -227,45 +270,62 @@ export async function exportEligibilityCsv(params: {
   sub_department?: string;
   license_status?: "all" | "active" | "expiring" | "expired";
 }): Promise<Blob> {
-  const res = await api.get('/requests/eligibility/export', {
+  const res = await api.get("/requests/eligibility/export", {
     params,
-    responseType: 'blob',
+    responseType: "blob",
   });
   return res.data as Blob;
 }
 
 export async function getPendingApprovals(scope?: string) {
-  const res = await api.get<ApiResponse<RequestWithDetails[]>>('/requests/pending', {
-    params: scope ? { scope } : undefined,
-  });
+  const res = await api.get<ApiResponse<RequestWithDetails[]>>(
+    "/requests/pending",
+    {
+      params: scope ? { scope } : undefined,
+    },
+  );
   return res.data.data;
 }
 
 export async function getApprovalHistory(params?: {
-  view?: 'mine' | 'team';
-  actions?: 'important' | 'all';
+  view?: "mine" | "team";
+  actions?: "important" | "all";
 }): Promise<RequestWithDetails[]> {
-  const res = await api.get<ApiResponse<RequestWithDetails[]>>('/requests/history', {
-    params,
-  });
+  const res = await api.get<ApiResponse<RequestWithDetails[]>>(
+    "/requests/history",
+    {
+      params,
+    },
+  );
   return res.data.data;
 }
 
 export async function getAvailableOfficers() {
-  const res = await api.get<ApiResponse<OfficerOption[]>>('/requests/pts-officers');
+  const res = await api.get<ApiResponse<OfficerOption[]>>(
+    "/requests/pts-officers",
+  );
   return res.data.data;
 }
 
 export async function confirmAttachments(id: number | string) {
-  const res = await api.post<ApiResponse<{ message: string }>>(`/requests/${id}/attachments/confirm`);
+  const res = await api.post<ApiResponse<{ message: string }>>(
+    `/requests/${id}/attachments/confirm`,
+  );
   return res.data.data;
 }
 
 export async function updateRateMapping(
   id: number | string,
-  payload: { group_no: number; item_no: string | null; sub_item_no?: string | null },
+  payload: {
+    group_no: number;
+    item_no: string | null;
+    sub_item_no?: string | null;
+  },
 ) {
-  const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/rate-mapping`, payload);
+  const res = await api.post<ApiResponse<ApiPayload>>(
+    `/requests/${id}/rate-mapping`,
+    payload,
+  );
   return res.data.data;
 }
 
@@ -273,7 +333,10 @@ export async function updateVerificationChecks(
   id: number | string,
   payload: { qualification_ok: boolean; evidence_ok: boolean },
 ) {
-  const res = await api.put<ApiResponse<ApiPayload>>(`/requests/${id}/verification`, payload);
+  const res = await api.put<ApiResponse<ApiPayload>>(
+    `/requests/${id}/verification`,
+    payload,
+  );
   return res.data.data;
 }
 
@@ -286,35 +349,64 @@ export async function createVerificationSnapshot(
     snapshot_data: Record<string, unknown>;
   },
 ) {
-  const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/verification-snapshot`, payload);
+  const res = await api.post<ApiResponse<ApiPayload>>(
+    `/requests/${id}/verification-snapshot`,
+    payload,
+  );
   return res.data.data;
 }
 
 export async function processAction(
   id: number | string,
-  payload: { action: 'APPROVE' | 'REJECT' | 'RETURN'; comment?: string; signature_base64?: string },
+  payload: {
+    action: "APPROVE" | "REJECT" | "RETURN";
+    comment?: string;
+    signature_base64?: string;
+  },
 ) {
-  const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/action`, payload);
+  const res = await api.post<ApiResponse<ApiPayload>>(
+    `/requests/${id}/action`,
+    payload,
+  );
   return res.data.data;
 }
 
-export async function approveRequest(id: number | string, comment?: string, signature_base64?: string) {
-  const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/approve`, { comment, signature_base64 });
+export async function approveRequest(
+  id: number | string,
+  comment?: string,
+  signature_base64?: string,
+) {
+  const res = await api.post<ApiResponse<ApiPayload>>(
+    `/requests/${id}/approve`,
+    { comment, signature_base64 },
+  );
   return res.data.data;
 }
 
 export async function rejectRequest(id: number | string, comment?: string) {
-  const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/reject`, { comment });
+  const res = await api.post<ApiResponse<ApiPayload>>(
+    `/requests/${id}/reject`,
+    { comment },
+  );
   return res.data.data;
 }
 
 export async function returnRequest(id: number | string, comment?: string) {
-  const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/return`, { comment });
+  const res = await api.post<ApiResponse<ApiPayload>>(
+    `/requests/${id}/return`,
+    { comment },
+  );
   return res.data.data;
 }
 
-export async function approveBatch(payload: { requestIds: number[]; comment?: string }) {
-  const res = await api.post<ApiResponse<ApiPayload>>('/requests/batch-approve', payload);
+export async function approveBatch(payload: {
+  requestIds: number[];
+  comment?: string;
+}) {
+  const res = await api.post<ApiResponse<ApiPayload>>(
+    "/requests/batch-approve",
+    payload,
+  );
   return res.data.data;
 }
 
@@ -322,12 +414,17 @@ export async function reassignRequest(
   id: number | string,
   payload: { target_officer_id: number; remark?: string },
 ) {
-  const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/reassign`, payload);
+  const res = await api.post<ApiResponse<ApiPayload>>(
+    `/requests/${id}/reassign`,
+    payload,
+  );
   return res.data.data;
 }
 
 export async function getReassignHistory(id: number | string) {
-  const res = await api.get<ApiResponse<ReassignHistoryItem[]>>(`/requests/${id}/reassign-history`);
+  const res = await api.get<ApiResponse<ReassignHistoryItem[]>>(
+    `/requests/${id}/reassign-history`,
+  );
   return res.data.data;
 }
 
@@ -340,6 +437,9 @@ export async function adjustLeaveRequest(
     remark?: string;
   },
 ) {
-  const res = await api.put<ApiResponse<ApiPayload>>(`/requests/${id}/adjust-leave`, payload);
+  const res = await api.put<ApiResponse<ApiPayload>>(
+    `/requests/${id}/adjust-leave`,
+    payload,
+  );
   return res.data.data;
 }

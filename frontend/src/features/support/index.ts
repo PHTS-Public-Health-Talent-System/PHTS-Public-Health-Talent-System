@@ -1,3 +1,7 @@
-export * from './api'
-export * from './hooks'
-export * from './types'
+/**
+ * support module - module exports
+ *
+ */
+export * from "./api";
+export * from "./hooks";
+export * from "./types";

@@ -1,7 +1,11 @@
+/**
+ * master-data module - React query hooks
+ *
+ */
 "use client";
 
-import { useMutation, useQuery } from '@tanstack/react-query';
-import type { ApiParams, ApiPayload } from '@/shared/api/types';
+import { useMutation, useQuery } from "@tanstack/react-query";
+import type { ApiParams, ApiPayload } from "@/shared/api/types";
 import {
   addHoliday,
   deleteHoliday,
@@ -14,18 +18,19 @@ import {
   updateMasterRate,
   getRateHierarchy,
   type HolidayType,
-} from './api';
+} from "./api";
 
 export function useHolidays(params?: ApiParams) {
   return useQuery({
-    queryKey: ['holidays', params ?? {}],
+    queryKey: ["holidays", params ?? {}],
     queryFn: () => getHolidays(params),
   });
 }
 
 export function useAddHoliday() {
   return useMutation({
-    mutationFn: (payload: { date: string; name: string; type?: HolidayType }) => addHoliday(payload),
+    mutationFn: (payload: { date: string; name: string; type?: HolidayType }) =>
+      addHoliday(payload),
   });
 }
 
@@ -49,7 +54,7 @@ export function useDeleteHoliday() {
 
 export function useMasterRatesConfig() {
   return useQuery({
-    queryKey: ['master-rates-config'],
+    queryKey: ["master-rates-config"],
     queryFn: getMasterRates,
   });
 }
@@ -62,15 +67,20 @@ export function useCreateMasterRate() {
 
 export function useProfessions() {
   return useQuery({
-    queryKey: ['professions'],
+    queryKey: ["professions"],
     queryFn: getProfessions,
   });
 }
 
 export function useUpdateMasterRate() {
   return useMutation({
-    mutationFn: ({ rateId, payload }: { rateId: number | string; payload: ApiPayload }) =>
-      updateMasterRate(rateId, payload),
+    mutationFn: ({
+      rateId,
+      payload,
+    }: {
+      rateId: number | string;
+      payload: ApiPayload;
+    }) => updateMasterRate(rateId, payload),
   });
 }
 
@@ -82,7 +92,7 @@ export function useDeleteMasterRate() {
 
 export function useRateHierarchy() {
   return useQuery({
-    queryKey: ['rate-hierarchy'],
+    queryKey: ["rate-hierarchy"],
     queryFn: getRateHierarchy,
     staleTime: 1000 * 60 * 60, // 1 hour (static data)
   });

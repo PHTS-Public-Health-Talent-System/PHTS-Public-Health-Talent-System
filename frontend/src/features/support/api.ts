@@ -1,3 +1,7 @@
+/**
+ * support module - API client
+ *
+ */
 import api from "@/shared/api/axios";
 
 export type SupportTicketStatus =
@@ -64,10 +68,10 @@ export async function listSupportTickets(params?: {
   page?: number;
   limit?: number;
 }) {
-  const res = await api.get<{ success: boolean; data: { rows: SupportTicket[]; total: number } }>(
-    "/support/tickets",
-    { params },
-  );
+  const res = await api.get<{
+    success: boolean;
+    data: { rows: SupportTicket[]; total: number };
+  }>("/support/tickets", { params });
   const rows = res.data.data.rows.map((ticket: RawSupportTicket) => ({
     ...ticket,
     id: ticket.id ?? ticket.ticket_id ?? 0,
@@ -125,7 +129,10 @@ export async function listSupportTicketMessages(ticketId: number | string) {
   return res.data.data;
 }
 
-export async function createSupportTicketMessage(ticketId: number | string, payload: FormData) {
+export async function createSupportTicketMessage(
+  ticketId: number | string,
+  payload: FormData,
+) {
   const res = await api.post<{ success: boolean; data: { id: number } }>(
     `/support/tickets/${ticketId}/messages`,
     payload,

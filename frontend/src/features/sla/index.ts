@@ -1,3 +1,7 @@
-export * from './api'
-export * from './hooks'
-export * from './types'
+/**
+ * sla module - module exports
+ *
+ */
+export * from "./api";
+export * from "./hooks";
+export * from "./types";

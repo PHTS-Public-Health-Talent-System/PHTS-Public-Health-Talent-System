@@ -1,5 +1,9 @@
-import api from '@/shared/api/axios';
-import { ApiResponse } from '@/shared/api/types';
+/**
+ * notification module - API client
+ *
+ */
+import api from "@/shared/api/axios";
+import { ApiResponse } from "@/shared/api/types";
 
 export interface Notification {
   id: number;
@@ -22,7 +26,7 @@ type RawNotification = Notification & {
 };
 
 export async function getMyNotifications() {
-  const res = await api.get<ApiResponse<NotificationData>>('/notifications');
+  const res = await api.get<ApiResponse<NotificationData>>("/notifications");
   const data = res.data.data;
   return {
     ...data,
@@ -44,18 +48,30 @@ export interface NotificationSettings {
 }
 
 export async function getNotificationSettings() {
-  const res = await api.get<ApiResponse<NotificationSettings>>('/notifications/settings');
+  const res = await api.get<ApiResponse<NotificationSettings>>(
+    "/notifications/settings",
+  );
   return res.data.data;
 }
 
-export async function updateNotificationSettings(payload: NotificationSettings) {
-  const res = await api.put<ApiResponse<NotificationSettings>>('/notifications/settings', payload);
+export async function updateNotificationSettings(
+  payload: NotificationSettings,
+) {
+  const res = await api.put<ApiResponse<NotificationSettings>>(
+    "/notifications/settings",
+    payload,
+  );
   return res.data.data;
 }
 
-export async function deleteReadNotifications(payload?: { older_than_days?: number }) {
-  const res = await api.delete<ApiResponse<{ deletedCount: number }>>('/notifications/read', {
-    data: payload ?? {},
-  });
+export async function deleteReadNotifications(payload?: {
+  older_than_days?: number;
+}) {
+  const res = await api.delete<ApiResponse<{ deletedCount: number }>>(
+    "/notifications/read",
+    {
+      data: payload ?? {},
+    },
+  );
   return res.data.data;
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -82,6 +82,8 @@ const WORK_ATTRIBUTE_LABELS: Record<string, string> = {
 export default function DirectorRequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isHistoryView = searchParams.get('from') === 'history';
   const { data: request, isLoading } = useRequestDetail(id);
   const { data: rateHierarchy } = useRateHierarchy();
   const processAction = useProcessAction();
@@ -152,7 +154,10 @@ export default function DirectorRequestDetailPage({ params }: { params: Promise<
         .map(([key]) => WORK_ATTRIBUTE_LABELS[key] || key)
     : [];
 
-  const canAct = request?.status === 'PENDING' && request?.current_step === 6;
+  const canAct =
+    !isHistoryView && request?.status === 'PENDING' && request?.current_step === 6;
+  const backHref = isHistoryView ? '/director/history' : '/director/requests';
+  const backLabel = isHistoryView ? 'ประวัติการอนุมัติ' : 'รายการคำขอ';
 
   const handlePreview = (url: string, name: string) => {
     setPreviewUrl(url);
@@ -192,14 +197,14 @@ export default function DirectorRequestDetailPage({ params }: { params: Promise<
   return (
     <RequestDetailPageShell
       state={isLoading ? 'loading' : request ? 'ready' : 'notFound'}
-      backHref="/director/requests"
-      backLabel="รายการคำขอ"
+      backHref={backHref}
+      backLabel={backLabel}
       displayId={displayId}
       status={request?.status}
       currentStep={request?.current_step ?? null}
       createdAt={request?.created_at ?? null}
       headerActions={
-        request ? (
+        request && !isHistoryView ? (
           <>
             <Button
               size="sm"

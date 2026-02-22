@@ -1,3 +1,7 @@
+/**
+ * announcement module - API client
+ *
+ */
 import api from "@/shared/api/axios";
 
 export type AnnouncementPriority = "LOW" | "NORMAL" | "HIGH";
@@ -28,7 +32,9 @@ export async function getAllAnnouncements(): Promise<Announcement[]> {
   return res.data.data ?? [];
 }
 
-export async function createAnnouncement(payload: Omit<Announcement, "id" | "created_at" | "updated_at">) {
+export async function createAnnouncement(
+  payload: Omit<Announcement, "id" | "created_at" | "updated_at">,
+) {
   const res = await api.post<{ success: boolean; data: Announcement }>(
     "/announcements",
     payload,
@@ -36,7 +42,10 @@ export async function createAnnouncement(payload: Omit<Announcement, "id" | "cre
   return res.data.data;
 }
 
-export async function updateAnnouncement(id: number | string, payload: Partial<Announcement>) {
+export async function updateAnnouncement(
+  id: number | string,
+  payload: Partial<Announcement>,
+) {
   const res = await api.put<{ success: boolean; data: Announcement }>(
     `/announcements/${id}`,
     payload,

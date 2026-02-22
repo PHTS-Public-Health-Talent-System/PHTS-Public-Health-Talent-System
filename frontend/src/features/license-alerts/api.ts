@@ -1,5 +1,9 @@
-import api from '@/shared/api/axios';
-import { ApiPayload, ApiParams, ApiResponse } from '@/shared/api/types';
+/**
+ * license-alerts module - API client
+ *
+ */
+import api from "@/shared/api/axios";
+import { ApiPayload, ApiParams, ApiResponse } from "@/shared/api/types";
 
 export interface LicenseAlertsSummary {
   expired: number;
@@ -10,12 +14,17 @@ export interface LicenseAlertsSummary {
 }
 
 export async function getLicenseAlertsSummary(): Promise<LicenseAlertsSummary> {
-  const res = await api.get<ApiResponse<LicenseAlertsSummary>>('/alerts/license/summary');
+  const res = await api.get<ApiResponse<LicenseAlertsSummary>>(
+    "/alerts/license/summary",
+  );
   return res.data.data;
 }
 
 export async function getLicenseAlertsList(params?: ApiParams) {
-  const res = await api.get<ApiResponse<LicenseAlertListItem[]>>('/alerts/license/list', { params });
+  const res = await api.get<ApiResponse<LicenseAlertListItem[]>>(
+    "/alerts/license/list",
+    { params },
+  );
   return res.data.data;
 }
 
@@ -28,11 +37,16 @@ export interface LicenseAlertListItem {
   license_no?: string | null;
   license_expiry: string | null;
   days_left: number | null;
-  bucket: 'expired' | '30' | '60' | '90';
+  bucket: "expired" | "30" | "60" | "90";
   last_notified_at?: string | null;
 }
 
-export async function notifyLicenseAlerts(items: Array<{ citizen_id: string; bucket: 'expired' | '30' | '60' | '90' }>) {
-  const res = await api.post<ApiResponse<ApiPayload>>('/alerts/license/notify', { items });
+export async function notifyLicenseAlerts(
+  items: Array<{ citizen_id: string; bucket: "expired" | "30" | "60" | "90" }>,
+) {
+  const res = await api.post<ApiResponse<ApiPayload>>(
+    "/alerts/license/notify",
+    { items },
+  );
   return res.data.data;
 }

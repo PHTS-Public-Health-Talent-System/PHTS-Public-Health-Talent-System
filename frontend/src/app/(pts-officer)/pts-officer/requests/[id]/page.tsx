@@ -1,16 +1,22 @@
-'use client';
-export const dynamic = 'force-dynamic';
+"use client";
+export const dynamic = "force-dynamic";
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Textarea } from '@/components/ui/textarea';
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -19,7 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   ArrowLeft,
   FileText,
@@ -37,33 +43,43 @@ import {
   Check,
   AlertTriangle,
   Loader2,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   useCreateVerificationSnapshot,
   useProcessAction,
   useRequestDetail,
-} from '@/features/request/hooks';
-import { useRateHierarchy } from '@/features/master-data/hooks';
-import { AttachmentPreviewDialog } from '@/components/common/attachment-preview-dialog';
-import { toRequestDisplayId } from '@/shared/utils/public-id';
-import type { RequestWithDetails } from '@/types/request.types';
-import { formatThaiDate, formatThaiDateTime, toDateOnly } from '@/features/request/detail/requestDetail.format';
-import { getStatusColor, getStatusLabel } from '@/features/request/detail/requestDetail.status';
-import { getAttachmentLabel } from '@/features/request/detail/requestDetail.attachmentsLabel';
-import { InfoItem, SectionHeader } from '@/features/request/detail/requestDetail.ui';
-import { ApprovalTimelineCard } from '@/features/request/detail/components/ApprovalTimelineCard';
+} from "@/features/request/hooks";
+import { useRateHierarchy } from "@/features/master-data/hooks";
+import { AttachmentPreviewDialog } from "@/components/common/attachment-preview-dialog";
+import { toRequestDisplayId } from "@/shared/utils/public-id";
+import type { RequestWithDetails } from "@/types/request.types";
+import {
+  formatThaiDate,
+  formatThaiDateTime,
+  toDateOnly,
+} from "@/features/request/detail/requestDetail.format";
+import {
+  getStatusColor,
+  getStatusLabel,
+} from "@/features/request/detail/requestDetail.status";
+import { getAttachmentLabel } from "@/features/request/detail/requestDetail.attachmentsLabel";
+import {
+  InfoItem,
+  SectionHeader,
+} from "@/features/request/detail/requestDetail.ui";
+import { ApprovalTimelineCard } from "@/features/request/detail/components/ApprovalTimelineCard";
 import {
   isEmptyRateMapping,
   normalizeRateMapping,
   resolveRateMappingDisplay,
-} from '@/features/request/detail/requestDetail.rateMapping';
+} from "@/features/request/detail/requestDetail.rateMapping";
 import {
   buildAttachmentUrl,
   isPreviewableFile,
-} from '@/features/request/detail/requestDetail.attachments';
-import { formatThaiNumber } from '@/shared/utils/thai-locale';
+} from "@/features/request/detail/requestDetail.attachments";
+import { formatThaiNumber } from "@/shared/utils/thai-locale";
 
-type AssessmentVerdict = 'correct' | 'incorrect';
+type AssessmentVerdict = "correct" | "incorrect";
 
 type MinimumChecklistItem = {
   key: string;
@@ -86,26 +102,26 @@ const MinimumChecklist = ({
 }) => {
   const checkedCount = items.filter((i) => verdictMap[i.key]).length;
   const isAllChecked = checkedCount === items.length;
-  const hasIncorrect = items.some((i) => verdictMap[i.key] === 'incorrect');
+  const hasIncorrect = items.some((i) => verdictMap[i.key] === "incorrect");
 
   return (
     <div
       className={`mt-6 rounded-lg border transition-colors ${
         isAllChecked && !hasIncorrect
-          ? 'border-emerald-200 bg-emerald-50/30'
+          ? "border-emerald-200 bg-emerald-50/30"
           : hasIncorrect
-            ? 'border-rose-200 bg-rose-50/30'
-            : 'border-border/60 bg-muted/20'
-      } p-4 ${className ?? ''}`}
+            ? "border-rose-200 bg-rose-50/30"
+            : "border-border/60 bg-muted/20"
+      } p-4 ${className ?? ""}`}
     >
       <div className="flex justify-between items-center mb-3">
         <p
           className={`text-xs font-semibold uppercase tracking-wide ${
             isAllChecked && !hasIncorrect
-              ? 'text-emerald-700'
+              ? "text-emerald-700"
               : hasIncorrect
-                ? 'text-rose-700'
-                : 'text-muted-foreground'
+                ? "text-rose-700"
+                : "text-muted-foreground"
           }`}
         >
           {title}
@@ -122,22 +138,28 @@ const MinimumChecklist = ({
             <div
               key={item.key}
               className={`rounded border p-3 transition-colors ${
-                verdict === 'correct'
-                  ? 'bg-emerald-50/50 border-emerald-100'
-                  : verdict === 'incorrect'
-                    ? 'bg-rose-50/50 border-rose-100'
-                    : 'bg-background/80 border-border/50'
+                verdict === "correct"
+                  ? "bg-emerald-50/50 border-emerald-100"
+                  : verdict === "incorrect"
+                    ? "bg-rose-50/50 border-rose-100"
+                    : "bg-background/80 border-border/50"
               }`}
             >
               <div className="flex justify-between items-start gap-4">
                 <div>
-                  <p className="text-sm font-medium text-foreground">{item.label}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{item.description}</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {item.label}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {item.description}
+                  </p>
                 </div>
-                {verdict === 'correct' && (
+                {verdict === "correct" && (
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                 )}
-                {verdict === 'incorrect' && <XCircle className="w-4 h-4 text-rose-500 shrink-0" />}
+                {verdict === "incorrect" && (
+                  <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                )}
               </div>
 
               <div className="mt-3 flex gap-2">
@@ -146,11 +168,11 @@ const MinimumChecklist = ({
                   variant="outline"
                   size="sm"
                   className={`h-7 px-3 text-xs ${
-                    verdict === 'correct'
-                      ? 'border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                      : 'hover:bg-emerald-50 hover:text-emerald-600'
+                    verdict === "correct"
+                      ? "border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                      : "hover:bg-emerald-50 hover:text-emerald-600"
                   }`}
-                  onClick={() => onSelect(item.key, 'correct')}
+                  onClick={() => onSelect(item.key, "correct")}
                 >
                   ถูกต้อง
                 </Button>
@@ -159,11 +181,11 @@ const MinimumChecklist = ({
                   variant="outline"
                   size="sm"
                   className={`h-7 px-3 text-xs ${
-                    verdict === 'incorrect'
-                      ? 'border-rose-300 bg-rose-100 text-rose-700 hover:bg-rose-200'
-                      : 'hover:bg-rose-50 hover:text-rose-600'
+                    verdict === "incorrect"
+                      ? "border-rose-300 bg-rose-100 text-rose-700 hover:bg-rose-200"
+                      : "hover:bg-rose-50 hover:text-rose-600"
                   }`}
-                  onClick={() => onSelect(item.key, 'incorrect')}
+                  onClick={() => onSelect(item.key, "incorrect")}
                 >
                   ไม่ถูกต้อง
                 </Button>
@@ -179,69 +201,75 @@ const MinimumChecklist = ({
 // --- CONSTANTS ---
 
 const PERSONNEL_TYPE_LABELS: Record<string, string> = {
-  CIVIL_SERVANT: 'ข้าราชการ',
-  GOV_EMPLOYEE: 'พนักงานราชการ',
-  PH_EMPLOYEE: 'พนักงานกระทรวงสาธารณสุข',
-  TEMP_EMPLOYEE: 'ลูกจ้างชั่วคราว',
+  CIVIL_SERVANT: "ข้าราชการ",
+  GOV_EMPLOYEE: "พนักงานราชการ",
+  PH_EMPLOYEE: "พนักงานกระทรวงสาธารณสุข",
+  TEMP_EMPLOYEE: "ลูกจ้างชั่วคราว",
 };
 
 const REQUEST_TYPE_LABELS: Record<string, string> = {
-  NEW_ENTRY: 'ขอรับสิทธิ พ.ต.ส. ครั้งแรก',
-  EDIT_INFO_SAME_RATE: 'แก้ไขข้อมูล (อัตราเดิม)',
-  EDIT_INFO_NEW_RATE: 'แก้ไขข้อมูล (อัตราใหม่)',
+  NEW_ENTRY: "ขอรับสิทธิ พ.ต.ส. ครั้งแรก",
+  EDIT_INFO_SAME_RATE: "แก้ไขข้อมูล (อัตราเดิม)",
+  EDIT_INFO_NEW_RATE: "แก้ไขข้อมูล (อัตราใหม่)",
 };
 
 const WORK_ATTRIBUTE_LABELS: Record<string, string> = {
-  operation: 'ปฏิบัติการ',
-  planning: 'วางแผน',
-  coordination: 'ประสานงาน',
-  service: 'ให้บริการ',
+  operation: "ปฏิบัติการ",
+  planning: "วางแผน",
+  coordination: "ประสานงาน",
+  service: "ให้บริการ",
 };
 
 const EMPLOYEE_MINIMUM_CHECKLIST: MinimumChecklistItem[] = [
   {
-    key: 'basic_form_data',
-    label: 'ข้อมูลในแบบคำขอครบและตรงกับข้อมูลบุคคล',
-    description: 'ชื่อ-สกุล ตำแหน่ง สังกัด สถานที่ปฏิบัติงาน กรอกครบถ้วน และตรงกับข้อมูลในระบบ',
+    key: "basic_form_data",
+    label: "ข้อมูลในแบบคำขอครบและตรงกับข้อมูลบุคคล",
+    description:
+      "ชื่อ-สกุล ตำแหน่ง สังกัด สถานที่ปฏิบัติงาน กรอกครบถ้วน และตรงกับข้อมูลในระบบ",
   },
 ];
 
 const ELIGIBILITY_MINIMUM_CHECKLIST: MinimumChecklistItem[] = [
   {
-    key: 'healthcare_definition',
-    label: 'เข้าเกณฑ์ผู้ปฏิบัติงานด้านการสาธารณสุขตามระเบียบ',
-    description: 'สำเร็จการศึกษาตามเกณฑ์ มีใบอนุญาตฯ และใช้ใบอนุญาตในการให้บริการด้านสุขภาพ',
+    key: "healthcare_definition",
+    label: "เข้าเกณฑ์ผู้ปฏิบัติงานด้านการสาธารณสุขตามระเบียบ",
+    description:
+      "สำเร็จการศึกษาตามเกณฑ์ มีใบอนุญาตฯ และใช้ใบอนุญาตในการให้บริการด้านสุขภาพ",
   },
   {
-    key: 'assignment_order_match',
-    label: 'มีคำสั่ง/หนังสือมอบหมายงาน',
-    description: 'มีหลักฐานการมอบหมายงาน และงานที่ปฏิบัติสอดคล้องกับกลุ่ม/ข้อที่ขอรับ',
+    key: "assignment_order_match",
+    label: "มีคำสั่ง/หนังสือมอบหมายงาน",
+    description:
+      "มีหลักฐานการมอบหมายงาน และงานที่ปฏิบัติสอดคล้องกับกลุ่ม/ข้อที่ขอรับ",
   },
   {
-    key: 'rate_mapping_correct',
-    label: 'กลุ่ม/ข้อ/อัตราที่ขอรับถูกต้อง',
-    description: 'อัตราไม่เกินบัญชีท้ายระเบียบ และได้รับอัตราสูงสุดเพียงอัตราเดียว',
+    key: "rate_mapping_correct",
+    label: "กลุ่ม/ข้อ/อัตราที่ขอรับถูกต้อง",
+    description:
+      "อัตราไม่เกินบัญชีท้ายระเบียบ และได้รับอัตราสูงสุดเพียงอัตราเดียว",
   },
   {
-    key: 'effective_date_correct',
-    label: 'วันที่เริ่มมีสิทธิถูกต้อง',
-    description: 'วันที่เริ่มมีผลสอดคล้องกับวันที่เริ่มปฏิบัติงาน/คำสั่งมอบหมายงาน',
+    key: "effective_date_correct",
+    label: "วันที่เริ่มมีสิทธิถูกต้อง",
+    description:
+      "วันที่เริ่มมีผลสอดคล้องกับวันที่เริ่มปฏิบัติงาน/คำสั่งมอบหมายงาน",
   },
 ];
 
 const LICENSE_MINIMUM_CHECKLIST: MinimumChecklistItem[] = [
   {
-    key: 'license_active',
-    label: 'ใบอนุญาตยังมีผลใช้บังคับ',
-    description: 'ตรวจวันหมดอายุ และประเภท/สาขาใบอนุญาตสอดคล้องกับงานที่ขอรับ',
+    key: "license_active",
+    label: "ใบอนุญาตยังมีผลใช้บังคับ",
+    description: "ตรวจวันหมดอายุ และประเภท/สาขาใบอนุญาตสอดคล้องกับงานที่ขอรับ",
   },
 ];
 
 const ATTACHMENT_MINIMUM_CHECKLIST: MinimumChecklistItem[] = [
   {
-    key: 'minimum_documents',
-    label: 'เอกสารครบถ้วน',
-    description: 'มีหลักฐานคุณวุฒิ ใบอนุญาต คำสั่งมอบหมายงาน และเอกสารเงื่อนไขเฉพาะ',
+    key: "minimum_documents",
+    label: "เอกสารครบถ้วน",
+    description:
+      "มีหลักฐานคุณวุฒิ ใบอนุญาต คำสั่งมอบหมายงาน และเอกสารเงื่อนไขเฉพาะ",
   },
 ];
 
@@ -254,9 +282,9 @@ const ALL_CHECKLIST_ITEMS = [
 
 // --- HELPERS ---
 
-const parseSubmission = (value: RequestWithDetails['submission_data']) => {
+const parseSubmission = (value: RequestWithDetails["submission_data"]) => {
   if (!value) return {};
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     try {
       return JSON.parse(value);
     } catch {
@@ -266,49 +294,98 @@ const parseSubmission = (value: RequestWithDetails['submission_data']) => {
   return value;
 };
 
+const parseChecklistStateFromSnapshot = (
+  value: RequestWithDetails["latest_verification_snapshot"] extends { snapshot_data?: infer T }
+    ? T
+    : unknown,
+): Record<string, AssessmentVerdict | undefined> => {
+  if (!value) return {};
+  const raw =
+    typeof value === "string"
+      ? (() => {
+          try {
+            return JSON.parse(value) as Record<string, unknown>;
+          } catch {
+            return {};
+          }
+        })()
+      : ((value as Record<string, unknown>) ?? {});
+
+  const checklist = raw.checklist as { items?: unknown[] } | undefined;
+  const items = Array.isArray(checklist?.items) ? checklist.items : [];
+  const allowedKeys = new Set(ALL_CHECKLIST_ITEMS.map((item) => item.key));
+  const next: Record<string, AssessmentVerdict | undefined> = {};
+
+  items.forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    const row = item as Record<string, unknown>;
+    const key = typeof row.key === "string" ? row.key : "";
+    const verdict = row.verdict;
+    if (!allowedKeys.has(key)) return;
+    if (verdict === "correct" || verdict === "incorrect") {
+      next[key] = verdict;
+    }
+  });
+
+  return next;
+};
+
+const buildChecklistFingerprint = (
+  checklistState: Record<string, AssessmentVerdict | undefined>,
+) =>
+  JSON.stringify(
+    ALL_CHECKLIST_ITEMS.map((item) => ({
+      key: item.key,
+      verdict: checklistState[item.key] ?? null,
+    })),
+  );
+
 const getSubmissionString = (
   submission: Record<string, unknown>,
   keys: string[],
 ): string | undefined => {
   for (const key of keys) {
     const value = submission[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === "string" && value.trim()) return value.trim();
   }
   return undefined;
 };
 
 const getLicenseStatusClass = (status?: string | null) => {
   switch (status) {
-    case 'ACTIVE':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-    case 'EXPIRED':
-      return 'bg-rose-50 text-rose-700 border-rose-200';
-    case 'INACTIVE':
-      return 'bg-slate-100 text-slate-700 border-slate-200';
-    case 'UNKNOWN':
-      return 'bg-amber-50 text-amber-700 border-amber-200';
+    case "ACTIVE":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    case "EXPIRED":
+      return "bg-rose-50 text-rose-700 border-rose-200";
+    case "INACTIVE":
+      return "bg-slate-100 text-slate-700 border-slate-200";
+    case "UNKNOWN":
+      return "bg-amber-50 text-amber-700 border-amber-200";
     default:
-      return 'bg-muted text-muted-foreground border-border';
+      return "bg-muted text-muted-foreground border-border";
   }
 };
 
 const getLicenseStatusLabel = (status?: string | null) => {
   switch (status) {
-    case 'ACTIVE':
-      return 'มีผลใช้บังคับ';
-    case 'EXPIRED':
-      return 'หมดอายุ';
-    case 'INACTIVE':
-      return 'ไม่อยู่ในสถานะใช้งาน';
-    case 'UNKNOWN':
-      return 'ไม่สามารถระบุสถานะ';
+    case "ACTIVE":
+      return "มีผลใช้บังคับ";
+    case "EXPIRED":
+      return "หมดอายุ";
+    case "INACTIVE":
+      return "ไม่อยู่ในสถานะใช้งาน";
+    case "UNKNOWN":
+      return "ไม่สามารถระบุสถานะ";
     default:
-      return 'ไม่พบข้อมูล';
+      return "ไม่พบข้อมูล";
   }
 };
 
 // --- OCR LOGIC ---
-const OCR_SERVICE_BASE = (process.env.NEXT_PUBLIC_OCR_API_URL || '').replace(/\/+$/, '');
+const OCR_SERVICE_BASE = (process.env.NEXT_PUBLIC_OCR_API_URL || "").replace(
+  /\/+$/,
+  "",
+);
 
 type MockOcrResult = {
   fileName: string;
@@ -317,8 +394,19 @@ type MockOcrResult = {
   markdown: string;
 };
 
+type OcrCheckStatus = "match" | "mismatch" | "missing";
+
+type OcrCheckItem = {
+  key: "citizen_id" | "full_name" | "department" | "sub_department";
+  label: string;
+  status: OcrCheckStatus;
+  confidence: number;
+  extractedValue: string;
+  expectedValue: string;
+};
+
 type OcrPrecheckPayload = {
-  status?: 'queued' | 'processing' | 'completed' | 'failed' | 'skipped';
+  status?: "queued" | "processing" | "completed" | "failed" | "skipped";
   error?: string;
   queued_at?: string;
   started_at?: string;
@@ -340,10 +428,12 @@ type MockOcrParams = {
 
 const detectMockDocumentType = (fileName: string) => {
   const lower = fileName.toLowerCase();
-  if (lower.includes('license') || lower.includes('ใบอนุญาต')) return 'ใบอนุญาตประกอบวิชาชีพ';
-  if (lower.includes('id') || lower.includes('บัตรประชาชน')) return 'บัตรประจำตัวประชาชน';
-  if (lower.includes('request') || lower.includes('คำขอ')) return 'แบบคำขอ';
-  return 'เอกสารทั่วไป';
+  if (lower.includes("license") || lower.includes("ใบอนุญาต"))
+    return "ใบอนุญาตประกอบวิชาชีพ";
+  if (lower.includes("id") || lower.includes("บัตรประชาชน"))
+    return "บัตรประจำตัวประชาชน";
+  if (lower.includes("request") || lower.includes("คำขอ")) return "แบบคำขอ";
+  return "เอกสารทั่วไป";
 };
 
 const buildMockOcrResult = (params: MockOcrParams): MockOcrResult => {
@@ -357,22 +447,172 @@ const buildMockOcrResult = (params: MockOcrParams): MockOcrResult => {
   };
 };
 
+const normalizeForCompare = (value: string) =>
+  value
+    .replace(/[^\u0E00-\u0E7Fa-zA-Z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+const tokenize = (value: string) =>
+  normalizeForCompare(value)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+const similarityScore = (actualRaw: string, expectedRaw: string): number => {
+  const actual = normalizeForCompare(actualRaw);
+  const expected = normalizeForCompare(expectedRaw);
+  if (!actual || !expected) return 0;
+  if (actual === expected) return 1;
+  if (actual.includes(expected) || expected.includes(actual)) return 0.92;
+
+  const actualTokens = tokenize(actual);
+  const expectedTokens = tokenize(expected);
+  if (!actualTokens.length || !expectedTokens.length) return 0;
+
+  const expectedSet = new Set(expectedTokens);
+  const overlap = actualTokens.filter((token) => expectedSet.has(token)).length;
+  return overlap / Math.max(actualTokens.length, expectedTokens.length);
+};
+
+const extractByRegex = (markdown: string, patterns: RegExp[]): string => {
+  for (const pattern of patterns) {
+    const match = markdown.match(pattern);
+    const value = match?.[1]?.trim();
+    if (value) return value;
+  }
+  return "";
+};
+
+const extractCitizenIdFromMarkdown = (markdown: string) =>
+  extractByRegex(markdown, [
+    /\b(\d{13})\b/,
+    /เลข(?:ประจำตัว)?ประชาชน\s*[:：]?\s*(\d{13})/i,
+  ]);
+
+const extractNameFromMarkdown = (markdown: string) => {
+  const fromLabel = extractByRegex(markdown, [
+    /(?:ชื่อ[\s-]*นามสกุล|ชื่อและนามสกุล|ชื่อ)\s*[:：]?\s*([^\n]+)/i,
+  ]);
+  if (fromLabel) return fromLabel;
+  return extractByRegex(markdown, [
+    /((?:นาย|นางสาว|นาง|แพทย์หญิง|แพทย์ชาย)\s*[^\n]{2,})/,
+  ]);
+};
+
+const extractDepartmentFromMarkdown = (markdown: string) =>
+  extractByRegex(markdown, [
+    /(กลุ่มงาน[^\n,;]*)/i,
+    /(?:แผนก|ฝ่าย)\s*[:：]?\s*([^\n]+)/i,
+  ]);
+
+const extractSubDepartmentFromMarkdown = (markdown: string) =>
+  extractByRegex(markdown, [
+    /(ห้อง[^\n,;]*)/i,
+    /(หน่วย[^\n,;]*)/i,
+    /(ฝ่าย[^\n,;]*)/i,
+    /(แผนก[^\n,;]*)/i,
+    /(สาขา[^\n,;]*)/i,
+  ]);
+
+const evaluateOcrCheckItem = (
+  key: OcrCheckItem["key"],
+  label: string,
+  extractedValue: string,
+  expectedValue: string,
+): OcrCheckItem => {
+  const extracted = extractedValue.trim();
+  const expected = expectedValue.trim() || "-";
+
+  if (!extracted) {
+    return {
+      key,
+      label,
+      status: "missing",
+      confidence: 35,
+      extractedValue: "-",
+      expectedValue: expected,
+    };
+  }
+
+  const score = similarityScore(extracted, expected);
+  // Guard against false-positive extraction from unrelated documents.
+  // If similarity is very low, treat it as "missing" instead of "mismatch".
+  if (score < 0.2) {
+    return {
+      key,
+      label,
+      status: "missing",
+      confidence: 35,
+      extractedValue: "-",
+      expectedValue: expected,
+    };
+  }
+
+  if (score >= 0.85) {
+    return {
+      key,
+      label,
+      status: "match",
+      confidence: Math.max(85, Math.round(score * 100)),
+      extractedValue: extracted,
+      expectedValue: expected,
+    };
+  }
+
+  return {
+    key,
+    label,
+    status: "mismatch",
+    confidence: Math.max(45, Math.min(84, Math.round(score * 100))),
+    extractedValue: extracted,
+    expectedValue: expected,
+  };
+};
+
+const getOcrCheckStatusLabel = (status: OcrCheckStatus) => {
+  if (status === "match") return "ตรง";
+  if (status === "mismatch") return "ไม่ตรง";
+  return "ไม่มีข้อมูล";
+};
+
+const getOcrCheckStatusClass = (status: OcrCheckStatus) => {
+  if (status === "match")
+    return "text-emerald-700 bg-emerald-50 border-emerald-200";
+  if (status === "mismatch")
+    return "text-amber-700 bg-amber-50 border-amber-200";
+  return "text-slate-700 bg-slate-100 border-slate-200";
+};
+
 // --- MAIN PAGE ---
 
-export default function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function RequestDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isHistoryView = searchParams.get("from") === "history";
+  const backHref = isHistoryView
+    ? "/pts-officer/history"
+    : "/pts-officer/requests";
+  const backLabel = isHistoryView ? "ประวัติการอนุมัติ" : "รายการคำขอ";
   const queryClient = useQueryClient();
   const { data: request, isLoading } = useRequestDetail(id);
   const { data: rateHierarchy } = useRateHierarchy();
   const processAction = useProcessAction();
   const createVerificationSnapshot = useCreateVerificationSnapshot();
 
-  const [actionDialog, setActionDialog] = useState<'approve' | 'reject' | 'return' | null>(null);
-  const [comment, setComment] = useState('');
+  const [actionDialog, setActionDialog] = useState<
+    "approve" | "reject" | "return" | null
+  >(null);
+  const [comment, setComment] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState('');
-  const [previewName, setPreviewName] = useState('');
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewName, setPreviewName] = useState("");
   const [ocrDialogOpen, setOcrDialogOpen] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrResult, setOcrResult] = useState<MockOcrResult | null>(null);
@@ -383,19 +623,20 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     Record<string, AssessmentVerdict | undefined>
   >({});
   const [hasChecklistInteraction, setHasChecklistInteraction] = useState(false);
-  const [lastSavedFingerprint, setLastSavedFingerprint] = useState('');
+  const [lastSavedFingerprint, setLastSavedFingerprint] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
-  const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>(
-    'idle',
-  );
+  const [autosaveStatus, setAutosaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
 
   // --- Derived State for UX ---
   const checklistStats = useMemo(() => {
+    // Aggregate checklist state once, then drive all approval gating from this object.
     const values = Object.values(requestChecklistState);
     const checkedCount = values.length;
     const totalCount = ALL_CHECKLIST_ITEMS.length;
     const incorrectItems = ALL_CHECKLIST_ITEMS.filter(
-      (item) => requestChecklistState[item.key] === 'incorrect',
+      (item) => requestChecklistState[item.key] === "incorrect",
     );
     const incorrectCount = incorrectItems.length;
 
@@ -411,57 +652,152 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     };
   }, [requestChecklistState]);
   const checklistFingerprint = useMemo(
-    () =>
-      JSON.stringify(
-        ALL_CHECKLIST_ITEMS.map((item) => ({
-          key: item.key,
-          verdict: requestChecklistState[item.key] ?? null,
-        })),
-      ),
+    // Stable fingerprint used to detect unsaved checklist changes for autosave.
+    () => buildChecklistFingerprint(requestChecklistState),
     [requestChecklistState],
   );
+  const snapshotChecklistState = useMemo(
+    () =>
+      parseChecklistStateFromSnapshot(
+        request?.latest_verification_snapshot?.snapshot_data ?? null,
+      ),
+    [request?.latest_verification_snapshot?.snapshot_data],
+  );
+
+  useEffect(() => {
+    if (!request) return;
+    if (hasChecklistInteraction) return;
+    if (Object.keys(requestChecklistState).length > 0) return;
+    if (Object.keys(snapshotChecklistState).length === 0) return;
+
+    setRequestChecklistState(snapshotChecklistState);
+    setLastSavedFingerprint(buildChecklistFingerprint(snapshotChecklistState));
+    const savedAtRaw = request.latest_verification_snapshot?.created_at;
+    if (savedAtRaw) {
+      setLastSavedAt(new Date(savedAtRaw).toISOString());
+    }
+    setAutosaveStatus("saved");
+  }, [
+    hasChecklistInteraction,
+    request,
+    requestChecklistState,
+    snapshotChecklistState,
+  ]);
 
   // Submission Parsing
   const submission = useMemo(
+    // Normalize `submission_data` (JSON string/object) into a single shape for display/fallback.
     () => parseSubmission(request?.submission_data) as Record<string, unknown>,
     [request?.submission_data],
   );
   const ocrPrecheck = useMemo(() => {
     const raw = (submission as { ocr_precheck?: unknown }).ocr_precheck;
-    if (!raw || typeof raw !== 'object') return null;
+    if (!raw || typeof raw !== "object") return null;
     return raw as OcrPrecheckPayload;
   }, [submission]);
   const ocrServiceBase = useMemo(() => {
+    // Prefer explicit frontend OCR endpoint; fallback to service URL persisted by backend precheck.
     if (OCR_SERVICE_BASE) return OCR_SERVICE_BASE;
-    const fromPrecheck = (ocrPrecheck?.service_url || ocrPrecheck?.serviceUrl || '').trim();
-    return fromPrecheck.replace(/\/+$/, '');
+    const fromPrecheck = (
+      ocrPrecheck?.service_url ||
+      ocrPrecheck?.serviceUrl ||
+      ""
+    ).trim();
+    return fromPrecheck.replace(/\/+$/, "");
   }, [ocrPrecheck]);
-  const submissionTitle = getSubmissionString(submission, ['title']);
-  const submissionFirstName = getSubmissionString(submission, ['first_name', 'firstName']);
-  const submissionLastName = getSubmissionString(submission, ['last_name', 'lastName']);
-  const submissionPositionName = getSubmissionString(submission, ['position_name', 'positionName']);
-  const submissionDepartment = getSubmissionString(submission, ['department']);
+  const submissionTitle = getSubmissionString(submission, ["title"]);
+  const submissionFirstName = getSubmissionString(submission, [
+    "first_name",
+    "firstName",
+  ]);
+  const submissionLastName = getSubmissionString(submission, [
+    "last_name",
+    "lastName",
+  ]);
+  const submissionPositionName = getSubmissionString(submission, [
+    "position_name",
+    "positionName",
+  ]);
+  const submissionDepartment = getSubmissionString(submission, ["department"]);
   const submissionSubDepartment = getSubmissionString(submission, [
-    'sub_department',
-    'subDepartment',
+    "sub_department",
+    "subDepartment",
   ]);
   const submissionPositionNumber = getSubmissionString(submission, [
-    'position_number',
-    'positionNumber',
+    "position_number",
+    "positionNumber",
   ]);
 
   const requesterName = useMemo(() => {
     const firstName = submissionFirstName ?? request?.requester?.first_name;
     const lastName = submissionLastName ?? request?.requester?.last_name;
-    return [submissionTitle, firstName, lastName].filter(Boolean).join(' ').trim() || '-';
-  }, [request?.requester, submissionTitle, submissionFirstName, submissionLastName]);
+    return (
+      [submissionTitle, firstName, lastName].filter(Boolean).join(" ").trim() ||
+      "-"
+    );
+  }, [
+    request?.requester,
+    submissionTitle,
+    submissionFirstName,
+    submissionLastName,
+  ]);
 
-  const positionName = submissionPositionName ?? request?.requester?.position ?? '-';
-  const department = submissionDepartment ?? request?.current_department ?? '-';
-  const subDepartment = submissionSubDepartment ?? '-';
+  const positionName =
+    submissionPositionName ?? request?.requester?.position ?? "-";
+  const department = submissionDepartment ?? request?.current_department ?? "-";
+  const subDepartment = submissionSubDepartment ?? "-";
   const attachments = request?.attachments ?? [];
+  const ocrChecks = useMemo(() => {
+    if (!ocrResult) return [] as OcrCheckItem[];
+    const markdown = ocrResult.markdown || "";
+    return [
+      evaluateOcrCheckItem(
+        "citizen_id",
+        "เลขประจำตัวประชาชน",
+        extractCitizenIdFromMarkdown(markdown),
+        request?.citizen_id ?? "-",
+      ),
+      evaluateOcrCheckItem(
+        "full_name",
+        "ชื่อ-นามสกุล",
+        extractNameFromMarkdown(markdown),
+        requesterName || "-",
+      ),
+      evaluateOcrCheckItem(
+        "department",
+        "กลุ่มงาน",
+        extractDepartmentFromMarkdown(markdown),
+        department || "-",
+      ),
+      evaluateOcrCheckItem(
+        "sub_department",
+        "หน่วยงาน",
+        extractSubDepartmentFromMarkdown(markdown),
+        subDepartment || "-",
+      ),
+    ];
+  }, [
+    department,
+    ocrResult,
+    request?.citizen_id,
+    requesterName,
+    subDepartment,
+  ]);
+  const ocrCheckSummary = useMemo(() => {
+    const matchCount = ocrChecks.filter(
+      (item) => item.status === "match",
+    ).length;
+    const mismatchCount = ocrChecks.filter(
+      (item) => item.status === "mismatch",
+    ).length;
+    const missingCount = ocrChecks.filter(
+      (item) => item.status === "missing",
+    ).length;
+    return { matchCount, mismatchCount, missingCount };
+  }, [ocrChecks]);
   const displayId = request
-    ? (request.request_no ?? toRequestDisplayId(request.request_id, request.created_at))
+    ? (request.request_no ??
+      toRequestDisplayId(request.request_id, request.created_at))
     : id;
 
   const rateMapping = useMemo(
@@ -474,20 +810,23 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   }, [rateMapping, rateHierarchy]);
 
   const rateAmount = rateMapping?.amount ?? request?.requested_amount ?? null;
-  const isRateMappingEmpty = useMemo(() => isEmptyRateMapping(rateMapping), [rateMapping]);
-  const licenseNo = request?.requester?.license_no?.trim() || '-';
-  const licenseName = request?.requester?.license_name?.trim() || '-';
+  const isRateMappingEmpty = useMemo(
+    () => isEmptyRateMapping(rateMapping),
+    [rateMapping],
+  );
+  const licenseNo = request?.requester?.license_no?.trim() || "-";
+  const licenseName = request?.requester?.license_name?.trim() || "-";
   const licenseValidFrom = request?.requester?.license_valid_from ?? null;
   const licenseValidUntil = request?.requester?.license_valid_until ?? null;
   const licenseStatus = request?.requester?.license_status ?? null;
 
   const personnelTypeLabel = request?.personnel_type
     ? PERSONNEL_TYPE_LABELS[request.personnel_type] || request.personnel_type
-    : '-';
+    : "-";
   const requestTypeLabel = request?.request_type
     ? REQUEST_TYPE_LABELS[request.request_type] || request.request_type
-    : '-';
-  const mainDuty = request?.main_duty || '-';
+    : "-";
+  const mainDuty = request?.main_duty || "-";
   const workAttributes = request?.work_attributes
     ? Object.entries(request.work_attributes)
         .filter(([, enabled]) => Boolean(enabled))
@@ -497,30 +836,37 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     ? formatThaiDate(request.effective_date)
     : null;
 
-  const submitAction = (request?.actions ?? []).find((a) => a.action === 'SUBMIT');
-  const canAct = request?.status === 'PENDING';
-  const hasVerificationSnapshot = Boolean(request?.has_verification_snapshot);
+  const submitAction = (request?.actions ?? []).find(
+    (a) => a.action === "SUBMIT",
+  );
+  const canAct = !isHistoryView && request?.status === "PENDING";
+  const hasVerificationSnapshot = Boolean(
+    request?.has_verification_snapshot ||
+      request?.latest_verification_snapshot?.snapshot_id,
+  );
 
   const isSubmitting = processAction.isPending;
-  const isSnapshotSaving = createVerificationSnapshot.isPending || autosaveStatus === 'saving';
+  const isSnapshotSaving =
+    createVerificationSnapshot.isPending || autosaveStatus === "saving";
   const isActionBusy = isSubmitting || isSnapshotSaving;
 
   const persistVerificationSnapshot = useCallback(
     async ({
       silent = false,
-      source = 'PTS_OFFICER_DETAIL_PAGE',
+      source = "PTS_OFFICER_DETAIL_PAGE",
     }: {
       silent?: boolean;
       source?: string;
     } = {}) => {
       if (!request) return false;
       if (!rateMapping?.rateId) {
-        if (!silent) toast.error('ยังไม่พบข้อมูลอัตราที่ใช้ตรวจสอบ (rate_id)');
+        if (!silent) toast.error("ยังไม่พบข้อมูลอัตราที่ใช้ตรวจสอบ (rate_id)");
         return false;
       }
       const effectiveDateOnly = toDateOnly(request.effective_date);
       if (!effectiveDateOnly) {
-        if (!silent) toast.error('ยังไม่พบวันที่เริ่มมีผลสำหรับบันทึกการตรวจสอบ');
+        if (!silent)
+          toast.error("ยังไม่พบวันที่เริ่มมีผลสำหรับบันทึกการตรวจสอบ");
         return false;
       }
 
@@ -531,10 +877,17 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
         verdict: requestChecklistState[item.key] ?? null,
         checked_at: checkedAt,
       }));
-      const checkedCount = checklistItems.filter((item) => item.verdict !== null).length;
-      const correctCount = checklistItems.filter((item) => item.verdict === 'correct').length;
-      const incorrectCount = checklistItems.filter((item) => item.verdict === 'incorrect').length;
+      const checkedCount = checklistItems.filter(
+        (item) => item.verdict !== null,
+      ).length;
+      const correctCount = checklistItems.filter(
+        (item) => item.verdict === "correct",
+      ).length;
+      const incorrectCount = checklistItems.filter(
+        (item) => item.verdict === "incorrect",
+      ).length;
 
+      // Snapshot is the auditable "state at decision time" so approvals/rejections are traceable.
       const snapshotData: Record<string, unknown> = {
         request_no: request.request_no,
         request_type: request.request_type,
@@ -557,7 +910,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       };
 
       try {
-        setAutosaveStatus('saving');
+        setAutosaveStatus("saving");
         await createVerificationSnapshot.mutateAsync({
           id,
           payload: {
@@ -567,17 +920,17 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           },
         });
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['request', String(id)] }),
-          queryClient.invalidateQueries({ queryKey: ['pending-approvals'] }),
+          queryClient.invalidateQueries({ queryKey: ["request", String(id)] }),
+          queryClient.invalidateQueries({ queryKey: ["pending-approvals"] }),
         ]);
         setLastSavedFingerprint(checklistFingerprint);
         setLastSavedAt(checkedAt);
-        setAutosaveStatus('saved');
-        if (!silent) toast.success('บันทึกการตรวจสอบเรียบร้อย');
+        setAutosaveStatus("saved");
+        if (!silent) toast.success("บันทึกการตรวจสอบเรียบร้อย");
         return true;
       } catch {
-        setAutosaveStatus('error');
-        if (!silent) toast.error('ไม่สามารถบันทึกการตรวจสอบได้');
+        setAutosaveStatus("error");
+        if (!silent) toast.error("ไม่สามารถบันทึกการตรวจสอบได้");
         return false;
       }
     },
@@ -594,13 +947,17 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   );
 
   useEffect(() => {
+    // Debounced autosave: reduce write frequency while keeping officer checklist progress durable.
     if (!hasChecklistInteraction) return;
     if (checklistFingerprint === lastSavedFingerprint) return;
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
     }
     autosaveTimerRef.current = setTimeout(() => {
-      void persistVerificationSnapshot({ silent: true, source: 'PTS_OFFICER_AUTOSAVE' });
+      void persistVerificationSnapshot({
+        silent: true,
+        source: "PTS_OFFICER_AUTOSAVE",
+      });
     }, 1500);
 
     return () => {
@@ -608,16 +965,26 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
         clearTimeout(autosaveTimerRef.current);
       }
     };
-  }, [checklistFingerprint, hasChecklistInteraction, lastSavedFingerprint, persistVerificationSnapshot]);
+  }, [
+    checklistFingerprint,
+    hasChecklistInteraction,
+    lastSavedFingerprint,
+    persistVerificationSnapshot,
+  ]);
 
-  const openActionDialog = (dialog: 'approve' | 'reject' | 'return' | null) => {
+  const openActionDialog = (dialog: "approve" | "reject" | "return" | null) => {
     if (isActionBusy) return;
     setActionDialog(dialog);
-    if ((dialog === 'return' || dialog === 'reject') && checklistStats.hasIncorrect) {
+    if (
+      (dialog === "return" || dialog === "reject") &&
+      checklistStats.hasIncorrect
+    ) {
       const issues = checklistStats.incorrectItems
         .map((item) => `- ${item.label}: ${item.description}`)
-        .join('\n');
-      setComment((prev) => (prev ? prev : `พบข้อมูลไม่ถูกต้องตามรายการดังนี้:\n${issues}`));
+        .join("\n");
+      setComment((prev) =>
+        prev ? prev : `พบข้อมูลไม่ถูกต้องตามรายการดังนี้:\n${issues}`,
+      );
     }
   };
 
@@ -627,19 +994,22 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     setPreviewOpen(true);
   };
 
-  const setRequestChecklistVerdict = (key: string, verdict: AssessmentVerdict) => {
+  const setRequestChecklistVerdict = (
+    key: string,
+    verdict: AssessmentVerdict,
+  ) => {
     setHasChecklistInteraction(true);
-    setAutosaveStatus('idle');
+    setAutosaveStatus("idle");
     setRequestChecklistState((prev) => ({
       ...prev,
       [key]: prev[key] === verdict ? undefined : verdict,
     }));
   };
 
-  const handleAction = async (action: 'approve' | 'reject' | 'return') => {
+  const handleAction = async (action: "approve" | "reject" | "return") => {
     const trimmed = comment.trim();
-    if ((action === 'reject' || action === 'return') && !trimmed) {
-      toast.error('กรุณาระบุเหตุผล');
+    if ((action === "reject" || action === "return") && !trimmed) {
+      toast.error("กรุณาระบุเหตุผล");
       return;
     }
 
@@ -647,12 +1017,13 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;
     }
+    // Block workflow transition unless latest verification snapshot is saved successfully.
     const saved = await persistVerificationSnapshot({
       silent: true,
-      source: 'PTS_OFFICER_ACTION_SUBMIT',
+      source: "PTS_OFFICER_ACTION_SUBMIT",
     });
     if (!saved) {
-      toast.error('ไม่สามารถบันทึกการตรวจสอบก่อนดำเนินการคำขอได้');
+      toast.error("ไม่สามารถบันทึกการตรวจสอบก่อนดำเนินการคำขอได้");
       return;
     }
 
@@ -660,22 +1031,28 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       await processAction.mutateAsync({
         id,
         payload: {
-          action: action === 'approve' ? 'APPROVE' : action === 'reject' ? 'REJECT' : 'RETURN',
+          action:
+            action === "approve"
+              ? "APPROVE"
+              : action === "reject"
+                ? "REJECT"
+                : "RETURN",
           comment: trimmed || undefined,
         },
       });
-      toast.success('ดำเนินการคำขอเรียบร้อย');
+      toast.success("ดำเนินการคำขอเรียบร้อย");
       setActionDialog(null);
-      setComment('');
-      router.push('/pts-officer/requests');
+      setComment("");
+      router.push("/pts-officer/requests");
     } catch {
-      toast.error('ไม่สามารถดำเนินการคำขอได้');
+      toast.error("ไม่สามารถดำเนินการคำขอได้");
     }
   };
 
   const runMockOcr = async (fileName: string, fileUrl: string) => {
     if (!ocrServiceBase) {
-      const message = 'ยังไม่ได้ตั้งค่า OCR URL (NEXT_PUBLIC_OCR_API_URL) และไม่พบ service_url จาก OCR precheck';
+      const message =
+        "ยังไม่ได้ตั้งค่า OCR URL (NEXT_PUBLIC_OCR_API_URL) และไม่พบ service_url จาก OCR precheck";
       setOcrError(message);
       setOcrDialogOpen(true);
       toast.error(message);
@@ -687,47 +1064,67 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     setOcrResult(null);
     setOcrError(null);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('phts_token') : null;
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("phts_token")
+          : null;
+      // Attachment endpoint is protected; reuse current auth token before sending bytes to OCR service.
       const attachmentResponse = await fetch(fileUrl, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       if (!attachmentResponse.ok) {
-        throw new Error('ไม่สามารถดึงไฟล์แนบเพื่อส่ง OCR ได้');
+        throw new Error("ไม่สามารถดึงไฟล์แนบเพื่อส่ง OCR ได้");
       }
 
       const blob = await attachmentResponse.blob();
       const formData = new FormData();
-      formData.append('files', new File([blob], fileName, { type: blob.type || 'application/octet-stream' }));
+      formData.append(
+        "files",
+        new File([blob], fileName, {
+          type: blob.type || "application/octet-stream",
+        }),
+      );
 
+      // OCR service contract: multipart field name must be `files` for `/ocr-batch`.
       const ocrResponse = await fetch(`${ocrServiceBase}/ocr-batch`, {
-        method: 'POST',
+        method: "POST",
         body: formData,
       });
 
       if (!ocrResponse.ok) {
         const errorText = await ocrResponse.text();
-        throw new Error(errorText || 'OCR service error');
+        throw new Error(errorText || "OCR service error");
       }
 
       const payload = (await ocrResponse.json()) as {
         count?: number;
-        results?: Array<{ name?: string; ok?: boolean; markdown?: string; error?: string }>;
+        results?: Array<{
+          name?: string;
+          ok?: boolean;
+          markdown?: string;
+          error?: string;
+        }>;
       };
       const firstResult = payload.results?.[0];
       if (!firstResult?.ok) {
-        throw new Error(firstResult?.error || 'OCR ไม่สามารถประมวลผลเอกสารนี้ได้');
+        throw new Error(
+          firstResult?.error || "OCR ไม่สามารถประมวลผลเอกสารนี้ได้",
+        );
       }
 
-      const markdown = String(firstResult.markdown ?? '').trim();
+      const markdown = String(firstResult.markdown ?? "").trim();
       const result = buildMockOcrResult({
         fileName,
         markdown,
       });
       setOcrResult(result);
       setOcrError(null);
-      toast.success('อ่านเอกสารด้วย OCR สำเร็จ');
+      toast.success("อ่านเอกสารด้วย OCR สำเร็จ");
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'ไม่สามารถเรียก OCR service ได้';
+      const message =
+        error instanceof Error
+          ? error.message
+          : "ไม่สามารถเรียก OCR service ได้";
       setOcrError(message);
       toast.error(message);
     } finally {
@@ -736,33 +1133,46 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   };
 
   const isSectionComplete = (items: MinimumChecklistItem[]) => {
-    return items.every((item) => requestChecklistState[item.key] === 'correct');
+    return items.every((item) => requestChecklistState[item.key] === "correct");
   };
 
   useEffect(() => {
+    // If backend auto OCR already completed on submit, hydrate UI immediately from stored result.
     if (!ocrPrecheck || ocrResult) return;
-    if (ocrPrecheck.status !== 'completed') return;
+    if (ocrPrecheck.status !== "completed") return;
 
     const firstSuccess = ocrPrecheck.results?.find(
-      (result) => result.ok && typeof result.markdown === 'string' && result.markdown.trim(),
+      (result) =>
+        result.ok &&
+        typeof result.markdown === "string" &&
+        result.markdown.trim(),
     );
     if (!firstSuccess?.markdown) return;
 
     const loaded = buildMockOcrResult({
-      fileName: firstSuccess.name || 'ไฟล์แนบ',
+      fileName: firstSuccess.name || "ไฟล์แนบ",
       markdown: firstSuccess.markdown,
     });
     setOcrResult(loaded);
-  }, [ocrPrecheck, ocrResult, request?.citizen_id, requesterName, department, subDepartment]);
+  }, [
+    ocrPrecheck,
+    ocrResult,
+    request?.citizen_id,
+    requesterName,
+    department,
+    subDepartment,
+  ]);
 
   const ocrPrecheckMessage = useMemo(() => {
     if (!ocrPrecheck) return null;
-    if (ocrPrecheck.status === 'queued') return 'ระบบกำลังรอคิวประมวลผล OCR อัตโนมัติ';
-    if (ocrPrecheck.status === 'processing') return 'ระบบกำลังประมวลผล OCR อัตโนมัติ';
-    if (ocrPrecheck.status === 'failed')
-      return `OCR อัตโนมัติไม่สำเร็จ: ${ocrPrecheck.error || 'ไม่ทราบสาเหตุ'}`;
-    if (ocrPrecheck.status === 'skipped')
-      return `OCR อัตโนมัติถูกข้าม: ${ocrPrecheck.error || 'ไม่ได้ตั้งค่าบริการ OCR'}`;
+    if (ocrPrecheck.status === "queued")
+      return "ระบบกำลังรอคิวประมวลผล OCR อัตโนมัติ";
+    if (ocrPrecheck.status === "processing")
+      return "ระบบกำลังประมวลผล OCR อัตโนมัติ";
+    if (ocrPrecheck.status === "failed")
+      return `OCR อัตโนมัติไม่สำเร็จ: ${ocrPrecheck.error || "ไม่ทราบสาเหตุ"}`;
+    if (ocrPrecheck.status === "skipped")
+      return `OCR อัตโนมัติถูกข้าม: ${ocrPrecheck.error || "ไม่ได้ตั้งค่าบริการ OCR"}`;
     return null;
   }, [ocrPrecheck]);
 
@@ -784,12 +1194,16 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     return (
       <div className="container max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col items-center justify-center min-h-[50vh]">
         <AlertCircle className="h-16 w-16 text-muted-foreground/50 mb-4" />
-        <h2 className="text-xl font-semibold text-foreground">ไม่พบข้อมูลคำขอ</h2>
-        <p className="text-muted-foreground mb-6">คำขอที่ต้องการตรวจสอบอาจไม่มีอยู่ในระบบ</p>
-        <Link href="/pts-officer/requests">
+        <h2 className="text-xl font-semibold text-foreground">
+          ไม่พบข้อมูลคำขอ
+        </h2>
+        <p className="text-muted-foreground mb-6">
+          คำขอที่ต้องการตรวจสอบอาจไม่มีอยู่ในระบบ
+        </p>
+        <Link href={backHref}>
           <Button variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            กลับไปรายการคำขอ
+            {`กลับไป${backLabel}`}
           </Button>
         </Link>
       </div>
@@ -801,11 +1215,11 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       <div className="mb-8">
         <nav className="flex items-center text-sm text-muted-foreground mb-4">
           <Link
-            href="/pts-officer/requests"
+            href={backHref}
             className="hover:text-foreground transition-colors flex items-center gap-1"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            รายการคำขอ
+            {backLabel}
           </Link>
           <ChevronRight className="h-4 w-4 mx-1 opacity-50" />
           <span className="text-foreground font-medium">รายละเอียด</span>
@@ -814,7 +1228,9 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
           <div className="space-y-1.5">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-3xl font-bold tracking-tight text-foreground">{displayId}</h1>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                {displayId}
+              </h1>
               <Badge
                 variant="outline"
                 className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider ${getStatusColor(request.status)}`}
@@ -832,7 +1248,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       <div className="grid gap-8 lg:grid-cols-12 items-start">
         <div className="space-y-8 lg:col-span-8">
           <Card
-            className={`scroll-mt-20 shadow-sm transition-all duration-300 ${isSectionComplete(EMPLOYEE_MINIMUM_CHECKLIST) ? 'border-emerald-200/60 ring-1 ring-emerald-500/20' : 'border-border/60'}`}
+            className={`scroll-mt-20 shadow-sm transition-all duration-300 ${isSectionComplete(EMPLOYEE_MINIMUM_CHECKLIST) ? "border-emerald-200/60 ring-1 ring-emerald-500/20" : "border-border/60"}`}
           >
             <CardContent className="p-6">
               <SectionHeader
@@ -847,7 +1263,10 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                   icon={User}
                   className="sm:col-span-2"
                 />
-                <InfoItem label="เลขประจำตัวประชาชน" value={request.citizen_id ?? '-'} />
+                <InfoItem
+                  label="เลขประจำตัวประชาชน"
+                  value={request.citizen_id ?? "-"}
+                />
 
                 <div className="col-span-full border-t border-border/50 my-2"></div>
 
@@ -859,10 +1278,18 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 />
                 <InfoItem
                   label="เลขที่ตำแหน่ง"
-                  value={submissionPositionNumber || request.current_position_number || '-'}
+                  value={
+                    submissionPositionNumber ||
+                    request.current_position_number ||
+                    "-"
+                  }
                 />
 
-                <InfoItem label="กลุ่มงาน" value={department} icon={Building2} />
+                <InfoItem
+                  label="กลุ่มงาน"
+                  value={department}
+                  icon={Building2}
+                />
                 <InfoItem label="หน่วยงาน" value={subDepartment} />
               </dl>
               <MinimumChecklist
@@ -875,7 +1302,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </Card>
 
           <Card
-            className={`scroll-mt-20 shadow-sm transition-all duration-300 ${isSectionComplete(ELIGIBILITY_MINIMUM_CHECKLIST) ? 'border-emerald-200/60 ring-1 ring-emerald-500/20' : 'border-border/60'}`}
+            className={`scroll-mt-20 shadow-sm transition-all duration-300 ${isSectionComplete(ELIGIBILITY_MINIMUM_CHECKLIST) ? "border-emerald-200/60 ring-1 ring-emerald-500/20" : "border-border/60"}`}
           >
             <CardContent className="p-6">
               <SectionHeader
@@ -885,13 +1312,26 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4 mb-6">
-                <InfoItem label="ประเภทคำขอ" value={requestTypeLabel} className="sm:col-span-2" />
+                <InfoItem
+                  label="ประเภทคำขอ"
+                  value={requestTypeLabel}
+                  className="sm:col-span-2"
+                />
                 <InfoItem label="ประเภทบุคลากร" value={personnelTypeLabel} />
-                <InfoItem label="วันที่เริ่มมีผล" value={effectiveDateLabel || '-'} />
-                <InfoItem label="งานที่ได้รับมอบหมาย" value={mainDuty} className="sm:col-span-2" />
+                <InfoItem
+                  label="วันที่เริ่มมีผล"
+                  value={effectiveDateLabel || "-"}
+                />
+                <InfoItem
+                  label="งานที่ได้รับมอบหมาย"
+                  value={mainDuty}
+                  className="sm:col-span-2"
+                />
                 <InfoItem
                   label="ลักษณะงาน"
-                  value={workAttributes.length > 0 ? workAttributes.join(', ') : '-'}
+                  value={
+                    workAttributes.length > 0 ? workAttributes.join(", ") : "-"
+                  }
                   className="sm:col-span-2"
                 />
               </div>
@@ -908,25 +1348,33 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                   </div>
                 ) : (
                   <dl className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-4">
-                    <InfoItem label="วิชาชีพ" value={rateDisplay?.professionLabel || '-'} />
-                    <InfoItem label="กลุ่ม" value={rateDisplay?.groupLabel || '-'} />
+                    <InfoItem
+                      label="วิชาชีพ"
+                      value={rateDisplay?.professionLabel || "-"}
+                    />
+                    <InfoItem
+                      label="กลุ่ม"
+                      value={rateDisplay?.groupLabel || "-"}
+                    />
                     <InfoItem
                       label="เงื่อนไขหลัก"
-                      value={rateDisplay?.criteriaLabel || '-'}
+                      value={rateDisplay?.criteriaLabel || "-"}
                       className="sm:col-span-2"
                     />
                     <InfoItem
                       label="เงื่อนไขย่อย"
-                      value={rateDisplay?.subCriteriaLabel || '-'}
+                      value={rateDisplay?.subCriteriaLabel || "-"}
                       className="sm:col-span-2"
                     />
 
                     <div className="sm:col-span-2 mt-2 pt-4 border-t border-border/50 flex justify-between items-center">
-                      <span className="text-sm font-medium">อัตราเงินตามสิทธิ</span>
+                      <span className="text-sm font-medium">
+                        อัตราเงินตามสิทธิ
+                      </span>
                       <span className="text-lg font-bold text-primary">
-                          {rateAmount !== null && rateAmount !== undefined
-                            ? formatThaiNumber(Number(rateAmount))
-                            : '-'}
+                        {rateAmount !== null && rateAmount !== undefined
+                          ? formatThaiNumber(Number(rateAmount))
+                          : "-"}
                         <span className="text-sm font-normal text-muted-foreground ml-1">
                           บาท/เดือน
                         </span>
@@ -945,7 +1393,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </Card>
 
           <Card
-            className={`scroll-mt-20 shadow-sm transition-all duration-300 ${isSectionComplete(LICENSE_MINIMUM_CHECKLIST) ? 'border-emerald-200/60 ring-1 ring-emerald-500/20' : 'border-border/60'}`}
+            className={`scroll-mt-20 shadow-sm transition-all duration-300 ${isSectionComplete(LICENSE_MINIMUM_CHECKLIST) ? "border-emerald-200/60 ring-1 ring-emerald-500/20" : "border-border/60"}`}
           >
             <CardContent className="p-6">
               <SectionHeader
@@ -956,12 +1404,23 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-4">
                 <InfoItem label="เลขที่ใบอนุญาต" value={licenseNo} />
                 <InfoItem label="ประเภท/สาขาวิชาชีพ" value={licenseName} />
-                <InfoItem label="วันที่เริ่มมีผล" value={formatThaiDate(licenseValidFrom)} />
-                <InfoItem label="วันที่หมดอายุ" value={formatThaiDate(licenseValidUntil)} />
+                <InfoItem
+                  label="วันที่เริ่มมีผล"
+                  value={formatThaiDate(licenseValidFrom)}
+                />
+                <InfoItem
+                  label="วันที่หมดอายุ"
+                  value={formatThaiDate(licenseValidUntil)}
+                />
                 <div className="sm:col-span-2">
-                  <dt className="text-xs font-medium text-muted-foreground mb-1">สถานะใบอนุญาต</dt>
+                  <dt className="text-xs font-medium text-muted-foreground mb-1">
+                    สถานะใบอนุญาต
+                  </dt>
                   <dd>
-                    <Badge variant="outline" className={getLicenseStatusClass(licenseStatus)}>
+                    <Badge
+                      variant="outline"
+                      className={getLicenseStatusClass(licenseStatus)}
+                    >
                       {getLicenseStatusLabel(licenseStatus)}
                     </Badge>
                   </dd>
@@ -977,7 +1436,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </Card>
 
           <Card
-            className={`scroll-mt-20 shadow-sm transition-all duration-300 ${isSectionComplete(ATTACHMENT_MINIMUM_CHECKLIST) ? 'border-emerald-200/60 ring-1 ring-emerald-500/20' : 'border-border/60'}`}
+            className={`scroll-mt-20 shadow-sm transition-all duration-300 ${isSectionComplete(ATTACHMENT_MINIMUM_CHECKLIST) ? "border-emerald-200/60 ring-1 ring-emerald-500/20" : "border-border/60"}`}
           >
             <CardContent className="p-6">
               <SectionHeader
@@ -1018,17 +1477,22 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                           <div className="flex items-center gap-2 mt-2 opacity-60 group-hover:opacity-100 transition-opacity">
                             {previewable && (
                               <button
-                                onClick={() => handlePreview(fileUrl, file.file_name)}
+                                onClick={() =>
+                                  handlePreview(fileUrl, file.file_name)
+                                }
                                 className="text-xs flex items-center hover:text-primary transition-colors hover:underline"
                               >
                                 <Eye className="w-3 h-3 mr-1" /> ดูตัวอย่าง
                               </button>
                             )}
                             <button
-                              onClick={() => void runMockOcr(file.file_name, fileUrl)}
+                              onClick={() =>
+                                void runMockOcr(file.file_name, fileUrl)
+                              }
                               className="text-xs flex items-center hover:text-primary transition-colors hover:underline"
                             >
-                              <CheckCircle2 className="w-3 h-3 mr-1" /> ตรวจด้วย OCR
+                              <CheckCircle2 className="w-3 h-3 mr-1" /> ตรวจด้วย
+                              OCR
                             </button>
                             <a
                               href={fileUrl}
@@ -1061,19 +1525,20 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
               <CardHeader className="pb-3 bg-muted/20 rounded-t-lg">
                 <CardTitle className="text-base flex items-center justify-between">
                   <span>ดำเนินการคำขอ</span>
-                  {checklistStats.isComplete && !checklistStats.hasIncorrect && (
-                    <CheckCircle2 className="text-emerald-500 w-5 h-5" />
-                  )}
+                  {checklistStats.isComplete &&
+                    !checklistStats.hasIncorrect && (
+                      <CheckCircle2 className="text-emerald-500 w-5 h-5" />
+                    )}
                   {checklistStats.hasIncorrect && (
                     <AlertTriangle className="text-rose-500 w-5 h-5" />
                   )}
                 </CardTitle>
                 <CardDescription>
                   {checklistStats.hasIncorrect
-                    ? 'พบรายการไม่ถูกต้อง กรุณาส่งกลับ'
+                    ? "พบรายการไม่ถูกต้อง กรุณาส่งกลับ"
                     : checklistStats.isComplete
-                      ? 'ตรวจสอบครบถ้วน พร้อมอนุมัติ'
-                      : 'กรุณาตรวจสอบให้ครบถ้วน'}
+                      ? "ตรวจสอบครบถ้วน พร้อมอนุมัติ"
+                      : "กรุณาตรวจสอบให้ครบถ้วน"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2 pt-4">
@@ -1081,14 +1546,19 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                   <div className="flex justify-between text-xs font-medium">
                     <span className="text-muted-foreground">ความคืบหน้า</span>
                     <span
-                      className={checklistStats.isComplete ? 'text-emerald-600' : 'text-foreground'}
+                      className={
+                        checklistStats.isComplete
+                          ? "text-emerald-600"
+                          : "text-foreground"
+                      }
                     >
-                      {checklistStats.checkedCount} / {checklistStats.totalCount} รายการ
+                      {checklistStats.checkedCount} /{" "}
+                      {checklistStats.totalCount} รายการ
                     </span>
                   </div>
                   <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
                     <div
-                      className={`h-full transition-all duration-500 ${checklistStats.hasIncorrect ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                      className={`h-full transition-all duration-500 ${checklistStats.hasIncorrect ? "bg-rose-500" : "bg-emerald-500"}`}
                       style={{ width: `${checklistStats.progress}%` }}
                     />
                   </div>
@@ -1098,7 +1568,9 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                   <div className="rounded-md bg-rose-50 border border-rose-200 p-3 flex gap-2 items-start mt-2">
                     <AlertCircle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
                     <div className="space-y-1">
-                      <p className="text-xs font-semibold text-rose-700">พบรายการไม่ถูกต้อง</p>
+                      <p className="text-xs font-semibold text-rose-700">
+                        พบรายการไม่ถูกต้อง
+                      </p>
                       <ul className="text-[10px] text-rose-600 list-disc list-inside">
                         {checklistStats.incorrectItems.slice(0, 2).map((i) => (
                           <li key={i.key} className="truncate max-w-[200px]">
@@ -1106,7 +1578,10 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                           </li>
                         ))}
                         {checklistStats.incorrectItems.length > 2 && (
-                          <li>และอีก {checklistStats.incorrectItems.length - 2} รายการ</li>
+                          <li>
+                            และอีก {checklistStats.incorrectItems.length - 2}{" "}
+                            รายการ
+                          </li>
                         )}
                       </ul>
                     </div>
@@ -1114,35 +1589,39 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 )}
 
                 <div className="mb-3 rounded-md border border-border/60 bg-muted/20 p-3 mt-4">
-                  <p className="text-xs text-muted-foreground mb-1">สถานะบันทึกการตรวจสอบ</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    สถานะบันทึกการตรวจสอบ
+                  </p>
                   <p className="text-sm font-medium">
                     {hasVerificationSnapshot
-                      ? 'มีบันทึกการตรวจสอบแล้ว'
-                      : 'ยังไม่มีบันทึกการตรวจสอบ'}
+                      ? "มีบันทึกการตรวจสอบแล้ว"
+                      : "ยังไม่มีบันทึกการตรวจสอบ"}
                   </p>
                   <p className="text-xs mt-1 text-muted-foreground">
-                    {autosaveStatus === 'saving'
-                      ? 'กำลังบันทึกอัตโนมัติ...'
-                      : autosaveStatus === 'saved' && lastSavedAt
+                    {autosaveStatus === "saving"
+                      ? "กำลังบันทึกอัตโนมัติ..."
+                      : autosaveStatus === "saved" && lastSavedAt
                         ? `บันทึกล่าสุด ${formatThaiDateTime(lastSavedAt)}`
-                        : autosaveStatus === 'error'
-                          ? 'บันทึกอัตโนมัติไม่สำเร็จ'
-                          : 'ระบบจะบันทึกให้อัตโนมัติเมื่อมีการเปลี่ยนแปลง'}
+                        : autosaveStatus === "error"
+                          ? "บันทึกอัตโนมัติไม่สำเร็จ"
+                          : "ระบบจะบันทึกให้อัตโนมัติเมื่อมีการเปลี่ยนแปลง"}
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <Dialog
-                    open={actionDialog === 'approve'}
-                    onOpenChange={(open) => openActionDialog(open ? 'approve' : null)}
+                    open={actionDialog === "approve"}
+                    onOpenChange={(open) =>
+                      openActionDialog(open ? "approve" : null)
+                    }
                   >
                     <DialogTrigger asChild>
-                        <Button
-                          className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
-                          disabled={!checklistStats.canApprove || isActionBusy}
-                        >
-                          <Check className="w-4 h-4 mr-2" /> อนุมัติ (Approve)
-                        </Button>
+                      <Button
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+                        disabled={!checklistStats.canApprove || isActionBusy}
+                      >
+                        <Check className="w-4 h-4 mr-2" /> อนุมัติ (Approve)
+                      </Button>
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
@@ -1166,15 +1645,16 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                         </Button>
                         <Button
                           className="bg-emerald-600 hover:bg-emerald-700"
-                          onClick={() => handleAction('approve')}
+                          onClick={() => handleAction("approve")}
                           disabled={isActionBusy}
                         >
                           {isActionBusy ? (
                             <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> กำลังบันทึก...
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />{" "}
+                              กำลังบันทึก...
                             </>
                           ) : (
-                            'ยืนยัน'
+                            "ยืนยัน"
                           )}
                         </Button>
                       </DialogFooter>
@@ -1182,13 +1662,17 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                   </Dialog>
 
                   <Dialog
-                    open={actionDialog === 'return'}
-                    onOpenChange={(open) => openActionDialog(open ? 'return' : null)}
+                    open={actionDialog === "return"}
+                    onOpenChange={(open) =>
+                      openActionDialog(open ? "return" : null)
+                    }
                   >
                     <DialogTrigger asChild>
                       <Button
-                        variant={checklistStats.hasIncorrect ? 'default' : 'outline'}
-                        className={`w-full ${checklistStats.hasIncorrect ? 'bg-orange-500 hover:bg-orange-600 text-white border-transparent' : ''}`}
+                        variant={
+                          checklistStats.hasIncorrect ? "default" : "outline"
+                        }
+                        className={`w-full ${checklistStats.hasIncorrect ? "bg-orange-500 hover:bg-orange-600 text-white border-transparent" : ""}`}
                       >
                         <RotateCcw className="mr-2 h-4 w-4" />
                         ส่งกลับแก้ไข (Return)
@@ -1210,7 +1694,8 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                         />
                         {checklistStats.hasIncorrect && (
                           <p className="text-xs text-muted-foreground italic">
-                            * ระบบดึงเหตุผลจากรายการที่ติ๊ก &quot;ไม่ถูกต้อง&quot; มาให้แล้ว
+                            * ระบบดึงเหตุผลจากรายการที่ติ๊ก
+                            &quot;ไม่ถูกต้อง&quot; มาให้แล้ว
                           </p>
                         )}
                       </div>
@@ -1224,15 +1709,16 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                         </Button>
                         <Button
                           className="bg-orange-500 hover:bg-orange-600 text-white"
-                          onClick={() => handleAction('return')}
+                          onClick={() => handleAction("return")}
                           disabled={isActionBusy}
                         >
                           {isActionBusy ? (
                             <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> กำลังส่ง...
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />{" "}
+                              กำลังส่ง...
                             </>
                           ) : (
-                            'ส่งกลับ'
+                            "ส่งกลับ"
                           )}
                         </Button>
                       </DialogFooter>
@@ -1240,8 +1726,10 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                   </Dialog>
 
                   <Dialog
-                    open={actionDialog === 'reject'}
-                    onOpenChange={(open) => openActionDialog(open ? 'reject' : null)}
+                    open={actionDialog === "reject"}
+                    onOpenChange={(open) =>
+                      openActionDialog(open ? "reject" : null)
+                    }
                   >
                     <DialogTrigger asChild>
                       <Button
@@ -1254,7 +1742,9 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle className="text-rose-600">ยืนยันการไม่อนุมัติ</DialogTitle>
+                        <DialogTitle className="text-rose-600">
+                          ยืนยันการไม่อนุมัติ
+                        </DialogTitle>
                         <DialogDescription>กรุณาระบุเหตุผล</DialogDescription>
                       </DialogHeader>
                       <Textarea
@@ -1272,15 +1762,16 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                         </Button>
                         <Button
                           variant="destructive"
-                          onClick={() => handleAction('reject')}
+                          onClick={() => handleAction("reject")}
                           disabled={isActionBusy}
                         >
                           {isActionBusy ? (
                             <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> กำลังส่ง...
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />{" "}
+                              กำลังส่ง...
                             </>
                           ) : (
-                            'ยืนยัน'
+                            "ยืนยัน"
                           )}
                         </Button>
                       </DialogFooter>
@@ -1293,7 +1784,9 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
 
           <Card className="shadow-sm border-primary/20 bg-primary/5 overflow-hidden">
             <CardContent className="p-6">
-              <p className="text-sm font-medium text-primary/80 mb-1">ยอดเงินเบิกจ่าย</p>
+              <p className="text-sm font-medium text-primary/80 mb-1">
+                ยอดเงินเบิกจ่าย
+              </p>
               <div className="flex items-baseline gap-1">
                 <span className="text-3xl font-bold text-primary">
                   {formatThaiNumber(request.requested_amount ?? 0)}
@@ -1307,9 +1800,13 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                   <span className="font-mono text-foreground">{displayId}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">วันที่ยื่นเรื่อง</span>
+                  <span className="text-muted-foreground">
+                    วันที่ยื่นเรื่อง
+                  </span>
                   <span className="text-foreground">
-                    {submitAction?.action_date ? formatThaiDate(submitAction.action_date) : '-'}
+                    {submitAction?.action_date
+                      ? formatThaiDate(submitAction.action_date)
+                      : "-"}
                   </span>
                 </div>
               </div>
@@ -1318,7 +1815,9 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
 
           <Card className="shadow-sm border-border/60">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">ผู้ช่วยตรวจเอกสาร (OCR)</CardTitle>
+              <CardTitle className="text-base">
+                ผู้ช่วยตรวจเอกสาร (OCR)
+              </CardTitle>
               <CardDescription>
                 แสดงข้อความที่อ่านได้จากเอกสารด้วย OCR
               </CardDescription>
@@ -1328,12 +1827,19 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 <>
                   <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
                     <p className="font-medium">{ocrResult.fileName}</p>
-                    <p className="text-muted-foreground">{ocrResult.documentType}</p>
+                    <p className="text-muted-foreground">
+                      {ocrResult.documentType}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ตรง {ocrCheckSummary.matchCount} รายการ, ไม่ตรง{" "}
+                      {ocrCheckSummary.mismatchCount} รายการ, ไม่มีข้อมูล{" "}
+                      {ocrCheckSummary.missingCount} รายการ
+                    </p>
                     <p className="text-xs text-muted-foreground mt-1">
                       ตรวจเมื่อ {formatThaiDateTime(ocrResult.checkedAt)}
                     </p>
                     <p className="mt-2 text-foreground line-clamp-3 whitespace-pre-wrap">
-                      {ocrResult.markdown || '-'}
+                      {ocrResult.markdown || "-"}
                     </p>
                   </div>
                   <Button
@@ -1346,7 +1852,9 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 </>
               ) : (
                 <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-                  {ocrError || ocrPrecheckMessage || 'เลือกไฟล์แนบ แล้วกด “ตรวจด้วย OCR” เพื่อดูผลวิเคราะห์'}
+                  {ocrError ||
+                    ocrPrecheckMessage ||
+                    "เลือกไฟล์แนบ แล้วกด “ตรวจด้วย OCR” เพื่อดูผลวิเคราะห์"}
                 </div>
               )}
             </CardContent>
@@ -1361,7 +1869,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           {checklistStats.canApprove ? (
             <Button
               className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => openActionDialog('approve')}
+              onClick={() => openActionDialog("approve")}
               disabled={isActionBusy}
             >
               <Check className="w-4 h-4 mr-2" /> อนุมัติ
@@ -1369,9 +1877,9 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           ) : (
             <div className="flex-1 flex gap-2">
               <Button
-                variant={checklistStats.hasIncorrect ? 'default' : 'outline'}
-                className={`flex-1 ${checklistStats.hasIncorrect ? 'bg-orange-500 text-white' : ''}`}
-                onClick={() => openActionDialog('return')}
+                variant={checklistStats.hasIncorrect ? "default" : "outline"}
+                className={`flex-1 ${checklistStats.hasIncorrect ? "bg-orange-500 text-white" : ""}`}
+                onClick={() => openActionDialog("return")}
                 disabled={isActionBusy}
               >
                 <RotateCcw className="w-4 h-4 mr-2" /> ส่งกลับ
@@ -1380,7 +1888,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 variant="ghost"
                 size="icon"
                 className="text-rose-600"
-                onClick={() => openActionDialog('reject')}
+                onClick={() => openActionDialog("reject")}
                 disabled={isActionBusy}
               >
                 <XCircle className="w-6 h-6" />
@@ -1402,10 +1910,12 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       />
 
       <Dialog open={ocrDialogOpen} onOpenChange={setOcrDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>ผลวิเคราะห์เอกสาร (OCR)</DialogTitle>
-            <DialogDescription>ใช้ประกอบการพิจารณาคำขอโดยเจ้าหน้าที่ พ.ต.ส.</DialogDescription>
+            <DialogDescription>
+              ใช้ประกอบการพิจารณาคำขอโดยเจ้าหน้าที่ พ.ต.ส.
+            </DialogDescription>
           </DialogHeader>
 
           {ocrLoading ? (
@@ -1416,22 +1926,63 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             <div className="space-y-4">
               <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
                 <p className="font-medium">{ocrResult.fileName}</p>
-                <p className="text-muted-foreground">{ocrResult.documentType}</p>
+                <p className="text-muted-foreground">
+                  {ocrResult.documentType}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  ตรง {ocrCheckSummary.matchCount} รายการ, ไม่ตรง{" "}
+                  {ocrCheckSummary.mismatchCount} รายการ, ไม่มีข้อมูล{" "}
+                  {ocrCheckSummary.missingCount} รายการ
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   ตรวจเมื่อ {formatThaiDateTime(ocrResult.checkedAt)}
                 </p>
               </div>
 
+              <div className="rounded-lg border border-border/60 p-3 space-y-3">
+                {ocrChecks.map((item) => (
+                  <div
+                    key={item.key}
+                    className="rounded-md border border-border/60 bg-muted/20 p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium">{item.label}</p>
+                      <Badge
+                        variant="outline"
+                        className={getOcrCheckStatusClass(item.status)}
+                      >
+                        {getOcrCheckStatusLabel(item.status)} ({item.confidence}
+                        %)
+                      </Badge>
+                    </div>
+                    <div className="mt-2 text-xs space-y-1">
+                      <p className="text-muted-foreground">
+                        ค่าที่อ่านจากเอกสาร
+                      </p>
+                      <p className="text-foreground">
+                        {item.extractedValue || "-"}
+                      </p>
+                      <p className="text-muted-foreground pt-1">
+                        ค่าตามข้อมูลคำขอ
+                      </p>
+                      <p className="text-foreground">
+                        {item.expectedValue || "-"}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
               <div className="rounded-lg border border-border/60 p-3">
                 <p className="text-sm font-medium mb-2">ข้อความจาก OCR</p>
                 <pre className="text-xs whitespace-pre-wrap break-words text-foreground leading-relaxed">
-                  {ocrResult.markdown || '-'}
+                  {ocrResult.markdown || "-"}
                 </pre>
               </div>
             </div>
           ) : (
             <div className="py-10 text-center text-sm text-muted-foreground">
-              {ocrError || ocrPrecheckMessage || 'ยังไม่มีผล OCR'}
+              {ocrError || ocrPrecheckMessage || "ยังไม่มีผล OCR"}
             </div>
           )}
         </DialogContent>

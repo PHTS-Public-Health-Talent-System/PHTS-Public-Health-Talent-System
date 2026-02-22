@@ -281,7 +281,7 @@ export function AddLeaveForm({
 
       {leaveType === 'education' && (
         <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/30 space-y-4">
-          <p className="text-sm font-medium text-purple-400">ข้อมูลการลาศึกษา/อบรม</p>
+          <p className="text-sm font-medium text-purple-400">ข้อมูลการลาไปศึกษา ฝึกอบรม ดูงาน หรือปฏิบัติการวิจัย</p>
           <div className="space-y-2">
             <Label>สถานศึกษา</Label>
             <Input
@@ -575,7 +575,7 @@ export function EditLeaveForm({
 
       {leaveType === 'education' && (
         <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/30 space-y-4">
-          <p className="text-sm font-medium text-purple-400">ข้อมูลการลาศึกษา/อบรม</p>
+          <p className="text-sm font-medium text-purple-400">ข้อมูลการลาไปศึกษา ฝึกอบรม ดูงาน หรือปฏิบัติการวิจัย</p>
           <div className="space-y-2">
             <Label>สถานศึกษา</Label>
             <Input

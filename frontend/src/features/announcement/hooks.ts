@@ -1,6 +1,10 @@
+/**
+ * announcement module - React query hooks
+ *
+ */
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   activateAnnouncement,
   createAnnouncement,
@@ -8,18 +12,18 @@ import {
   getActiveAnnouncements,
   getAllAnnouncements,
   updateAnnouncement,
-} from './api';
+} from "./api";
 
 export function useActiveAnnouncements() {
   return useQuery({
-    queryKey: ['announcements', 'active'],
+    queryKey: ["announcements", "active"],
     queryFn: getActiveAnnouncements,
   });
 }
 
 export function useAllAnnouncements() {
   return useQuery({
-    queryKey: ['announcements', 'all'],
+    queryKey: ["announcements", "all"],
     queryFn: getAllAnnouncements,
   });
 }
@@ -29,7 +33,7 @@ export function useCreateAnnouncement() {
   return useMutation({
     mutationFn: createAnnouncement,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['announcements'] });
+      qc.invalidateQueries({ queryKey: ["announcements"] });
     },
   });
 }
@@ -37,10 +41,15 @@ export function useCreateAnnouncement() {
 export function useUpdateAnnouncement() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, payload }: { id: number | string; payload: Parameters<typeof updateAnnouncement>[1] }) =>
-      updateAnnouncement(id, payload),
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: number | string;
+      payload: Parameters<typeof updateAnnouncement>[1];
+    }) => updateAnnouncement(id, payload),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['announcements'] });
+      qc.invalidateQueries({ queryKey: ["announcements"] });
     },
   });
 }
@@ -50,7 +59,7 @@ export function useActivateAnnouncement() {
   return useMutation({
     mutationFn: (id: number | string) => activateAnnouncement(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['announcements'] });
+      qc.invalidateQueries({ queryKey: ["announcements"] });
     },
   });
 }
@@ -60,7 +69,7 @@ export function useDeactivateAnnouncement() {
   return useMutation({
     mutationFn: (id: number | string) => deactivateAnnouncement(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['announcements'] });
+      qc.invalidateQueries({ queryKey: ["announcements"] });
     },
   });
 }

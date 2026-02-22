@@ -1,6 +1,10 @@
-import api from '@/shared/api/axios';
-import type { ApiResponse } from '@/shared/api/types';
-import type { RequestStatus } from '@/types/request.types';
+/**
+ * dashboard module - API client
+ *
+ */
+import api from "@/shared/api/axios";
+import type { ApiResponse } from "@/shared/api/types";
+import type { RequestStatus } from "@/types/request.types";
 
 export type UserDashboardStats = {
   total: number;
@@ -33,7 +37,7 @@ export type UserDashboardAnnouncement = {
   id: number;
   title: string;
   date: string;
-  priority: 'high' | 'normal' | 'low';
+  priority: "high" | "normal" | "low";
 };
 
 export type UserDashboardPayload = {
@@ -42,24 +46,24 @@ export type UserDashboardPayload = {
   announcements: UserDashboardAnnouncement[];
 };
 
-export type HeadHrDashboardStats = {
+export type ApproverDashboardStats = {
   pending_requests: number;
   pending_payrolls: number;
   approved_month: number;
   sla_overdue: number;
 };
 
-export type HeadHrPendingRequest = {
+export type ApproverPendingRequest = {
   id: string;
   name: string;
   position: string;
   department: string;
   amount: number;
   date: string;
-  sla_status: 'normal' | 'warning' | 'danger' | 'overdue';
+  sla_status: "normal" | "warning" | "danger" | "overdue";
 };
 
-export type HeadHrPendingPayroll = {
+export type ApproverPendingPayroll = {
   id: string;
   month: string;
   totalAmount: number;
@@ -67,18 +71,27 @@ export type HeadHrPendingPayroll = {
   submittedAt: string;
 };
 
-export type HeadHrDashboardPayload = {
-  stats: HeadHrDashboardStats;
-  pending_requests: HeadHrPendingRequest[];
-  pending_payrolls: HeadHrPendingPayroll[];
+export type ApproverDashboardPayload = {
+  stats: ApproverDashboardStats;
+  pending_requests: ApproverPendingRequest[];
+  pending_payrolls: ApproverPendingPayroll[];
 };
 
 export async function getUserDashboard() {
-  const res = await api.get<ApiResponse<UserDashboardPayload>>('/dashboard/user');
+  const res =
+    await api.get<ApiResponse<UserDashboardPayload>>("/dashboard/user");
   return res.data.data;
 }
 
-export async function getHeadHrDashboard() {
-  const res = await api.get<ApiResponse<HeadHrDashboardPayload>>('/dashboard/head-hr');
+export async function getApproverDashboard() {
+  const res =
+    await api.get<ApiResponse<ApproverDashboardPayload>>("/dashboard/approver");
   return res.data.data;
 }
+
+// Backward-compatible aliases during migration.
+export type HeadHrDashboardStats = ApproverDashboardStats;
+export type HeadHrPendingRequest = ApproverPendingRequest;
+export type HeadHrPendingPayroll = ApproverPendingPayroll;
+export type HeadHrDashboardPayload = ApproverDashboardPayload;
+export const getHeadHrDashboard = getApproverDashboard;

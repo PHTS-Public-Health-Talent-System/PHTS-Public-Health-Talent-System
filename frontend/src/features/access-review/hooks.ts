@@ -1,7 +1,11 @@
+/**
+ * access-review module - React query hooks
+ *
+ */
 "use client";
 
-import { useMutation, useQuery } from '@tanstack/react-query';
-import type { ApiParams, ApiPayload } from '@/shared/api/types';
+import { useMutation, useQuery } from "@tanstack/react-query";
+import type { ApiParams, ApiPayload } from "@/shared/api/types";
 import {
   completeAccessReviewCycle,
   createAccessReviewCycle,
@@ -11,26 +15,29 @@ import {
   runAccessReviewAutoDisable,
   sendAccessReviewReminders,
   updateAccessReviewItem,
-} from './api';
+} from "./api";
 
 export function useAccessReviewCycles(params?: ApiParams) {
   return useQuery({
-    queryKey: ['access-review-cycles', params ?? {}],
+    queryKey: ["access-review-cycles", params ?? {}],
     queryFn: () => getAccessReviewCycles(params),
   });
 }
 
 export function useAccessReviewCycle(id: number | string | undefined) {
   return useQuery({
-    queryKey: ['access-review-cycle', id],
+    queryKey: ["access-review-cycle", id],
     queryFn: () => getAccessReviewCycle(id!),
     enabled: !!id,
   });
 }
 
-export function useAccessReviewItems(id: number | string | undefined, params?: ApiParams) {
+export function useAccessReviewItems(
+  id: number | string | undefined,
+  params?: ApiParams,
+) {
   return useQuery({
-    queryKey: ['access-review-items', id, params ?? {}],
+    queryKey: ["access-review-items", id, params ?? {}],
     queryFn: () => getAccessReviewItems(id!, params),
     enabled: !!id,
   });
@@ -44,15 +51,25 @@ export function useCreateAccessReviewCycle() {
 
 export function useCompleteAccessReviewCycle() {
   return useMutation({
-    mutationFn: ({ id, payload }: { id: number | string; payload?: ApiPayload }) =>
-      completeAccessReviewCycle(id, payload),
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: number | string;
+      payload?: ApiPayload;
+    }) => completeAccessReviewCycle(id, payload),
   });
 }
 
 export function useUpdateAccessReviewItem() {
   return useMutation({
-    mutationFn: ({ id, payload }: { id: number | string; payload: ApiPayload }) =>
-      updateAccessReviewItem(id, payload),
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: number | string;
+      payload: ApiPayload;
+    }) => updateAccessReviewItem(id, payload),
   });
 }
 

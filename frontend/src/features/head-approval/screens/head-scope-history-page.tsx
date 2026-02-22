@@ -95,8 +95,20 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
     const items = (historyQuery.data ?? []) as RequestWithDetails[];
     return items.map((request) => {
       const formData = mapRequestToFormData(request);
+      const requesterFromProfile = [
+        request.requester?.first_name,
+        request.requester?.last_name,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const requesterFromSubmission = [formData.title, formData.firstName, formData.lastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
       const requesterName =
-        [formData.title, formData.firstName, formData.lastName].filter(Boolean).join(' ').trim() ||
+        requesterFromProfile ||
+        requesterFromSubmission ||
         request.citizen_id;
       const department =
         formData.subDepartment || formData.department || request.current_department || '-';
@@ -250,7 +262,7 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link href={`${basePath}/requests/${row.id}`}>
+                        <Link href={`${basePath}/requests/${row.id}?from=history`}>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
                             <Eye className="h-4 w-4" />
                           </Button>

@@ -1,6 +1,10 @@
+/**
+ * support module - React query hooks
+ *
+ */
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listSupportTickets,
   listMySupportTickets,
@@ -13,11 +17,11 @@ import {
   deleteSupportTicket,
   updateSupportTicketStatus,
   type SupportTicketStatus,
-} from './api';
+} from "./api";
 
 export function useMySupportTickets(enabled = true) {
   return useQuery({
-    queryKey: ['support-tickets', 'my'],
+    queryKey: ["support-tickets", "my"],
     queryFn: listMySupportTickets,
     enabled,
   });
@@ -28,7 +32,7 @@ export function useSupportTickets(
   enabled = true,
 ) {
   return useQuery({
-    queryKey: ['support-tickets', 'all', params],
+    queryKey: ["support-tickets", "all", params],
     queryFn: () => listSupportTickets(params),
     enabled,
   });
@@ -36,15 +40,17 @@ export function useSupportTickets(
 
 export function useSupportTicket(ticketId: string | number | undefined) {
   return useQuery({
-    queryKey: ['support-tickets', ticketId],
+    queryKey: ["support-tickets", ticketId],
     queryFn: () => getSupportTicket(ticketId!),
     enabled: !!ticketId,
   });
 }
 
-export function useSupportTicketMessages(ticketId: string | number | undefined) {
+export function useSupportTicketMessages(
+  ticketId: string | number | undefined,
+) {
   return useQuery({
-    queryKey: ['support-tickets', ticketId, 'messages'],
+    queryKey: ["support-tickets", ticketId, "messages"],
     queryFn: () => listSupportTicketMessages(ticketId!),
     enabled: !!ticketId,
     refetchOnWindowFocus: true,
@@ -54,10 +60,11 @@ export function useSupportTicketMessages(ticketId: string | number | undefined) 
 export function useCreateSupportTicket() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: FormData) => createSupportTicketWithAttachments(payload),
+    mutationFn: (payload: FormData) =>
+      createSupportTicketWithAttachments(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
-      queryClient.invalidateQueries({ queryKey: ['support-tickets', 'my'] });
+      queryClient.invalidateQueries({ queryKey: ["support-tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["support-tickets", "my"] });
     },
   });
 }
@@ -65,11 +72,18 @@ export function useCreateSupportTicket() {
 export function useCreateSupportTicketMessage() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ ticketId, payload }: { ticketId: string | number; payload: FormData }) =>
-      createSupportTicketMessage(ticketId, payload),
+    mutationFn: ({
+      ticketId,
+      payload,
+    }: {
+      ticketId: string | number;
+      payload: FormData;
+    }) => createSupportTicketMessage(ticketId, payload),
     onSuccess: (_, { ticketId }) => {
-      queryClient.invalidateQueries({ queryKey: ['support-tickets', ticketId, 'messages'] });
-      queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
+      queryClient.invalidateQueries({
+        queryKey: ["support-tickets", ticketId, "messages"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["support-tickets"] });
     },
   });
 }
@@ -79,8 +93,8 @@ export function useReopenSupportTicket() {
   return useMutation({
     mutationFn: (ticketId: string | number) => reopenSupportTicket(ticketId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
-      queryClient.invalidateQueries({ queryKey: ['support-tickets', 'my'] });
+      queryClient.invalidateQueries({ queryKey: ["support-tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["support-tickets", "my"] });
     },
   });
 }
@@ -90,8 +104,8 @@ export function useCloseSupportTicket() {
   return useMutation({
     mutationFn: (ticketId: string | number) => closeSupportTicket(ticketId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
-      queryClient.invalidateQueries({ queryKey: ['support-tickets', 'my'] });
+      queryClient.invalidateQueries({ queryKey: ["support-tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["support-tickets", "my"] });
     },
   });
 }
@@ -101,8 +115,8 @@ export function useDeleteSupportTicket() {
   return useMutation({
     mutationFn: (ticketId: string | number) => deleteSupportTicket(ticketId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
-      queryClient.invalidateQueries({ queryKey: ['support-tickets', 'my'] });
+      queryClient.invalidateQueries({ queryKey: ["support-tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["support-tickets", "my"] });
     },
   });
 }
@@ -120,8 +134,8 @@ export function useUpdateSupportTicketStatus() {
       remark?: string | null;
     }) => updateSupportTicketStatus(ticketId, { status, remark }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
-      queryClient.invalidateQueries({ queryKey: ['support-tickets', 'my'] });
+      queryClient.invalidateQueries({ queryKey: ["support-tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["support-tickets", "my"] });
     },
   });
 }

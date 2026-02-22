@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ import { SectionHeader, InfoItem } from '@/features/request/detail/requestDetail
 import { AttachmentPreviewDialog } from '@/components/common/attachment-preview-dialog';
 import { getAttachmentLabel } from '@/features/request/detail/requestDetail.attachmentsLabel';
 import { buildAttachmentUrl, isPreviewableFile } from '@/features/request/detail/requestDetail.attachments';
+import { useAuth } from '@/components/providers/auth-provider';
 import {
   isEmptyRateMapping,
   normalizeRateMapping,
@@ -87,6 +88,9 @@ type HeadScopeRequestDetailPageProps = {
 export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeRequestDetailPageProps) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isHistoryView = searchParams.get('from') === 'history';
+  const { user } = useAuth();
   const { data: request, isLoading } = useRequestDetail(id);
   const { data: rateHierarchy } = useRateHierarchy();
   const processAction = useProcessAction();
@@ -157,7 +161,18 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
         .map(([key]) => WORK_ATTRIBUTE_LABELS[key] || key)
     : [];
 
-  const canAct = request?.status === 'PENDING' && request?.current_step === 4;
+  const roleToStep: Record<string, number> = {
+    HEAD_WARD: 1,
+    HEAD_DEPT: 2,
+  };
+  const currentUserStep = user?.role ? roleToStep[user.role] : undefined;
+  const canAct =
+    !isHistoryView &&
+    request?.status === 'PENDING' &&
+    typeof currentUserStep === 'number' &&
+    request?.current_step === currentUserStep;
+  const backHref = isHistoryView ? `${basePath}/history` : `${basePath}/requests`;
+  const backLabel = isHistoryView ? 'ประวัติการอนุมัติ' : 'รายการคำขอ';
 
   const handlePreview = (url: string, name: string) => {
     setPreviewUrl(url);
@@ -197,14 +212,14 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
   return (
     <RequestDetailPageShell
       state={isLoading ? 'loading' : request ? 'ready' : 'notFound'}
-      backHref={`${basePath}/requests`}
-      backLabel="รายการคำขอ"
+      backHref={backHref}
+      backLabel={backLabel}
       displayId={displayId}
       status={request?.status}
       currentStep={request?.current_step ?? null}
       createdAt={request?.created_at ?? null}
       headerActions={
-        request ? (
+        request && !isHistoryView ? (
           <>
             <Button
               size="sm"

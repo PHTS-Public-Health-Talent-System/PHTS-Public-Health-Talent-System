@@ -1,7 +1,11 @@
-import api from '@/shared/api/axios';
-import type { NavigationPayload } from './types';
+/**
+ * navigation module - API client
+ *
+ */
+import api from "@/shared/api/axios";
+import type { NavigationPayload } from "./types";
 
 export const getNavigation = async (): Promise<NavigationPayload> => {
-  const response = await api.get('/navigation');
+  const response = await api.get("/navigation");
   return response.data.data as NavigationPayload;
 };
