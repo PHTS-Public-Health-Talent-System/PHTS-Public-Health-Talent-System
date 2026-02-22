@@ -35,6 +35,23 @@ import {
   upsertSingleEmployeeProfile,
   upsertSingleSupportEmployee,
 } from '@/modules/system/sync/services/sync-hr.service.js';
+import {
+  syncSignatures as runDomainSignaturesSync,
+  syncLicensesAndQuotas as runDomainLicensesAndQuotasSync,
+  syncLeaves as runDomainLeavesSync,
+  syncMovements as runDomainMovementsSync,
+  syncSingleSignature as runSingleSignatureSync,
+  syncSingleLicenses as runSingleLicensesSync,
+  syncSingleQuotas as runSingleQuotasSync,
+  syncSingleLeaves as runSingleLeavesSync,
+  syncSingleMovements as runSingleMovementsSync,
+} from '@/modules/system/sync/services/sync-domain.service.js';
+import {
+  buildScopesFromSpecialPosition as buildScopesFromSpecialPositionBase,
+  syncSpecialPositionScopes as runScopeSync,
+  syncSpecialPositionScopesForCitizen as runScopeSyncForCitizen,
+} from '@/modules/system/sync/services/sync-scope.service.js';
+import { assignRoleForSingleUser as assignRoleForSingleUserBase } from '@/modules/system/sync/services/sync-role.service.js';
 
 
 export const VIEW_EMPLOYEE_COLUMNS = [
@@ -348,278 +365,70 @@ const getUserIdMap = async (conn: PoolConnection) => {
 };
 
 const syncSignatures = async (conn: PoolConnection, stats: SyncStats) => {
-  console.log('[SyncService] Processing signatures...');
-  const [existingSigs] = await conn.query<RowDataPacket[]>('SELECT citizen_id FROM sig_images');
-  const sigSet = new Set(existingSigs.map((s) => s.citizen_id));
-
-  const [viewSigs] = await conn.query<RowDataPacket[]>(buildSignaturesViewQuery());
-
-  for (const vSig of viewSigs) {
-    if (!vSig.citizen_id || sigSet.has(vSig.citizen_id)) {
-      stats.signatures.skipped++;
-      continue;
-    }
-    await conn.execute(
-      `
-          INSERT INTO sig_images (citizen_id, signature_image, updated_at) VALUES (?, ?, NOW())
-        `,
-      [vSig.citizen_id, vSig.signature_blob],
-    );
-    stats.signatures.added++;
-  }
+  return runDomainSignaturesSync(conn, stats, {
+    buildSignaturesViewQuery,
+  });
 };
 
 const syncLicensesAndQuotas = async (conn: PoolConnection, stats: SyncStats) => {
-  console.log('[SyncService] Processing licenses and quotas...');
-  await conn.query(buildLicensesViewQuery());
-
-  const [viewQuotas] = await conn.query<RowDataPacket[]>(buildQuotasViewQuery());
-  for (const q of viewQuotas) {
-    await upsertLeaveQuota(conn, q.citizen_id, q.fiscal_year, q.total_quota);
-    stats.quotas.upserted++;
-  }
+  return runDomainLicensesAndQuotasSync(conn, stats, {
+    buildLicensesViewQuery,
+    buildQuotasViewQuery,
+    upsertLeaveQuota,
+  });
 };
 
 const syncLeaves = async (conn: PoolConnection, stats: SyncStats) => {
-  console.log('[SyncService] Processing leave requests...');
-  const hasStatusColumn = await hasLeaveStatusColumn(conn);
-
-  const sqlOptions: LeaveRecordSqlOptions = { hasStatusColumn };
-  const { sql } = buildLeaveRecordSql(sqlOptions);
-
-  const existingFields = ['ref_id', 'start_date', 'end_date'];
-  if (hasStatusColumn) existingFields.push('status');
-  const existingSelect = `SELECT ${existingFields.join(', ')} FROM leave_records WHERE ref_id IS NOT NULL`;
-
-  const [existingLeaves] = await conn.query<RowDataPacket[]>(existingSelect);
-  const leaveMap = new Map(existingLeaves.map((l) => [l.ref_id, l]));
-
-  const [viewLeaves] = await conn.query<RowDataPacket[]>(buildLeaveViewQuery());
-
-  for (const vLeave of viewLeaves) {
-    if (!vLeave.ref_id) continue;
-    const dbLeave = leaveMap.get(vLeave.ref_id);
-
-    if (dbLeave) {
-      const dateChanged =
-        isChanged(dbLeave.start_date, vLeave.start_date) ||
-        isChanged(dbLeave.end_date, vLeave.end_date);
-      const statusChanged = hasStatusColumn ? isChanged(dbLeave.status, vLeave.status) : false;
-      if (!dateChanged && !statusChanged) {
-        stats.leaves.skipped++;
-        continue;
-      }
-    }
-
-    const values = buildLeaveRecordValues(vLeave, sqlOptions);
-    await conn.execute(sql, values);
-    stats.leaves.upserted++;
-  }
+  return runDomainLeavesSync(conn, stats, {
+    hasLeaveStatusColumn,
+    buildLeaveRecordSql,
+    buildLeaveRecordValues,
+    buildLeaveViewQuery,
+    isChanged,
+  });
 };
 
 const syncMovements = async (conn: PoolConnection, _stats: SyncStats) => {
-  console.log('[SyncService] Processing movements...');
-  await conn.query(buildMovementsViewQuery());
-  await applyImmediateMovementEligibilityCutoff(new Date(), conn);
+  return runDomainMovementsSync(conn, {
+    buildMovementsViewQuery,
+    applyImmediateMovementEligibilityCutoff,
+  });
 };
 
 export const buildScopesFromSpecialPosition = (specialPosition: string | null) => {
-  if (!specialPosition) return { wardScopes: [], deptScopes: [] };
-  const allScopes = parseSpecialPositionScopes(specialPosition);
-  const wardScopes: string[] = [];
-  const deptScopes: string[] = [];
-
-  const normalizeScopeName = (scope: string): string => {
-    const parts = scope.split('-');
-    return parts.length > 1 ? parts.slice(1).join('-').trim() : scope.trim();
-  };
-
-  const addScope = (target: string[], scopeName: string): void => {
-    if (!scopeName || inferScopeType(scopeName) === 'IGNORE') return;
-    target.push(scopeName);
-  };
-
-  for (const scope of allScopes) {
-    if (scope.includes('ตำแหน่งด้านบริหาร')) continue;
-    const isHeadWard = scope.includes('หัวหน้าตึก') || scope.includes('หัวหน้างาน-');
-    const isHeadDept = scope.includes('หัวหน้ากลุ่มงาน') || scope.includes('หัวหน้ากลุ่มภารกิจ');
-    const scopeName = normalizeScopeName(scope);
-
-    if (isHeadWard) {
-      addScope(wardScopes, scopeName);
-      if (inferScopeType(scopeName) === 'DEPT') addScope(deptScopes, scopeName);
-      continue;
-    }
-
-    if (isHeadDept) {
-      addScope(deptScopes, scopeName);
-      continue;
-    }
-  }
-
-  const cleanedWardScopes = removeOverlaps(wardScopes, deptScopes);
-  const uniqWard = Array.from(new Set(cleanedWardScopes.map((s) => s.trim())));
-  const uniqDept = Array.from(new Set(deptScopes.map((s) => s.trim())));
-  return { wardScopes: uniqWard, deptScopes: uniqDept };
+  return buildScopesFromSpecialPositionBase(specialPosition, {
+    parseSpecialPositionScopes,
+    removeOverlaps,
+    inferScopeType,
+  });
 };
 
 const syncSpecialPositionScopes = async (conn: PoolConnection) => {
-  console.log('[SyncService] Processing special_position scope mapping...');
-
-  const [rows] = await conn.query<RowDataPacket[]>(
-    `
-      SELECT u.id AS user_id,
-             u.citizen_id,
-             u.role,
-             e.special_position,
-             e.original_status,
-             s.is_currently_active AS support_active
-      FROM users u
-      LEFT JOIN emp_profiles e ON ${citizenIdJoinBinary('u', 'e')}
-      LEFT JOIN emp_support_staff s ON ${citizenIdJoinBinary('u', 's')}
-      WHERE u.role IN ('HEAD_WARD','HEAD_DEPT')
-    `,
-  );
-
-  for (const row of rows) {
-    const citizenId = row.citizen_id as string;
-    const role = row.role as string;
-    const specialPosition = row.special_position as string | null;
-    const originalStatus = row.original_status as string | null;
-    const supportActive = row.support_active as number | null;
-
-    const isActive = isActiveOriginalStatus(originalStatus) || Number(supportActive) === 1;
-
-    if (!isActive) {
-      if (row.user_id) {
-        await requestRepository.disableScopeMappings(row.user_id as number, role, conn);
-      } else {
-        await requestRepository.disableScopeMappingsByCitizenId(citizenId, role, conn);
-      }
-      continue;
-    }
-
-    const scopes = buildScopesFromSpecialPosition(specialPosition);
-
-    if (row.user_id) {
-      await requestRepository.disableScopeMappings(row.user_id as number, role, conn);
-    } else {
-      await requestRepository.disableScopeMappingsByCitizenId(citizenId, role, conn);
-    }
-
-    if (scopes.wardScopes.length === 0 && scopes.deptScopes.length === 0) {
-      console.warn(
-        `[SyncService] special_position parse failed: citizen_id=${citizenId}, role=${role}, special_position="${specialPosition ?? ''}"`,
-      );
-      continue;
-    }
-
-    const inputs = [
-      ...scopes.wardScopes.map((scopeName) => ({
-        user_id: row.user_id as number | undefined,
-        citizen_id: citizenId,
-        role,
-        scope_type: 'UNIT' as const,
-        scope_name: scopeName,
-        source: 'AUTO' as const,
-      })),
-      ...scopes.deptScopes.map((scopeName) => ({
-        user_id: row.user_id as number | undefined,
-        citizen_id: citizenId,
-        role,
-        scope_type: 'DEPT' as const,
-        scope_name: scopeName,
-        source: 'AUTO' as const,
-      })),
-    ];
-
-    await requestRepository.insertScopeMappings(inputs, conn);
-
-    const userId = row.user_id as number;
-    if (userId) {
-      clearScopeCache(userId);
-    }
-  }
+  return runScopeSync(conn, {
+    citizenIdJoinBinary,
+    isActiveOriginalStatus,
+    parseScopes: buildScopesFromSpecialPosition,
+    disableScopeMappings: requestRepository.disableScopeMappings.bind(requestRepository),
+    disableScopeMappingsByCitizenId: requestRepository.disableScopeMappingsByCitizenId.bind(
+      requestRepository,
+    ),
+    insertScopeMappings: requestRepository.insertScopeMappings.bind(requestRepository),
+    clearScopeCache,
+  });
 };
 
 const syncSpecialPositionScopesForCitizen = async (conn: PoolConnection, citizenId: string) => {
-  const [rows] = await conn.query<RowDataPacket[]>(
-    `
-      SELECT u.id AS user_id,
-             u.citizen_id,
-             u.role,
-             e.special_position,
-             e.original_status,
-             s.is_currently_active AS support_active
-      FROM users u
-      LEFT JOIN emp_profiles e ON ${citizenIdJoinBinary('u', 'e')}
-      LEFT JOIN emp_support_staff s ON ${citizenIdJoinBinary('u', 's')}
-      WHERE u.citizen_id = ?
-        AND u.role IN ('HEAD_WARD','HEAD_DEPT')
-      LIMIT 1
-    `,
-    [citizenId],
-  );
-
-  const row = rows[0];
-  if (!row) return;
-
-  const role = row.role as string;
-  const specialPosition = row.special_position as string | null;
-  const originalStatus = row.original_status as string | null;
-  const supportActive = row.support_active as number | null;
-
-  const isActive = isActiveOriginalStatus(originalStatus) || Number(supportActive) === 1;
-
-  if (!isActive) {
-    if (row.user_id) {
-      await requestRepository.disableScopeMappings(row.user_id as number, role, conn);
-    } else {
-      await requestRepository.disableScopeMappingsByCitizenId(citizenId, role, conn);
-    }
-    return;
-  }
-
-  const scopes = buildScopesFromSpecialPosition(specialPosition);
-
-  if (row.user_id) {
-    await requestRepository.disableScopeMappings(row.user_id as number, role, conn);
-  } else {
-    await requestRepository.disableScopeMappingsByCitizenId(citizenId, role, conn);
-  }
-
-  if (scopes.wardScopes.length === 0 && scopes.deptScopes.length === 0) {
-    console.warn(
-      `[SyncService] special_position parse failed: citizen_id=${citizenId}, role=${role}, special_position="${specialPosition ?? ''}"`,
-    );
-    return;
-  }
-
-  const inputs = [
-    ...scopes.wardScopes.map((scopeName) => ({
-      user_id: row.user_id as number | undefined,
-      citizen_id: citizenId,
-      role,
-      scope_type: 'UNIT' as const,
-      scope_name: scopeName,
-      source: 'AUTO' as const,
-    })),
-    ...scopes.deptScopes.map((scopeName) => ({
-      user_id: row.user_id as number | undefined,
-      citizen_id: citizenId,
-      role,
-      scope_type: 'DEPT' as const,
-      scope_name: scopeName,
-      source: 'AUTO' as const,
-    })),
-  ];
-
-  await requestRepository.insertScopeMappings(inputs, conn);
-
-  const userId = row.user_id as number;
-  if (userId) {
-    clearScopeCache(userId);
-  }
+  return runScopeSyncForCitizen(conn, citizenId, {
+    citizenIdJoinBinary,
+    isActiveOriginalStatus,
+    parseScopes: buildScopesFromSpecialPosition,
+    disableScopeMappings: requestRepository.disableScopeMappings.bind(requestRepository),
+    disableScopeMappingsByCitizenId: requestRepository.disableScopeMappingsByCitizenId.bind(
+      requestRepository,
+    ),
+    insertScopeMappings: requestRepository.insertScopeMappings.bind(requestRepository),
+    clearScopeCache,
+  });
 };
 
 const syncSingleSignature = async (
@@ -627,53 +436,15 @@ const syncSingleSignature = async (
   citizenId: string,
   stats: SyncStats,
 ): Promise<void> => {
-  const [viewSigs] = await conn.query<RowDataPacket[]>(
-    `
-      SELECT s.citizen_id, s.signature_blob
-      FROM vw_hrms_signatures s
-      WHERE ${citizenIdWhereBinary('s', '?')}
-    `,
-    [citizenId],
-  );
-  const vSig = viewSigs[0];
-  if (!vSig) return;
-  const [existingSigs] = await conn.query<RowDataPacket[]>(
-    `SELECT citizen_id FROM sig_images WHERE ${citizenIdWhereBinary('sig_images', '?')}`,
-    [vSig.citizen_id],
-  );
-  if (existingSigs.length) {
-    stats.signatures.skipped++;
-    return;
-  }
-  await conn.execute(
-    `INSERT INTO sig_images (citizen_id, signature_image, updated_at) VALUES (?, ?, NOW())`,
-    [vSig.citizen_id, vSig.signature_blob],
-  );
-  stats.signatures.added++;
+  return runSingleSignatureSync(conn, citizenId, stats, {
+    citizenIdWhereBinary,
+  });
 };
 
 const syncSingleLicenses = async (conn: PoolConnection, citizenId: string): Promise<void> => {
-  await conn.execute(
-    `
-      INSERT INTO emp_licenses (citizen_id, license_name, license_no, valid_from, valid_until, status, synced_at)
-      SELECT l.citizen_id,
-             l.license_name,
-             l.license_no,
-             l.valid_from,
-             CAST(l.valid_until AS DATE),
-             l.status,
-             NOW()
-      FROM vw_hrms_licenses l
-      WHERE ${citizenIdWhereBinary('l', '?')}
-      ON DUPLICATE KEY UPDATE
-        license_name=VALUES(license_name),
-        valid_from=VALUES(valid_from),
-        valid_until=VALUES(valid_until),
-        status=VALUES(status),
-        synced_at=NOW()
-    `,
-    [citizenId],
-  );
+  return runSingleLicensesSync(conn, citizenId, {
+    citizenIdWhereBinary,
+  });
 };
 
 const syncSingleQuotas = async (
@@ -681,18 +452,10 @@ const syncSingleQuotas = async (
   citizenId: string,
   stats: SyncStats,
 ): Promise<void> => {
-  const [viewQuotas] = await conn.query<RowDataPacket[]>(
-    `
-      SELECT q.citizen_id, q.fiscal_year, q.total_quota
-      FROM vw_hrms_leave_quotas q
-      WHERE ${citizenIdWhereBinary('q', '?')}
-    `,
-    [citizenId],
-  );
-  for (const q of viewQuotas) {
-    await upsertLeaveQuota(conn, q.citizen_id, q.fiscal_year, q.total_quota);
-    stats.quotas.upserted++;
-  }
+  return runSingleQuotasSync(conn, citizenId, stats, {
+    citizenIdWhereBinary,
+    upsertLeaveQuota,
+  });
 };
 
 const syncSingleLeaves = async (
@@ -700,49 +463,22 @@ const syncSingleLeaves = async (
   citizenId: string,
   stats: SyncStats,
 ): Promise<void> => {
-  const hasStatusColumn = await hasLeaveStatusColumn(conn);
-  const leaveSqlOptions: LeaveRecordSqlOptions = { hasStatusColumn };
-  const { sql: leaveSql } = buildLeaveRecordSql(leaveSqlOptions);
-
-  const [viewLeaves] = await conn.query<RowDataPacket[]>(
-    `SELECT ${selectColumns('lr', VIEW_LEAVE_COLUMNS)}
-     FROM vw_hrms_leave_requests lr
-     WHERE ${citizenIdWhereBinary('lr', '?')}`,
-    [citizenId],
-  );
-
-  for (const vLeave of viewLeaves) {
-    if (!vLeave.ref_id) continue;
-    const leaveValues = buildLeaveRecordValues(vLeave, leaveSqlOptions);
-    await conn.execute(leaveSql, leaveValues);
-    stats.leaves.upserted++;
-  }
+  return runSingleLeavesSync(conn, citizenId, stats, {
+    hasLeaveStatusColumn,
+    buildLeaveRecordSql,
+    buildLeaveRecordValues,
+    selectColumns,
+    viewLeaveColumns: VIEW_LEAVE_COLUMNS,
+    citizenIdWhereBinary,
+  });
 };
 
 const syncSingleMovements = async (conn: PoolConnection, citizenId: string): Promise<void> => {
-  await conn.execute(
-    `
-      INSERT INTO emp_movements (citizen_id, movement_type, effective_date, remark, synced_at)
-      SELECT ${citizenIdSelectUtf8('m')} AS citizen_id,
-             CASE
-               WHEN CAST(m.movement_type AS BINARY) = CAST('UNKNOWN' AS BINARY)
-                 THEN 'OTHER'
-               ELSE m.movement_type
-             END,
-             m.effective_date,
-             m.remark,
-             NOW()
-      FROM vw_hrms_movements m
-      WHERE ${citizenIdWhereBinary('m', '?')}
-      ON DUPLICATE KEY UPDATE
-        movement_type = VALUES(movement_type),
-        effective_date = VALUES(effective_date),
-        remark = VALUES(remark),
-        synced_at = NOW()
-    `,
-    [citizenId],
-  );
-  await applyImmediateMovementEligibilityCutoff(new Date(), conn);
+  return runSingleMovementsSync(conn, citizenId, {
+    citizenIdSelectUtf8,
+    citizenIdWhereBinary,
+    applyImmediateMovementEligibilityCutoff,
+  });
 };
 
 const assignRoleForSingleUser = async (
@@ -751,44 +487,14 @@ const assignRoleForSingleUser = async (
   citizenId: string,
   stats: SyncStats,
 ): Promise<void> => {
-  try {
-    const [hrRows] = await conn.query<RowDataPacket[]>(
-      `
-        SELECT citizen_id, position_name, special_position, department, sub_department
-        FROM emp_profiles WHERE ${citizenIdWhereBinary('emp_profiles', '?')}
-        UNION ALL
-        SELECT citizen_id, position_name, special_position, department, NULL AS sub_department
-        FROM emp_support_staff WHERE ${citizenIdWhereBinary('emp_support_staff', '?')}
-        LIMIT 1
-      `,
-      [citizenId, citizenId],
-    );
-    const hrRow = hrRows[0] as any;
-    if (!hrRow) {
-      stats.roles.missing++;
-      return;
-    }
-    const currentRole = dbUser.role as string;
-    if (RoleAssignmentService.PROTECTED_ROLES.has(currentRole)) {
-      stats.roles.skipped++;
-      return;
-    }
-    const nextRole = RoleAssignmentService.deriveRole(hrRow);
-    if (nextRole === currentRole) {
-      stats.roles.skipped++;
-      return;
-    }
-    await conn.execute(
-      `UPDATE users
-       SET role = ?, updated_at = NOW()
-       WHERE ${citizenIdWhereBinary('users', '?')}`,
-      [nextRole, citizenId],
-    );
-    clearScopeCache(dbUser.id as number);
-    stats.roles.updated++;
-  } catch (roleError) {
-    console.warn('[SyncService] Single role assignment failed:', roleError);
-  }
+  return assignRoleForSingleUserBase(conn, dbUser, citizenId, stats, {
+    citizenIdWhereBinary,
+    roleAssignmentService: {
+      PROTECTED_ROLES: RoleAssignmentService.PROTECTED_ROLES,
+      deriveRole: (hrRow: unknown) => RoleAssignmentService.deriveRole(hrRow as any),
+    },
+    clearScopeCache,
+  });
 };
 
 export class SyncService {
