@@ -1,11 +1,11 @@
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-import redis from '@config/redis.js';
-import { getConnection } from '@config/database.js';
-import { requestRepository } from '@/modules/request/repositories/request.repository.js';
-import { FileType } from '@/modules/request/request.types.js';
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import redis from "@config/redis.js";
+import { getConnection } from "@config/database.js";
+import { requestRepository } from "@/modules/request/repositories/request.repository.js";
+import { FileType } from "@/modules/request/request.types.js";
 
-const OCR_QUEUE_KEY = 'request:ocr:precheck:queue';
+const OCR_QUEUE_KEY = "request:ocr:precheck:queue";
 const OCR_WORKER_BRPOP_TIMEOUT_SEC = 5;
 
 type OcrQueueJob = {
@@ -30,12 +30,16 @@ let workerPromise: Promise<void> | null = null;
 let workerRedisClient: typeof redis | null = null;
 
 const parseSubmissionData = (value: unknown): Record<string, unknown> => {
+  // `submission_data` may arrive as JSON string or object depending on query path/repository mapping.
   if (!value) return {};
-  if (typeof value === 'object') return { ...(value as Record<string, unknown>) };
-  if (typeof value === 'string') {
+  if (typeof value === "object")
+    return { ...(value as Record<string, unknown>) };
+  if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
-      return typeof parsed === 'object' && parsed ? (parsed as Record<string, unknown>) : {};
+      return typeof parsed === "object" && parsed
+        ? (parsed as Record<string, unknown>)
+        : {};
     } catch {
       return {};
     }
@@ -44,12 +48,20 @@ const parseSubmissionData = (value: unknown): Record<string, unknown> => {
 };
 
 const getOcrServiceBase = (): string => {
-  const base = (process.env.OCR_SERVICE_URL || process.env.OCR_API_URL || '').trim();
-  return base.replace(/\/+$/, '');
+  const base = (
+    process.env.OCR_SERVICE_URL ||
+    process.env.OCR_API_URL ||
+    ""
+  ).trim();
+  return base.replace(/\/+$/, "");
 };
 
 const getPerFileTimeoutMs = (): number => {
-  const raw = Number(process.env.OCR_FILE_TIMEOUT_MS || process.env.OCR_HTTP_TIMEOUT_MS || 120000);
+  const raw = Number(
+    process.env.OCR_FILE_TIMEOUT_MS ||
+      process.env.OCR_HTTP_TIMEOUT_MS ||
+      120000,
+  );
   if (!Number.isFinite(raw) || raw < 1000) return 120000;
   return raw;
 };
@@ -72,7 +84,10 @@ const updateRequestOcrPrecheck = async (
   const connection = await getConnection();
   try {
     await connection.beginTransaction();
-    const requestEntity = await requestRepository.findById(requestId, connection);
+    const requestEntity = await requestRepository.findById(
+      requestId,
+      connection,
+    );
     if (!requestEntity) {
       await connection.rollback();
       return;
@@ -80,7 +95,8 @@ const updateRequestOcrPrecheck = async (
 
     const submissionData = parseSubmissionData(requestEntity.submission_data);
     const previousPrecheck =
-      typeof submissionData.ocr_precheck === 'object' && submissionData.ocr_precheck
+      typeof submissionData.ocr_precheck === "object" &&
+      submissionData.ocr_precheck
         ? (submissionData.ocr_precheck as Record<string, unknown>)
         : {};
 
@@ -100,7 +116,7 @@ const updateRequestOcrPrecheck = async (
     await connection.commit();
   } catch {
     await connection.rollback();
-    throw new Error('Failed to update OCR precheck');
+    throw new Error("Failed to update OCR precheck");
   } finally {
     connection.release();
   }
@@ -111,6 +127,7 @@ const callOcrForSingleFile = async (
   fileBuffer: Buffer,
   ocrBase: string,
 ): Promise<OcrBatchResultItem> => {
+  // File-level retry/timeout isolates failures so one bad file does not fail the whole request batch.
   const timeoutMs = getPerFileTimeoutMs();
   const retryCount = getRetryCount();
 
@@ -119,9 +136,9 @@ const callOcrForSingleFile = async (
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const form = new FormData();
-      form.append('files', new Blob([fileBuffer]), fileName);
+      form.append("files", new Blob([fileBuffer]), fileName);
       const response = await fetch(`${ocrBase}/ocr-batch`, {
-        method: 'POST',
+        method: "POST",
         body: form,
         signal: controller.signal,
       });
@@ -133,16 +150,16 @@ const callOcrForSingleFile = async (
       const payload = (await response.json()) as OcrBatchResponse;
       const result = payload.results?.[0];
       if (!result) {
-        throw new Error('OCR response missing result item');
+        throw new Error("OCR response missing result item");
       }
       if (!result.ok) {
-        throw new Error(result.error || 'OCR file processing failed');
+        throw new Error(result.error || "OCR file processing failed");
       }
       clearTimeout(timeout);
       return {
         name: result.name || fileName,
         ok: true,
-        markdown: result.markdown || '',
+        markdown: result.markdown || "",
       };
     } catch (error) {
       clearTimeout(timeout);
@@ -151,7 +168,7 @@ const callOcrForSingleFile = async (
         return {
           name: fileName,
           ok: false,
-          error: error instanceof Error ? error.message : 'Unknown OCR error',
+          error: error instanceof Error ? error.message : "Unknown OCR error",
         };
       }
     }
@@ -160,7 +177,7 @@ const callOcrForSingleFile = async (
   return {
     name: fileName,
     ok: false,
-    error: 'Unexpected OCR retry flow',
+    error: "Unexpected OCR retry flow",
   };
 };
 
@@ -168,18 +185,18 @@ const processRequestOcrPrecheck = async (requestId: number): Promise<void> => {
   const ocrBase = getOcrServiceBase();
   if (!ocrBase) {
     await updateRequestOcrPrecheck(requestId, {
-      status: 'skipped',
-      error: 'OCR service URL is not configured',
+      status: "skipped",
+      error: "OCR service URL is not configured",
       finished_at: new Date().toISOString(),
     });
     return;
   }
 
   await updateRequestOcrPrecheck(requestId, {
-    status: 'processing',
+    status: "processing",
     started_at: new Date().toISOString(),
     service_url: ocrBase,
-    worker: 'redis-list',
+    worker: "redis-list",
   });
 
   try {
@@ -190,8 +207,8 @@ const processRequestOcrPrecheck = async (requestId: number): Promise<void> => {
 
     if (!candidates.length) {
       await updateRequestOcrPrecheck(requestId, {
-        status: 'failed',
-        error: 'No attachments to OCR',
+        status: "failed",
+        error: "No attachments to OCR",
         finished_at: new Date().toISOString(),
         results: [],
       });
@@ -199,10 +216,15 @@ const processRequestOcrPrecheck = async (requestId: number): Promise<void> => {
     }
 
     const results: OcrBatchResultItem[] = [];
+    // Process sequentially to keep memory/network pressure predictable on constrained OCR hosts.
     for (const attachment of candidates) {
       const absolutePath = resolveAttachmentPath(attachment.file_path);
       const bytes = await readFile(absolutePath);
-      const result = await callOcrForSingleFile(attachment.file_name, bytes, ocrBase);
+      const result = await callOcrForSingleFile(
+        attachment.file_name,
+        bytes,
+        ocrBase,
+      );
       results.push(result);
     }
 
@@ -210,7 +232,7 @@ const processRequestOcrPrecheck = async (requestId: number): Promise<void> => {
     const failedCount = results.length - successCount;
 
     await updateRequestOcrPrecheck(requestId, {
-      status: successCount > 0 ? 'completed' : 'failed',
+      status: successCount > 0 ? "completed" : "failed",
       finished_at: new Date().toISOString(),
       service_url: ocrBase,
       count: results.length,
@@ -220,8 +242,8 @@ const processRequestOcrPrecheck = async (requestId: number): Promise<void> => {
     });
   } catch (error) {
     await updateRequestOcrPrecheck(requestId, {
-      status: 'failed',
-      error: error instanceof Error ? error.message : 'OCR processing failed',
+      status: "failed",
+      error: error instanceof Error ? error.message : "OCR processing failed",
       finished_at: new Date().toISOString(),
     });
   }
@@ -231,7 +253,11 @@ const workerLoop = async () => {
   if (!workerRedisClient) return;
   while (workerRunning) {
     try {
-      const item = await workerRedisClient.brpop(OCR_QUEUE_KEY, OCR_WORKER_BRPOP_TIMEOUT_SEC);
+      // BRPOP blocks briefly, so worker can stop gracefully without busy-waiting.
+      const item = await workerRedisClient.brpop(
+        OCR_QUEUE_KEY,
+        OCR_WORKER_BRPOP_TIMEOUT_SEC,
+      );
       if (!item) continue;
 
       const [, rawPayload] = item;
@@ -240,13 +266,15 @@ const workerLoop = async () => {
 
       await processRequestOcrPrecheck(Number(job.requestId));
     } catch (error) {
-      console.error('[OCRQueue] worker error:', error);
+      console.error("[OCRQueue] worker error:", error);
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 };
 
-export const enqueueRequestOcrPrecheck = async (requestId: number): Promise<void> => {
+export const enqueueRequestOcrPrecheck = async (
+  requestId: number,
+): Promise<void> => {
   const payload: OcrQueueJob = {
     requestId,
     enqueuedAt: new Date().toISOString(),
@@ -259,7 +287,7 @@ export const startOcrPrecheckWorker = () => {
   workerRedisClient = redis.duplicate();
   workerRunning = true;
   workerPromise = workerLoop();
-  console.log('[OCRQueue] worker started');
+  console.log("[OCRQueue] worker started");
 };
 
 export const stopOcrPrecheckWorker = async () => {
@@ -272,5 +300,5 @@ export const stopOcrPrecheckWorker = async () => {
     await workerRedisClient.quit().catch(() => workerRedisClient?.disconnect());
     workerRedisClient = null;
   }
-  console.log('[OCRQueue] worker stopped');
+  console.log("[OCRQueue] worker stopped");
 };

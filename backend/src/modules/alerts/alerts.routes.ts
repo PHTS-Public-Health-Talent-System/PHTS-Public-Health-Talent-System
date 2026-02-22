@@ -1,7 +1,11 @@
+/**
+ * alerts module - route map
+ *
+ */
 import { Router } from "express";
-import { protect, restrictTo } from '@middlewares/authMiddleware.js';
-import { validate } from '@shared/validate.middleware.js';
-import { UserRole } from '@/types/auth.js';
+import { protect, restrictTo } from "@middlewares/authMiddleware.js";
+import { validate } from "@shared/validate.middleware.js";
+import { UserRole } from "@/types/auth.js";
 import {
   getPersonnelMovements,
   getRetirements,
@@ -11,12 +15,12 @@ import {
   postRetirement,
   putRetirement,
   removeRetirement,
-} from '@/modules/alerts/alerts.controller.js';
+} from "@/modules/alerts/alerts.controller.js";
 import {
   getLicenseList,
   postLicenseNotify,
   getLicenseSummary,
-} from '@/modules/alerts/license-alerts.controller.js';
+} from "@/modules/alerts/license-alerts.controller.js";
 import {
   licenseNotifySchema,
   retirementCreateSchema,
@@ -25,7 +29,7 @@ import {
   movementCreateSchema,
   movementUpdateSchema,
   movementIdSchema,
-} from '@/modules/alerts/alerts.schema.js';
+} from "@/modules/alerts/alerts.schema.js";
 
 const router = Router();
 

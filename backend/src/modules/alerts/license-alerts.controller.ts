@@ -1,11 +1,15 @@
+/**
+ * alerts module - request orchestration
+ *
+ */
 import { Request, Response } from "express";
-import { ApiResponse } from '@/types/auth.js';
+import { ApiResponse } from "@/types/auth.js";
 import {
   AlertBucket,
   getLicenseAlertList,
   notifyLicenseAlerts,
   getLicenseAlertSummary,
-} from '@/modules/alerts/services/license-alerts.service.js';
+} from "@/modules/alerts/services/license-alerts.service.js";
 
 const VALID_BUCKETS: AlertBucket[] = ["expired", "30", "60", "90"];
 
@@ -34,7 +38,9 @@ export const postLicenseNotify = async (
   req: Request,
   res: Response<ApiResponse>,
 ) => {
-  const body = req.body as { items: Array<{ citizen_id: string; bucket: AlertBucket }> };
+  const body = req.body as {
+    items: Array<{ citizen_id: string; bucket: AlertBucket }>;
+  };
   const data = await notifyLicenseAlerts(body.items ?? []);
   res.json({ success: true, data });
 };

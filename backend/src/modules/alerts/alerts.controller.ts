@@ -1,3 +1,7 @@
+/**
+ * alerts module - request orchestration
+ *
+ */
 import { Request, Response } from "express";
 import {
   createPersonnelMovement,
@@ -8,7 +12,7 @@ import {
   createRetirement,
   updateRetirement,
   deleteRetirement,
-} from '@/modules/alerts/services/alerts.service.js';
+} from "@/modules/alerts/services/alerts.service.js";
 
 export async function getRetirements(_req: Request, res: Response) {
   const records = await listRetirements();

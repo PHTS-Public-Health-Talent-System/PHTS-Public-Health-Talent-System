@@ -1,5 +1,9 @@
+/**
+ * report module - request orchestration
+ *
+ */
 import { Request, Response } from "express";
-import * as reportService from '@/modules/report/services/report.service.js';
+import * as reportService from "@/modules/report/services/report.service.js";
 
 function handleReportError(res: Response, error: unknown): void {
   const message = (error as Error)?.message || "Failed to generate report";

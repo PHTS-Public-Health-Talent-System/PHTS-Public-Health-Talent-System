@@ -1,6 +1,10 @@
+/**
+ * signature module - route map
+ *
+ */
 import { Router } from "express";
-import { protect } from '@middlewares/authMiddleware.js';
-import * as signatureController from '@/modules/signature/signature.controller.js';
+import { protect } from "@middlewares/authMiddleware.js";
+import * as signatureController from "@/modules/signature/signature.controller.js";
 
 const router = Router();
 

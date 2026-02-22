@@ -1,16 +1,23 @@
+/**
+ * master-data module - request orchestration
+ *
+ */
 import { Request, Response } from "express";
-import * as masterDataService from '@/modules/master-data/services/master-data.service.js';
-import { requestRepository } from '@/modules/request/repositories/request.repository.js';
-import { UserRole } from '@/types/auth.js';
-import { AuthorizationError, AuthenticationError } from '@shared/utils/errors.js';
-import { resolveProfessionCode } from '@shared/utils/profession.js';
+import * as masterDataService from "@/modules/master-data/services/master-data.service.js";
+import { requestRepository } from "@/modules/request/repositories/request.repository.js";
+import { UserRole } from "@/types/auth.js";
+import {
+  AuthorizationError,
+  AuthenticationError,
+} from "@shared/utils/errors.js";
+import { resolveProfessionCode } from "@shared/utils/profession.js";
 import {
   CreateHolidayDTO,
   GetHolidaysQuery,
   UpdateHolidayDTO,
   CreateRateDTO,
   UpdateRateBody,
-} from '@/modules/master-data/master-data.schema.js';
+} from "@/modules/master-data/master-data.schema.js";
 
 // Holidays
 export const getHolidays = async (req: Request, res: Response) => {
@@ -40,7 +47,13 @@ export const updateHoliday = async (req: Request, res: Response) => {
     const { date: originalDate } = req.params;
     const { date, name, type } = req.body as UpdateHolidayDTO;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
-    await masterDataService.updateHoliday(originalDate, date, name, type, actorId);
+    await masterDataService.updateHoliday(
+      originalDate,
+      date,
+      name,
+      type,
+      actorId,
+    );
     res.json({ success: true, message: "Holiday updated successfully" });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -81,7 +94,8 @@ export const updateMasterRate = async (req: Request, res: Response) => {
     }
 
     const merged = {
-      profession_code: body.profession_code ?? (existing as any).profession_code,
+      profession_code:
+        body.profession_code ?? (existing as any).profession_code,
       group_no: body.group_no ?? Number((existing as any).group_no),
       item_no: Object.prototype.hasOwnProperty.call(body, "item_no")
         ? (body.item_no ?? null)
@@ -90,8 +104,10 @@ export const updateMasterRate = async (req: Request, res: Response) => {
         ? (body.sub_item_no ?? null)
         : ((existing as any).sub_item_no ?? null),
       amount: body.amount ?? Number((existing as any).amount),
-      condition_desc: body.condition_desc ?? (existing as any).condition_desc ?? "",
-      detailed_desc: body.detailed_desc ?? (existing as any).detailed_desc ?? "",
+      condition_desc:
+        body.condition_desc ?? (existing as any).condition_desc ?? "",
+      detailed_desc:
+        body.detailed_desc ?? (existing as any).detailed_desc ?? "",
       is_active:
         typeof body.is_active === "boolean"
           ? body.is_active
@@ -130,7 +146,11 @@ export const createMasterRate = async (req: Request, res: Response) => {
       is_active ? 1 : 0,
       actorId,
     );
-    res.json({ success: true, data: { rateId }, message: "Rate created successfully" });
+    res.json({
+      success: true,
+      data: { rateId },
+      message: "Rate created successfully",
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -208,7 +228,9 @@ export const getRateHierarchy = async (req: Request, res: Response) => {
 
 const getUserProfessionCode = async (req: Request): Promise<string | null> => {
   if (!req.user?.citizenId) return null;
-  const profile = await requestRepository.findEmployeeProfile(req.user.citizenId);
+  const profile = await requestRepository.findEmployeeProfile(
+    req.user.citizenId,
+  );
   if (!profile) return null;
   return resolveProfessionCode(profile.position_name || "");
 };

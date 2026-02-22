@@ -1,16 +1,20 @@
+/**
+ * support module - route map
+ *
+ */
 import { Router } from "express";
-import { protect, restrictTo } from '@middlewares/authMiddleware.js';
-import { validate } from '@shared/validate.middleware.js';
-import { UserRole } from '@/types/auth.js';
-import { requestUpload } from '@config/upload.js';
+import { protect, restrictTo } from "@middlewares/authMiddleware.js";
+import { validate } from "@shared/validate.middleware.js";
+import { UserRole } from "@/types/auth.js";
+import { requestUpload } from "@config/upload.js";
 import {
   createSupportTicketSchema,
   listSupportTicketsSchema,
   supportTicketIdParamSchema,
   supportTicketMessageSchema,
   updateSupportStatusSchema,
-} from '@/modules/support/support.schema.js';
-import * as supportController from '@/modules/support/support.controller.js';
+} from "@/modules/support/support.schema.js";
+import * as supportController from "@/modules/support/support.controller.js";
 
 const router = Router();
 

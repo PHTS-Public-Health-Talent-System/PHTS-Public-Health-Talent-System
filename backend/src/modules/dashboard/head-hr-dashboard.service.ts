@@ -1,10 +1,20 @@
-import db from '@config/database.js';
-import { requestQueryService } from '@/modules/request/services/query.service.js';
-import { PayrollRepository } from '@/modules/payroll/repositories/payroll.repository.js';
-import { PeriodStatus, PayPeriod } from '@/modules/payroll/entities/payroll.entity.js';
-import { getSLAReport, getPendingRequestsWithSLA } from '@/modules/sla/services/sla.service.js';
-import type { RequestWithDetails } from '@/modules/request/request.types.js';
-import type { RequestSLAInfo } from '@/modules/sla/entities/sla.entity.js';
+/**
+ * dashboard module - business logic
+ *
+ */
+import db from "@config/database.js";
+import { requestQueryService } from "@/modules/request/services/query.service.js";
+import { PayrollRepository } from "@/modules/payroll/repositories/payroll.repository.js";
+import {
+  PeriodStatus,
+  PayPeriod,
+} from "@/modules/payroll/entities/payroll.entity.js";
+import {
+  getSLAReport,
+  getPendingRequestsWithSLA,
+} from "@/modules/sla/services/sla.service.js";
+import type { RequestWithDetails } from "@/modules/request/request.types.js";
+import type { RequestSLAInfo } from "@/modules/sla/entities/sla.entity.js";
 
 export type HeadHrDashboardStats = {
   pending_requests: number;
@@ -20,7 +30,7 @@ export type HeadHrPendingRequest = {
   department: string;
   amount: number;
   date: string;
-  sla_status: 'normal' | 'warning' | 'danger' | 'overdue';
+  sla_status: "normal" | "warning" | "danger" | "overdue";
 };
 
 export type HeadHrPendingPayroll = {
@@ -37,9 +47,9 @@ export type HeadHrDashboardPayload = {
   pending_payrolls: HeadHrPendingPayroll[];
 };
 
-const parseSubmission = (value: RequestWithDetails['submission_data']) => {
+const parseSubmission = (value: RequestWithDetails["submission_data"]) => {
   if (!value) return {};
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     try {
       return JSON.parse(value);
     } catch {
@@ -50,46 +60,60 @@ const parseSubmission = (value: RequestWithDetails['submission_data']) => {
 };
 
 const formatThaiDate = (value?: string | Date | null) => {
-  if (!value) return '-';
+  if (!value) return "-";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleDateString('th-TH', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'Asia/Bangkok',
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("th-TH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Bangkok",
   });
 };
 
 const formatThaiMonthYear = (month: number, year: number) => {
   const normalizedYear = year >= 2400 ? year - 543 : year;
   const date = new Date(normalizedYear, month - 1, 1);
-  return date.toLocaleDateString('th-TH', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'Asia/Bangkok',
+  return date.toLocaleDateString("th-TH", {
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Bangkok",
   });
 };
 
 const getRequestDisplayId = (request: RequestWithDetails) =>
   request.request_no || `REQ-${request.request_id}`;
 
-const mapSlaStatus = (info?: Pick<RequestSLAInfo, 'is_overdue' | 'is_approaching_sla' | 'days_until_sla'>) => {
-  if (!info) return 'normal';
-  if (info.is_overdue) return 'overdue';
-  if (info.is_approaching_sla) return 'warning';
-  if (info.days_until_sla <= 1) return 'danger';
-  return 'normal';
+const mapSlaStatus = (
+  info?: Pick<
+    RequestSLAInfo,
+    "is_overdue" | "is_approaching_sla" | "days_until_sla"
+  >,
+) => {
+  if (!info) return "normal";
+  if (info.is_overdue) return "overdue";
+  if (info.is_approaching_sla) return "warning";
+  if (info.days_until_sla <= 1) return "danger";
+  return "normal";
 };
 
 export const buildHeadHrDashboard = (params: {
   pendingRequests: RequestWithDetails[];
-  slaInfoByRequest: Map<number, { status: 'normal' | 'warning' | 'danger' | 'overdue' }>;
+  slaInfoByRequest: Map<
+    number,
+    { status: "normal" | "warning" | "danger" | "overdue" }
+  >;
   pendingPayrolls: PayPeriod[];
   approvedMonthCount: number;
   slaOverdueCount: number;
 }): HeadHrDashboardPayload => {
-  const { pendingRequests, slaInfoByRequest, pendingPayrolls, approvedMonthCount, slaOverdueCount } = params;
+  const {
+    pendingRequests,
+    slaInfoByRequest,
+    pendingPayrolls,
+    approvedMonthCount,
+    slaOverdueCount,
+  } = params;
 
   const pendingItems = pendingRequests.slice(0, 4).map((request) => {
     const submission = parseSubmission(request.submission_data) as {
@@ -99,9 +123,12 @@ export const buildHeadHrDashboard = (params: {
       department?: string;
       sub_department?: string;
     };
-    const name = `${submission.first_name ?? ''} ${submission.last_name ?? ''}`.trim() || '-';
-    const position = submission.position_name ?? '-';
-    const department = submission.sub_department ?? submission.department ?? '-';
+    const name =
+      `${submission.first_name ?? ""} ${submission.last_name ?? ""}`.trim() ||
+      "-";
+    const position = submission.position_name ?? "-";
+    const department =
+      submission.sub_department ?? submission.department ?? "-";
     const sla = slaInfoByRequest.get(request.request_id);
 
     return {
@@ -111,12 +138,12 @@ export const buildHeadHrDashboard = (params: {
       department,
       amount: request.requested_amount ?? 0,
       date: formatThaiDate(request.created_at),
-      sla_status: sla?.status ?? 'normal',
+      sla_status: sla?.status ?? "normal",
     };
   });
 
   const payrollItems = pendingPayrolls.slice(0, 4).map((period) => ({
-    id: `PAY-${period.period_year}-${String(period.period_month).padStart(2, '0')}`,
+    id: `PAY-${period.period_year}-${String(period.period_month).padStart(2, "0")}`,
     month: formatThaiMonthYear(period.period_month, period.period_year),
     totalAmount: Number(period.total_amount ?? 0),
     totalPersons: Number(period.total_headcount ?? 0),
@@ -136,14 +163,18 @@ export const buildHeadHrDashboard = (params: {
 };
 
 export const getHeadHrDashboard = async (userId: number) => {
-  const [pendingRequests, pendingPayrolls, slaReport, slaPending] = await Promise.all([
-    requestQueryService.getPendingForApprover('HEAD_HR', userId),
-    PayrollRepository.findPeriodsByStatus(PeriodStatus.WAITING_HR, 4),
-    getSLAReport(),
-    getPendingRequestsWithSLA(),
-  ]);
+  const [pendingRequests, pendingPayrolls, slaReport, slaPending] =
+    await Promise.all([
+      requestQueryService.getPendingForApprover("HEAD_HR", userId),
+      PayrollRepository.findPeriodsByStatus(PeriodStatus.WAITING_HR, 4),
+      getSLAReport(),
+      getPendingRequestsWithSLA(),
+    ]);
 
-  const slaInfoByRequest = new Map<number, { status: 'normal' | 'warning' | 'danger' | 'overdue' }>();
+  const slaInfoByRequest = new Map<
+    number,
+    { status: "normal" | "warning" | "danger" | "overdue" }
+  >();
   slaPending.forEach((info) => {
     slaInfoByRequest.set(info.request_id, {
       status: mapSlaStatus(info),
@@ -163,7 +194,9 @@ export const getHeadHrDashboard = async (userId: number) => {
     `,
     [month, year],
   );
-  const approvedMonthCount = Number((rows as { count?: number }[])[0]?.count ?? 0);
+  const approvedMonthCount = Number(
+    (rows as { count?: number }[])[0]?.count ?? 0,
+  );
 
   return buildHeadHrDashboard({
     pendingRequests,

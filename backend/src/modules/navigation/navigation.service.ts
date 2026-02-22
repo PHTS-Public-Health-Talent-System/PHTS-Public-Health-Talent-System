@@ -1,16 +1,20 @@
-import { UserRole } from '@/types/auth.js';
-import { NotificationService } from '@/modules/notification/services/notification.service.js';
-import { requestQueryService } from '@/modules/request/services/query.service.js';
-import { PayrollRepository } from '@/modules/payroll/repositories/payroll.repository.js';
-import { PeriodStatus } from '@/modules/payroll/entities/payroll.entity.js';
-import { AuthRepository } from '@/modules/auth/repositories/auth.repository.js';
-import { FinanceRepository } from '@/modules/finance/repositories/finance.repository.js';
-import type { RequestWithDetails } from '@/modules/request/request.types.js';
+/**
+ * navigation module - business logic
+ *
+ */
+import { UserRole } from "@/types/auth.js";
+import { NotificationService } from "@/modules/notification/services/notification.service.js";
+import { requestQueryService } from "@/modules/request/services/query.service.js";
+import { PayrollRepository } from "@/modules/payroll/repositories/payroll.repository.js";
+import { PeriodStatus } from "@/modules/payroll/entities/payroll.entity.js";
+import { AuthRepository } from "@/modules/auth/repositories/auth.repository.js";
+import { FinanceRepository } from "@/modules/finance/repositories/finance.repository.js";
+import type { RequestWithDetails } from "@/modules/request/request.types.js";
 
 export type NavigationBadgeKey =
-  | 'notifications'
-  | 'pendingRequests'
-  | 'pendingPayroll';
+  | "notifications"
+  | "pendingRequests"
+  | "pendingPayroll";
 
 export type NavigationItem = {
   label: string;
@@ -32,24 +36,27 @@ export type NavigationPayload = {
   secondaryLabel?: string;
 };
 
-const isPendingStatus = (status?: string | null) => Boolean(status && status.startsWith('PENDING'));
+const isPendingStatus = (status?: string | null) =>
+  Boolean(status && status.startsWith("PENDING"));
 
 const countPendingForUser = (requests: RequestWithDetails[]) =>
   requests.filter((req) => isPendingStatus(req.status)).length;
 
 const roleBasePath: Record<UserRole, string> = {
-  [UserRole.USER]: '/user',
-  [UserRole.HEAD_WARD]: '/head-ward',
-  [UserRole.HEAD_DEPT]: '/head-dept',
-  [UserRole.PTS_OFFICER]: '/pts-officer',
-  [UserRole.HEAD_HR]: '/head-hr',
-  [UserRole.HEAD_FINANCE]: '/head-finance',
-  [UserRole.FINANCE_OFFICER]: '/finance-officer',
-  [UserRole.DIRECTOR]: '/director',
-  [UserRole.ADMIN]: '/admin',
+  [UserRole.USER]: "/user",
+  [UserRole.HEAD_WARD]: "/head-ward",
+  [UserRole.HEAD_DEPT]: "/head-dept",
+  [UserRole.PTS_OFFICER]: "/pts-officer",
+  [UserRole.HEAD_HR]: "/head-hr",
+  [UserRole.HEAD_FINANCE]: "/head-finance",
+  [UserRole.FINANCE_OFFICER]: "/finance-officer",
+  [UserRole.DIRECTOR]: "/director",
+  [UserRole.ADMIN]: "/admin",
 };
 
-const buildMenu = (role: UserRole): {
+const buildMenu = (
+  role: UserRole,
+): {
   menu: NavigationItem[];
   secondaryMenu?: NavigationItem[];
   secondaryLabel?: string;
@@ -60,126 +67,307 @@ const buildMenu = (role: UserRole): {
     case UserRole.USER:
       return {
         menu: [
-          { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
-          { label: 'คำขอของฉัน', href: `${basePath}/my-requests`, iconKey: 'FileText', badgeKey: 'pendingRequests' },
+          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
+          {
+            label: "คำขอของฉัน",
+            href: `${basePath}/my-requests`,
+            iconKey: "FileText",
+            badgeKey: "pendingRequests",
+          },
         ],
         secondaryMenu: [
-          { label: 'โปรไฟล์', href: `${basePath}/profile`, iconKey: 'User' },
+          { label: "โปรไฟล์", href: `${basePath}/profile`, iconKey: "User" },
         ],
-        secondaryLabel: 'บัญชีผู้ใช้',
+        secondaryLabel: "บัญชีผู้ใช้",
       };
     case UserRole.HEAD_HR:
       return {
         menu: [
-          { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
-          { label: 'คำขอรออนุมัติ', href: `${basePath}/requests`, iconKey: 'FileCheck', badgeKey: 'pendingRequests' },
-          { label: 'รอบจ่ายเงิน', href: `${basePath}/payroll`, iconKey: 'Calculator', badgeKey: 'pendingPayroll' },
-          { label: 'ประวัติการอนุมัติ', href: `${basePath}/history`, iconKey: 'Clock' },
+          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
+          {
+            label: "คำขอรออนุมัติ",
+            href: `${basePath}/requests`,
+            iconKey: "FileCheck",
+            badgeKey: "pendingRequests",
+          },
+          {
+            label: "รอบจ่ายเงิน",
+            href: `${basePath}/payroll`,
+            iconKey: "Calculator",
+            badgeKey: "pendingPayroll",
+          },
+          {
+            label: "ประวัติการอนุมัติ",
+            href: `${basePath}/history`,
+            iconKey: "Clock",
+          },
         ],
         secondaryMenu: [
-          { label: 'รายงาน SLA', href: `${basePath}/sla-report`, iconKey: 'ClipboardList' },
-          { label: 'ดาวน์โหลดรายงาน', href: `${basePath}/reports`, iconKey: 'FileBarChart' },
+          {
+            label: "รายงาน SLA",
+            href: `${basePath}/sla-report`,
+            iconKey: "ClipboardList",
+          },
+          {
+            label: "ดาวน์โหลดรายงาน",
+            href: `${basePath}/reports`,
+            iconKey: "FileBarChart",
+          },
         ],
-        secondaryLabel: 'รายงาน',
+        secondaryLabel: "รายงาน",
       };
     case UserRole.DIRECTOR:
       return {
         menu: [
-          { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
-          { label: 'คำขอรออนุมัติ', href: `${basePath}/requests`, iconKey: 'FileCheck', badgeKey: 'pendingRequests' },
-          { label: 'รอบจ่ายเงิน', href: `${basePath}/payroll`, iconKey: 'Calculator', badgeKey: 'pendingPayroll' },
-          { label: 'ประวัติการอนุมัติ', href: `${basePath}/history`, iconKey: 'Clock' },
+          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
+          {
+            label: "คำขอรออนุมัติ",
+            href: `${basePath}/requests`,
+            iconKey: "FileCheck",
+            badgeKey: "pendingRequests",
+          },
+          {
+            label: "รอบจ่ายเงิน",
+            href: `${basePath}/payroll`,
+            iconKey: "Calculator",
+            badgeKey: "pendingPayroll",
+          },
+          {
+            label: "ประวัติการอนุมัติ",
+            href: `${basePath}/history`,
+            iconKey: "Clock",
+          },
         ],
         secondaryMenu: [
-          { label: 'รายงาน SLA', href: `${basePath}/sla-report`, iconKey: 'Clock' },
-          { label: 'ดาวน์โหลดรายงาน', href: `${basePath}/reports`, iconKey: 'FileBarChart' },
+          {
+            label: "รายงาน SLA",
+            href: `${basePath}/sla-report`,
+            iconKey: "Clock",
+          },
+          {
+            label: "ดาวน์โหลดรายงาน",
+            href: `${basePath}/reports`,
+            iconKey: "FileBarChart",
+          },
         ],
-        secondaryLabel: 'รายงาน',
+        secondaryLabel: "รายงาน",
       };
     case UserRole.PTS_OFFICER:
       return {
         menu: [
-          { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
-          { label: 'คำขอรออนุมัติ', href: `${basePath}/requests`, iconKey: 'FileCheck', badgeKey: 'pendingRequests' },
-          { label: 'ประวัติการอนุมัติ', href: `${basePath}/history`, iconKey: 'Clock' },
-          { label: 'รายชื่อผู้มีสิทธิ์', href: `${basePath}/allowance-list`, iconKey: 'Users' },
-          { label: 'รอบจ่ายเงิน', href: `${basePath}/payroll`, iconKey: 'Calculator', badgeKey: 'pendingPayroll' },
-          { label: 'แจ้งเตือนใบอนุญาต', href: `${basePath}/alerts`, iconKey: 'AlertTriangle' },
-          { label: 'จัดการวันลา', href: `${basePath}/leave-management`, iconKey: 'CalendarDays' },
-          { label: 'การเปลี่ยนแปลงบุคลากร', href: `${basePath}/personnel-changes`, iconKey: 'UserMinus' },
+          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
+          {
+            label: "คำขอรออนุมัติ",
+            href: `${basePath}/requests`,
+            iconKey: "FileCheck",
+            badgeKey: "pendingRequests",
+          },
+          {
+            label: "ประวัติการอนุมัติ",
+            href: `${basePath}/history`,
+            iconKey: "Clock",
+          },
+          {
+            label: "รายชื่อผู้มีสิทธิ์",
+            href: `${basePath}/allowance-list`,
+            iconKey: "Users",
+          },
+          {
+            label: "รอบจ่ายเงิน",
+            href: `${basePath}/payroll`,
+            iconKey: "Calculator",
+            badgeKey: "pendingPayroll",
+          },
+          {
+            label: "แจ้งเตือนใบอนุญาต",
+            href: `${basePath}/alerts`,
+            iconKey: "AlertTriangle",
+          },
+          {
+            label: "จัดการวันลา",
+            href: `${basePath}/leave-management`,
+            iconKey: "CalendarDays",
+          },
+          {
+            label: "การเปลี่ยนแปลงบุคลากร",
+            href: `${basePath}/personnel-changes`,
+            iconKey: "UserMinus",
+          },
         ],
         secondaryMenu: [
-          { label: 'จัดการวันหยุด', href: `${basePath}/holidays`, iconKey: 'Calendar' },
-          { label: 'จัดการอัตราเงิน', href: `${basePath}/rates`, iconKey: 'FileText' },
+          {
+            label: "จัดการวันหยุด",
+            href: `${basePath}/holidays`,
+            iconKey: "Calendar",
+          },
+          {
+            label: "จัดการอัตราเงิน",
+            href: `${basePath}/rates`,
+            iconKey: "FileText",
+          },
         ],
-        secondaryLabel: 'ข้อมูลหลัก',
+        secondaryLabel: "ข้อมูลหลัก",
       };
     case UserRole.FINANCE_OFFICER:
       return {
         menu: [
-          { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
-          { label: 'การจ่ายเงิน', href: `${basePath}/payouts`, iconKey: 'Wallet', badgeKey: 'pendingPayroll' },
-          { label: 'สรุปรายปี', href: `${basePath}/yearly-summary`, iconKey: 'TrendingUp' },
+          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
+          {
+            label: "การจ่ายเงิน",
+            href: `${basePath}/payouts`,
+            iconKey: "Wallet",
+            badgeKey: "pendingPayroll",
+          },
+          {
+            label: "สรุปรายปี",
+            href: `${basePath}/yearly-summary`,
+            iconKey: "TrendingUp",
+          },
         ],
         secondaryMenu: [
-          { label: 'ดาวน์โหลดรายงาน', href: `${basePath}/reports`, iconKey: 'FileBarChart' },
+          {
+            label: "ดาวน์โหลดรายงาน",
+            href: `${basePath}/reports`,
+            iconKey: "FileBarChart",
+          },
         ],
-        secondaryLabel: 'รายงาน',
+        secondaryLabel: "รายงาน",
       };
     case UserRole.ADMIN:
       return {
         menu: [
-          { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
-          { label: 'จัดการผู้ใช้', href: `${basePath}/users`, iconKey: 'Users' },
-          { label: 'ตรวจสอบสิทธิ์', href: `${basePath}/access-review`, iconKey: 'Shield' },
-          { label: 'บันทึกการใช้งาน', href: `${basePath}/audit-logs`, iconKey: 'FileText' },
+          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
+          {
+            label: "จัดการผู้ใช้",
+            href: `${basePath}/users`,
+            iconKey: "Users",
+          },
+          {
+            label: "ตรวจสอบสิทธิ์",
+            href: `${basePath}/access-review`,
+            iconKey: "Shield",
+          },
+          {
+            label: "บันทึกการใช้งาน",
+            href: `${basePath}/audit-logs`,
+            iconKey: "FileText",
+          },
         ],
         secondaryMenu: [
-          { label: 'ตั้งค่าประกาศ', href: `${basePath}/announcements`, iconKey: 'Megaphone' },
-          { label: 'ตอบ Ticket', href: `${basePath}/support`, iconKey: 'HelpCircle' },
-          { label: 'ตั้งค่า SLA', href: `${basePath}/sla-config`, iconKey: 'ClipboardList' },
-          { label: 'ระบบ', href: `${basePath}/system`, iconKey: 'Server' },
+          {
+            label: "ตั้งค่าประกาศ",
+            href: `${basePath}/announcements`,
+            iconKey: "Megaphone",
+          },
+          {
+            label: "ตอบ Ticket",
+            href: `${basePath}/support`,
+            iconKey: "HelpCircle",
+          },
+          {
+            label: "ตั้งค่า SLA",
+            href: `${basePath}/sla-config`,
+            iconKey: "ClipboardList",
+          },
+          { label: "ระบบ", href: `${basePath}/system`, iconKey: "Server" },
         ],
-        secondaryLabel: 'การจัดการ',
+        secondaryLabel: "การจัดการ",
       };
     case UserRole.HEAD_FINANCE:
       return {
         menu: [
-          { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
-          { label: 'คำขอรออนุมัติ', href: `${basePath}/requests`, iconKey: 'FileCheck', badgeKey: 'pendingRequests' },
-          { label: 'รอบจ่ายเงิน', href: `${basePath}/payroll`, iconKey: 'Calculator', badgeKey: 'pendingPayroll' },
-          { label: 'ประวัติการอนุมัติ', href: `${basePath}/history`, iconKey: 'Clock' },
+          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
+          {
+            label: "คำขอรออนุมัติ",
+            href: `${basePath}/requests`,
+            iconKey: "FileCheck",
+            badgeKey: "pendingRequests",
+          },
+          {
+            label: "รอบจ่ายเงิน",
+            href: `${basePath}/payroll`,
+            iconKey: "Calculator",
+            badgeKey: "pendingPayroll",
+          },
+          {
+            label: "ประวัติการอนุมัติ",
+            href: `${basePath}/history`,
+            iconKey: "Clock",
+          },
         ],
         secondaryMenu: [
-          { label: 'ดาวน์โหลดรายงาน', href: `${basePath}/reports`, iconKey: 'FileBarChart' },
+          {
+            label: "รายงาน SLA",
+            href: `${basePath}/sla-report`,
+            iconKey: "Clock",
+          },
+          {
+            label: "ดาวน์โหลดรายงาน",
+            href: `${basePath}/reports`,
+            iconKey: "FileBarChart",
+          },
         ],
-        secondaryLabel: 'รายงาน',
+        secondaryLabel: "รายงาน",
       };
     case UserRole.HEAD_WARD:
       return {
         menu: [
-          { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
-          { label: 'คำขอรออนุมัติ', href: `${basePath}/requests`, iconKey: 'FileCheck', badgeKey: 'pendingRequests' },
-          { label: 'ขอบเขตที่ดูแล', href: `${basePath}/scopes`, iconKey: 'Users' },
-          { label: 'ประวัติการอนุมัติ', href: `${basePath}/history`, iconKey: 'Clock' },
+          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
+          {
+            label: "คำขอรออนุมัติ",
+            href: `${basePath}/requests`,
+            iconKey: "FileCheck",
+            badgeKey: "pendingRequests",
+          },
+          {
+            label: "ขอบเขตที่ดูแล",
+            href: `${basePath}/scopes`,
+            iconKey: "Users",
+          },
+          {
+            label: "ประวัติการอนุมัติ",
+            href: `${basePath}/history`,
+            iconKey: "Clock",
+          },
         ],
         secondaryMenu: [
-          { label: 'คำขอของฉัน', href: `${basePath}/my-requests`, iconKey: 'FileText' },
+          {
+            label: "คำขอของฉัน",
+            href: `${basePath}/my-requests`,
+            iconKey: "FileText",
+          },
         ],
-        secondaryLabel: 'งานของฉัน',
+        secondaryLabel: "งานของฉัน",
       };
     case UserRole.HEAD_DEPT:
       return {
         menu: [
-          { label: 'แดชบอร์ด', href: basePath, iconKey: 'LayoutDashboard' },
-          { label: 'คำขอรออนุมัติ', href: `${basePath}/requests`, iconKey: 'FileCheck', badgeKey: 'pendingRequests' },
-          { label: 'ขอบเขตที่ดูแล', href: `${basePath}/scopes`, iconKey: 'Users' },
-          { label: 'ประวัติการอนุมัติ', href: `${basePath}/history`, iconKey: 'Clock' },
+          { label: "แดชบอร์ด", href: basePath, iconKey: "LayoutDashboard" },
+          {
+            label: "คำขอรออนุมัติ",
+            href: `${basePath}/requests`,
+            iconKey: "FileCheck",
+            badgeKey: "pendingRequests",
+          },
+          {
+            label: "ขอบเขตที่ดูแล",
+            href: `${basePath}/scopes`,
+            iconKey: "Users",
+          },
+          {
+            label: "ประวัติการอนุมัติ",
+            href: `${basePath}/history`,
+            iconKey: "Clock",
+          },
         ],
         secondaryMenu: [
-          { label: 'คำขอของฉัน', href: `${basePath}/my-requests`, iconKey: 'FileText' },
+          {
+            label: "คำขอของฉัน",
+            href: `${basePath}/my-requests`,
+            iconKey: "FileText",
+          },
         ],
-        secondaryLabel: 'งานของฉัน',
+        secondaryLabel: "งานของฉัน",
       };
     default:
       return { menu: [] };
@@ -227,13 +415,20 @@ export const getNavigationPayload = async (params: {
     role === UserRole.HEAD_FINANCE ||
     role === UserRole.DIRECTOR
   ) {
-    const pendingForApprover = await requestQueryService.getPendingForApprover(role, userId);
+    const pendingForApprover = await requestQueryService.getPendingForApprover(
+      role,
+      userId,
+    );
     pendingRequests = pendingForApprover.length;
   }
 
   let pendingPayroll = 0;
   if (role === UserRole.FINANCE_OFFICER) {
-    const financeSummary = await FinanceRepository.findFinanceSummary(undefined, undefined, true);
+    const financeSummary = await FinanceRepository.findFinanceSummary(
+      undefined,
+      undefined,
+      true,
+    );
     pendingPayroll = financeSummary.filter((period) => {
       const pendingCount = Number(period.pending_count ?? 0);
       const pendingAmount = Number(period.pending_amount ?? 0);
@@ -242,13 +437,19 @@ export const getNavigationPayload = async (params: {
   } else {
     const payrollStatus = resolvePayrollStatus(role);
     if (payrollStatus) {
-      const periods = await PayrollRepository.findPeriodsByStatus(payrollStatus, 50);
+      const periods = await PayrollRepository.findPeriodsByStatus(
+        payrollStatus,
+        50,
+      );
       pendingPayroll = periods.length;
     }
   }
 
-  const name = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ').trim();
-  const title = profile?.position ?? '';
+  const name = [profile?.first_name, profile?.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const title = profile?.position ?? "";
 
   const menuConfig = buildMenu(role);
 
@@ -256,8 +457,8 @@ export const getNavigationPayload = async (params: {
     user: {
       id: userId,
       role,
-      name: name || 'ผู้ใช้งาน',
-      title: title || 'ผู้ใช้งาน',
+      name: name || "ผู้ใช้งาน",
+      title: title || "ผู้ใช้งาน",
     },
     badges: {
       notifications: unreadCount ?? 0,

@@ -1,7 +1,11 @@
+/**
+ * health module - route map
+ *
+ */
 import { Router, Response, Request } from "express";
-import { query } from '@config/database.js';
-import redisClient from '@config/redis.js';
-import { ApiResponse } from '@/types/auth.js';
+import { query } from "@config/database.js";
+import redisClient from "@config/redis.js";
+import { ApiResponse } from "@/types/auth.js";
 
 const router = Router();
 
@@ -56,7 +60,8 @@ router.get("/ready", async (_req: Request, res: Response<ApiResponse>) => {
 });
 
 router.get("/sitemap.xml", (_req: Request, res: Response) => {
-  const baseUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || "3001"}`;
+  const baseUrl =
+    process.env.BACKEND_URL || `http://localhost:${process.env.PORT || "3001"}`;
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>

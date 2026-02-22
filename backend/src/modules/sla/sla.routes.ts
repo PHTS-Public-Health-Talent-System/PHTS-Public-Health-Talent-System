@@ -24,7 +24,15 @@ router.use(protect);
 // Get SLA configurations (PTS_OFFICER, ADMIN)
 router.get(
   "/config",
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN, UserRole.HEAD_HR, UserRole.DIRECTOR),
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_WARD,
+    UserRole.HEAD_DEPT,
+    UserRole.ADMIN,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+  ),
   slaController.getSLAConfigs,
 );
 
@@ -42,6 +50,7 @@ router.get(
   restrictTo(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
@@ -53,6 +62,7 @@ router.get(
   restrictTo(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
@@ -64,6 +74,7 @@ router.get(
   restrictTo(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
@@ -75,6 +86,7 @@ router.get(
   restrictTo(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
@@ -86,6 +98,7 @@ router.get(
   restrictTo(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
@@ -97,6 +110,7 @@ router.get(
   restrictTo(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
@@ -106,7 +120,13 @@ router.get(
 // Get pending requests with SLA info (PTS_OFFICER, ADMIN)
 router.get(
   "/pending",
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN, UserRole.HEAD_HR, UserRole.DIRECTOR),
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.ADMIN,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+  ),
   slaController.getPendingRequestsWithSLA,
 );
 

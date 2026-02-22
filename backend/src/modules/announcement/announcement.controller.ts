@@ -1,8 +1,12 @@
+/**
+ * announcement module - request orchestration
+ *
+ */
 import { Request, Response } from "express";
-import { catchAsync } from '@shared/utils/errors.js';
-import { announcementRepository } from '@/modules/announcement/repositories/announcement.repository.js';
-import { AnnouncementService } from '@/modules/announcement/services/announcement.service.js';
-import type { ApiResponse } from '@/types/auth.js';
+import { catchAsync } from "@shared/utils/errors.js";
+import { announcementRepository } from "@/modules/announcement/repositories/announcement.repository.js";
+import { AnnouncementService } from "@/modules/announcement/services/announcement.service.js";
+import type { ApiResponse } from "@/types/auth.js";
 
 export const getActiveAnnouncements = catchAsync(
   async (req: Request, res: Response<ApiResponse>) => {
