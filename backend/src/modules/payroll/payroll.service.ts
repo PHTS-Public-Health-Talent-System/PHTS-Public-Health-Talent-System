@@ -1,15 +1,25 @@
-import { NotificationService } from '@/modules/notification/services/notification.service.js';
+/**
+ * payroll module - business logic
+ *
+ */
+import { NotificationService } from "@/modules/notification/services/notification.service.js";
 import { PoolConnection } from "mysql2/promise";
 import { Decimal } from "decimal.js";
-import { payrollService as calculator } from '@/modules/payroll/core/calculator.js';
-import { calculateRetroactive } from '@/modules/payroll/core/retroactive.js';
-import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
-import { PayPeriod, PeriodStatus } from '@/modules/payroll/entities/payroll.entity.js';
-import { resolveNextStatus } from '@shared/policy/payroll.policy.js';
-import { PayrollRepository } from '@/modules/payroll/repositories/payroll.repository.js';
-import { UserRole } from '@/types/auth.js';
+import { payrollService as calculator } from "@/modules/payroll/core/calculator.js";
+import { calculateRetroactive } from "@/modules/payroll/core/retroactive.js";
+import {
+  emitAuditEvent,
+  AuditEventType,
+} from "@/modules/audit/services/audit.service.js";
+import {
+  PayPeriod,
+  PeriodStatus,
+} from "@/modules/payroll/entities/payroll.entity.js";
+import { resolveNextStatus } from "@shared/policy/payroll.policy.js";
+import { PayrollRepository } from "@/modules/payroll/repositories/payroll.repository.js";
+import { UserRole } from "@/types/auth.js";
 
-export { PeriodStatus } from '@/modules/payroll/entities/payroll.entity.js';
+export { PeriodStatus } from "@/modules/payroll/entities/payroll.entity.js";
 
 const REVIEW_PROFESSION_MAP: Record<string, string> = {
   DOCTOR: "PHYSICIAN",
@@ -25,7 +35,9 @@ const REVIEW_PROFESSION_MAP: Record<string, string> = {
 };
 
 function normalizeProfessionCodeForReview(code: string): string {
-  const normalized = String(code ?? "").trim().toUpperCase();
+  const normalized = String(code ?? "")
+    .trim()
+    .toUpperCase();
   if (!normalized) return "";
   return REVIEW_PROFESSION_MAP[normalized] ?? normalized;
 }
@@ -52,7 +64,10 @@ export class PayrollService {
     return period;
   }
 
-  static async getPeriodByMonthYear(year: number, month: number): Promise<PayPeriod | null> {
+  static async getPeriodByMonthYear(
+    year: number,
+    month: number,
+  ): Promise<PayPeriod | null> {
     return PayrollRepository.findPeriodByMonthYear(month, year);
   }
 
@@ -118,6 +133,9 @@ export class PayrollService {
 
       const { period_year: year, period_month: month } = period;
 
+      // Delete dependent rows explicitly to avoid relying on FK cascade behavior.
+      await PayrollRepository.deletePayResultChecksByPeriod(periodId, conn);
+      await PayrollRepository.deletePayResultItemsByPeriod(periodId, conn);
       await PayrollRepository.deletePayResultsByPeriod(periodId, conn);
 
       const periodItemCitizenIds =
@@ -220,15 +238,19 @@ export class PayrollService {
           currentResult.retroactiveTotal = retroResult.totalRetro;
           currentResult.retroDetails = retroResult.retroDetails;
           if (retroResult.retroDetails && retroResult.retroDetails.length > 0) {
-            const negative = retroResult.retroDetails.filter((d) => d.diff < -0.01);
+            const negative = retroResult.retroDetails.filter(
+              (d) => d.diff < -0.01,
+            );
             if (negative.length) {
-              const total = Math.abs(negative.reduce((sum, item) => sum + item.diff, 0));
+              const total = Math.abs(
+                negative.reduce((sum, item) => sum + item.diff, 0),
+              );
               const checks = currentResult.checks ?? [];
               checks.push({
                 code: "RETRO_DEDUCT",
                 severity: "WARNING",
                 title: "ตกเบิกย้อนหลัง (หัก)",
-                summary: `มีตกเบิกย้อนหลังติดลบ ${total.toLocaleString('th-TH')} บาท`,
+                summary: `มีตกเบิกย้อนหลังติดลบ ${total.toLocaleString("th-TH")} บาท`,
                 impactDays: 0,
                 impactAmount: Number.parseFloat(total.toFixed(2)),
                 startDate: null,
@@ -309,8 +331,11 @@ export class PayrollService {
       );
       if (!period) throw new Error("Period not found");
 
-      const { status: currentStatus, period_year: year, period_month: month } =
-        period;
+      const {
+        status: currentStatus,
+        period_year: year,
+        period_month: month,
+      } = period;
       const nextStatus = resolveNextStatus(action, currentStatus);
 
       if (action === "SUBMIT") {
@@ -339,7 +364,12 @@ export class PayrollService {
 
       await PayrollRepository.updatePeriodStatus(periodId, nextStatus, conn);
       if (action === "SUBMIT") {
-        await PayrollRepository.updatePeriodFreeze(periodId, true, actorId, conn);
+        await PayrollRepository.updatePeriodFreeze(
+          periodId,
+          true,
+          actorId,
+          conn,
+        );
       }
       if (action === "REJECT") {
         await PayrollRepository.updatePeriodFreeze(periodId, false, null, conn);
@@ -477,10 +507,11 @@ export class PayrollService {
     periodId: number,
     conn?: PoolConnection,
   ): Promise<string[]> {
-    const rawCodes = await PayrollRepository.findRequiredProfessionCodesByPeriod(
-      periodId,
-      conn,
-    );
+    const rawCodes =
+      await PayrollRepository.findRequiredProfessionCodesByPeriod(
+        periodId,
+        conn,
+      );
     return Array.from(
       new Set(
         rawCodes
@@ -494,10 +525,11 @@ export class PayrollService {
     periodId: number,
     conn?: PoolConnection,
   ): Promise<string[]> {
-    const rawCodes = await PayrollRepository.findReviewedProfessionCodesByPeriod(
-      periodId,
-      conn,
-    );
+    const rawCodes =
+      await PayrollRepository.findReviewedProfessionCodesByPeriod(
+        periodId,
+        conn,
+      );
     return Array.from(
       new Set(
         rawCodes
@@ -507,10 +539,7 @@ export class PayrollService {
     );
   }
 
-  static async getPeriodReviewProgress(
-    periodId: number,
-    role?: string | null,
-  ) {
+  static async getPeriodReviewProgress(periodId: number, role?: string | null) {
     await PayrollService.ensurePeriodVisibleForRole(periodId, role);
 
     const requiredProfessionCodes =
@@ -533,7 +562,8 @@ export class PayrollService {
         reviewedSet.has(code),
       ).length,
       all_reviewed:
-        requiredProfessionCodes.length > 0 && missingProfessionCodes.length === 0,
+        requiredProfessionCodes.length > 0 &&
+        missingProfessionCodes.length === 0,
     };
   }
 
@@ -574,7 +604,9 @@ export class PayrollService {
    */
   static async getAllPeriods(role?: string | null): Promise<PayPeriod[]> {
     const periods = await PayrollRepository.findAllPeriods();
-    return periods.filter((period) => PayrollService.canRoleViewPeriod(role, period.status));
+    return periods.filter((period) =>
+      PayrollService.canRoleViewPeriod(role, period.status),
+    );
   }
 
   static async ensureCurrentPeriod(): Promise<void> {
@@ -584,7 +616,10 @@ export class PayrollService {
   }
 
   static async getPeriodDetail(periodId: number, role?: string | null) {
-    const period = await PayrollService.ensurePeriodVisibleForRole(periodId, role);
+    const period = await PayrollService.ensurePeriodVisibleForRole(
+      periodId,
+      role,
+    );
     const items = await PayrollRepository.findPeriodItems(periodId);
     const monthStart = new Date(period.period_year, period.period_month - 1, 1);
     const monthEnd = new Date(period.period_year, period.period_month, 0);
@@ -602,7 +637,11 @@ export class PayrollService {
     let weekendDays = 0;
     let publicHolidayDays = 0;
     for (let day = 1; day <= totalDays; day += 1) {
-      const current = new Date(period.period_year, period.period_month - 1, day);
+      const current = new Date(
+        period.period_year,
+        period.period_month - 1,
+        day,
+      );
       const dayOfWeek = current.getDay();
       const dateKey = toDate(current);
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
@@ -764,7 +803,8 @@ export class PayrollService {
     const payout = await PayrollRepository.findPayoutDetailById(payoutId);
     if (!payout) throw new Error("Payout not found");
     const items = await PayrollRepository.findPayoutItemsByPayoutId(payoutId);
-    const checksRaw = await PayrollRepository.findPayoutChecksByPayoutId(payoutId);
+    const checksRaw =
+      await PayrollRepository.findPayoutChecksByPayoutId(payoutId);
     const checks = checksRaw.map((row: any) => {
       const evidenceRaw = row.evidence_json;
       let evidence: unknown[] = [];
@@ -831,22 +871,34 @@ export class PayrollService {
           ? Number(payload.retroactive_amount)
           : Number((ctx as any).retroactive_amount ?? 0);
       const nextRemark =
-        payload.remark !== undefined ? payload.remark : ((ctx as any).remark ?? null);
+        payload.remark !== undefined
+          ? payload.remark
+          : ((ctx as any).remark ?? null);
 
       if (!Number.isFinite(nextEligibleDays) || nextEligibleDays < 0) {
-        throw new Error("eligible_days ต้องเป็นตัวเลขและต้องมากกว่าหรือเท่ากับ 0");
+        throw new Error(
+          "eligible_days ต้องเป็นตัวเลขและต้องมากกว่าหรือเท่ากับ 0",
+        );
       }
       if (!Number.isFinite(nextDeductedDays) || nextDeductedDays < 0) {
-        throw new Error("deducted_days ต้องเป็นตัวเลขและต้องมากกว่าหรือเท่ากับ 0");
+        throw new Error(
+          "deducted_days ต้องเป็นตัวเลขและต้องมากกว่าหรือเท่ากับ 0",
+        );
       }
       if (nextEligibleDays > daysInMonth) {
-        throw new Error(`eligible_days ต้องไม่เกินจำนวนวันในเดือน (${daysInMonth})`);
+        throw new Error(
+          `eligible_days ต้องไม่เกินจำนวนวันในเดือน (${daysInMonth})`,
+        );
       }
       if (nextDeductedDays > daysInMonth) {
-        throw new Error(`deducted_days ต้องไม่เกินจำนวนวันในเดือน (${daysInMonth})`);
+        throw new Error(
+          `deducted_days ต้องไม่เกินจำนวนวันในเดือน (${daysInMonth})`,
+        );
       }
       if (nextEligibleDays + nextDeductedDays > daysInMonth) {
-        throw new Error(`eligible_days + deducted_days ต้องไม่เกินจำนวนวันในเดือน (${daysInMonth})`);
+        throw new Error(
+          `eligible_days + deducted_days ต้องไม่เกินจำนวนวันในเดือน (${daysInMonth})`,
+        );
       }
       if (!Number.isFinite(nextRetroactiveAmount)) {
         throw new Error("retroactive_amount ต้องเป็นตัวเลข");
@@ -900,7 +952,9 @@ export class PayrollService {
         `,
         [payoutId],
       );
-      const currentItemId = currentRows?.[0]?.item_id ? Number(currentRows[0].item_id) : null;
+      const currentItemId = currentRows?.[0]?.item_id
+        ? Number(currentRows[0].item_id)
+        : null;
       if (currentItemId) {
         await conn.execute(
           `UPDATE pay_result_items SET amount = ? WHERE item_id = ?`,
@@ -957,7 +1011,8 @@ export class PayrollService {
         .toNumber();
 
       if (Math.abs(retroDelta) > 0.01) {
-        const itemType = retroDelta > 0 ? "RETROACTIVE_ADD" : "RETROACTIVE_DEDUCT";
+        const itemType =
+          retroDelta > 0 ? "RETROACTIVE_ADD" : "RETROACTIVE_DEDUCT";
         await conn.execute(
           `
           INSERT INTO pay_result_items
@@ -968,7 +1023,10 @@ export class PayrollService {
         );
       }
 
-      const totals = await PayrollRepository.sumPayResultsByPeriod(periodId, conn);
+      const totals = await PayrollRepository.sumPayResultsByPeriod(
+        periodId,
+        conn,
+      );
       await PayrollRepository.updatePeriodTotals(
         periodId,
         totals.totalAmount,
@@ -1001,8 +1059,7 @@ export class PayrollService {
     const period = await PayrollRepository.findPeriodById(periodId);
     if (!period) throw new Error("Period not found");
 
-    const total =
-      await PayrollRepository.findPayResultCountByPeriod(periodId);
+    const total = await PayrollRepository.findPayResultCountByPeriod(periodId);
     if (total === 0) throw new Error("Period not calculated");
 
     return PayrollRepository.findProfessionSummaryByPeriod(periodId);
@@ -1049,7 +1106,6 @@ export class PayrollService {
       conn.release();
     }
   }
-
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
@@ -1125,7 +1181,9 @@ async function sendWorkflowNotification(
   }
 }
 
-async function tryEmitAuditEvent(payload: Parameters<typeof emitAuditEvent>[0]) {
+async function tryEmitAuditEvent(
+  payload: Parameters<typeof emitAuditEvent>[0],
+) {
   try {
     await emitAuditEvent(payload);
   } catch (error) {

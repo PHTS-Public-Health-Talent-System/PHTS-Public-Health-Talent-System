@@ -1,3 +1,7 @@
+/**
+ * payroll module - route map
+ *
+ */
 import { Router } from "express";
 import {
   approveByDirector,
@@ -7,6 +11,7 @@ import {
   calculateOnDemand,
   calculatePeriod,
   createPeriod,
+  getPeriodStatus,
   getPeriodDetail,
   getPeriodPayouts,
   getPayoutDetail,
@@ -21,9 +26,9 @@ import {
   setPeriodProfessionReview,
   submitToHR,
   updatePayout,
-} from '@/modules/payroll/payroll.controller.js';
-import { protect, restrictTo } from '@middlewares/authMiddleware.js';
-import { validate } from '@shared/validate.middleware.js';
+} from "@/modules/payroll/payroll.controller.js";
+import { protect, restrictTo } from "@middlewares/authMiddleware.js";
+import { validate } from "@shared/validate.middleware.js";
 import {
   createPeriodSchema,
   calculateOnDemandSchema,
@@ -34,15 +39,32 @@ import {
   periodItemParamSchema,
   payoutIdParamSchema,
   updatePayoutSchema,
-} from '@/modules/payroll/payroll.schema.js';
-import { UserRole } from '@/types/auth.js';
+} from "@/modules/payroll/payroll.schema.js";
+import { UserRole } from "@/types/auth.js";
 
 const router = Router();
 
 // View period status (authenticated dashboard users)
 router.get(
+  "/period/status",
+  protect,
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+  ),
+  getPeriodStatus,
+);
+router.get(
   "/period/:periodId/payouts",
   protect,
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+  ),
   validate(periodIdParamSchema),
   getPeriodPayouts,
 );
