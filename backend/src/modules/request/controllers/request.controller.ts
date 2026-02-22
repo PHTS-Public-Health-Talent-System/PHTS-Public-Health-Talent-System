@@ -9,15 +9,15 @@ import { Request, Response } from "express";
 import { ApiResponse, UserRole } from '@/types/auth.js';
 
 // Services
-import { requestQueryService } from '@/modules/request/services/query.service.js';
+import { requestQueryService } from '@/modules/request-read/services/query.service.js';
 import { requestCommandService } from '@/modules/request/services/command.service.js';
 import { requestApprovalService } from '@/modules/request/services/approval.service.js';
 import * as reassignService from '@/modules/request/reassign/reassign.service.js';
 import * as rateService from '@/modules/master-data/services/rate.service.js';
 
-import { getUserScopesForDisplay, getUserScopesWithMembers } from '@/modules/request/scope/scope.service.js';
+import { getUserScopesForDisplay, getUserScopesWithMembers } from '@/modules/scope/scope.service.js';
 
-import { requestRepository } from '@/modules/request/repositories/request.repository.js';
+import { requestRepository } from '@/modules/request-data/repositories/request.repository.js';
 import {
   cleanupUploadSession,
 } from '@/modules/request/helpers/utils.js';
@@ -34,13 +34,79 @@ import {
   ValidationError,
 } from '@shared/utils/errors.js';
 import { resolveProfessionCode } from '@shared/utils/profession.js';
-import { ELIGIBILITY_EXPIRING_DAYS } from '@/modules/request/request.constants.js';
+import { ELIGIBILITY_EXPIRING_DAYS } from '@/modules/request-contracts/request.constants.js';
 
 const decodeSignatureBase64 = (payload?: string): Buffer | null => {
   if (!payload || typeof payload !== "string") return null;
   const base64 = payload.includes(",") ? payload.split(",")[1] : payload;
   if (!base64) return null;
   return Buffer.from(base64, "base64");
+};
+
+const ELIGIBILITY_FILTER_KEYS = [
+  "page",
+  "limit",
+  "profession_code",
+  "search",
+  "rate_group",
+  "department",
+  "sub_department",
+  "license_status",
+] as const;
+
+const hasEligibilityFilters = (query: Request["query"]): boolean =>
+  ELIGIBILITY_FILTER_KEYS.some((key) => typeof query[key] !== "undefined");
+
+const readOptionalQueryString = (
+  query: Request["query"],
+  key: keyof Request["query"],
+): string | null => {
+  const value = query[key];
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const parseEligibilityFilters = (query: Request["query"]) => {
+  const page = Number(query.page ?? 1);
+  const limit = Number(query.limit ?? 20);
+  const professionCodeRaw = readOptionalQueryString(query, "profession_code") ?? "ALL";
+  const professionCode =
+    professionCodeRaw.toUpperCase() === "ALL"
+      ? "ALL"
+      : professionCodeRaw.toUpperCase();
+  const search = readOptionalQueryString(query, "search");
+  const rateGroup = readOptionalQueryString(query, "rate_group");
+  const department = readOptionalQueryString(query, "department");
+  const subDepartment = readOptionalQueryString(query, "sub_department");
+  const licenseStatus =
+    typeof query.license_status === "string" && query.license_status !== "all"
+      ? (query.license_status as any)
+      : null;
+
+  return {
+    page: Number.isFinite(page) && page > 0 ? page : 1,
+    limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20,
+    professionCode,
+    search,
+    rateGroup,
+    department,
+    subDepartment,
+    licenseStatus,
+  };
+};
+
+const resolveRequestIdFromParam = async (rawId: string): Promise<number> => {
+  const requestId = Number(rawId);
+  if (!Number.isNaN(requestId) && Number.isFinite(requestId)) {
+    return requestId;
+  }
+  if (/^REQ-\d{4}-\d+$/i.test(rawId)) {
+    const request = await requestRepository.findByRequestNo(rawId);
+    if (!request) throw new ValidationError("Request not found");
+    return request.request_id;
+  }
+  throw new ValidationError("Invalid Request ID");
 };
 
 export class RequestController {
@@ -51,16 +117,7 @@ export class RequestController {
     if (!req.user) throw new AuthenticationError("Unauthorized access");
     assertNotAdmin(req);
     const rawId = String(req.params.id || "");
-    let requestId = Number(rawId);
-    if (!Number.isNaN(requestId) && Number.isFinite(requestId)) {
-      // use numeric id
-    } else if (/^(PTS-\d+|REQ-\d{4}-\d+)$/i.test(rawId)) {
-      const request = await requestRepository.findByRequestNo(rawId);
-      if (!request) throw new ValidationError("Request not found");
-      requestId = request.request_id;
-    } else {
-      throw new ValidationError("Invalid Request ID");
-    }
+    const requestId = await resolveRequestIdFromParam(rawId);
 
     const request = await requestQueryService.getRequestById(
       requestId,
@@ -105,15 +162,7 @@ export class RequestController {
     async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
       const activeOnly = String(req.query.active_only ?? "1") !== "0";
-      const hasAnyFilter =
-        typeof req.query.page !== "undefined" ||
-        typeof req.query.limit !== "undefined" ||
-        typeof req.query.profession_code !== "undefined" ||
-        typeof req.query.search !== "undefined" ||
-        typeof req.query.rate_group !== "undefined" ||
-        typeof req.query.department !== "undefined" ||
-        typeof req.query.sub_department !== "undefined" ||
-        typeof req.query.license_status !== "undefined";
+      const hasAnyFilter = hasEligibilityFilters(req.query);
 
       if (!hasAnyFilter) {
         const rows = await requestQueryService.getEligibilityList(activeOnly);
@@ -121,29 +170,18 @@ export class RequestController {
         return;
       }
 
-      const page = Number(req.query.page ?? 1);
-      const limit = Number(req.query.limit ?? 20);
-      const professionCodeRaw = typeof req.query.profession_code === "string" ? req.query.profession_code : "ALL";
-      const professionCode = professionCodeRaw.toUpperCase() === "ALL" ? "ALL" : professionCodeRaw.toUpperCase();
-      const search = typeof req.query.search === "string" ? req.query.search.trim() : null;
-      const rateGroup = typeof req.query.rate_group === "string" ? req.query.rate_group.trim() : null;
-      const department = typeof req.query.department === "string" ? req.query.department.trim() : null;
-      const subDepartment = typeof req.query.sub_department === "string" ? req.query.sub_department.trim() : null;
-      const licenseStatus =
-        typeof req.query.license_status === "string" && req.query.license_status !== "all"
-          ? (req.query.license_status as any)
-          : null;
+      const filters = parseEligibilityFilters(req.query);
 
       const data = await requestQueryService.getEligibilityListPaged({
         activeOnly,
-        page: Number.isFinite(page) && page > 0 ? page : 1,
-        limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20,
-        professionCode,
-        search: search && search.length ? search : null,
-        rateGroup: rateGroup && rateGroup.length ? rateGroup : null,
-        department: department && department.length ? department : null,
-        subDepartment: subDepartment && subDepartment.length ? subDepartment : null,
-        licenseStatus,
+        page: filters.page,
+        limit: filters.limit,
+        professionCode: filters.professionCode,
+        search: filters.search,
+        rateGroup: filters.rateGroup,
+        department: filters.department,
+        subDepartment: filters.subDepartment,
+        licenseStatus: filters.licenseStatus,
         expiringDays: ELIGIBILITY_EXPIRING_DAYS,
       });
 

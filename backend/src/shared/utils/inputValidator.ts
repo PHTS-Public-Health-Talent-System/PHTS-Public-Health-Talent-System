@@ -138,8 +138,16 @@ export function validateName(name: string, fieldName: string = "name"): void {
  */
 export function validateEmail(email: string): void {
   validateLength(email, "email", FIELD_LIMITS.EMAIL);
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
+  const value = String(email ?? "").trim();
+  const atIndex = value.indexOf("@");
+  const lastAtIndex = value.lastIndexOf("@");
+  const hasSingleAt = atIndex > 0 && atIndex === lastAtIndex;
+  const hasNoWhitespace = !value.includes(" ");
+  const domain = hasSingleAt ? value.slice(atIndex + 1) : "";
+  const local = hasSingleAt ? value.slice(0, atIndex) : "";
+  const dotIndex = domain.indexOf(".");
+  const hasValidDomainDot = dotIndex > 0 && dotIndex < domain.length - 1;
+  if (!hasSingleAt || !hasNoWhitespace || local.length === 0 || !hasValidDomainDot) {
     throw new Error("Invalid email format");
   }
 }

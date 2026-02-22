@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import path from "node:path";
 import { query } from "@config/database.js";
-import { requestQueryService } from "@/modules/request/services/query.service.js";
+import { requestQueryService } from "@/modules/request-read/services/query.service.js";
 
 function normalizeUploadPath(rawPath: string): string {
   const decoded = decodeURIComponent(rawPath || "");

@@ -55,62 +55,30 @@ export const inputValidationMiddleware = (
  */
 function validateCommonFields(body: Record<string, any>): void {
   const errors: string[] = [];
+  const commonFieldLimits: Array<{
+    key: string;
+    limit: number;
+  }> = [
+    { key: "citizen_id", limit: FIELD_LIMITS.CITIZEN_ID },
+    { key: "password", limit: FIELD_LIMITS.PASSWORD },
+    { key: "comment", limit: FIELD_LIMITS.COMMENT },
+    { key: "reason", limit: FIELD_LIMITS.REJECTION_REASON },
+    { key: "name", limit: FIELD_LIMITS.NAME },
+    { key: "email", limit: FIELD_LIMITS.EMAIL },
+    { key: "description", limit: FIELD_LIMITS.DESCRIPTION },
+  ];
 
-  // Validate text fields
-  if (body.citizen_id) {
+  const validateField = (fieldName: string, maxLength: number) => {
+    const value = body[fieldName];
+    if (!value) return;
     try {
-      validateLength(body.citizen_id, "citizen_id", FIELD_LIMITS.CITIZEN_ID);
+      validateLength(value, fieldName, maxLength);
     } catch (e) {
       errors.push((e as Error).message);
     }
-  }
-
-  if (body.password) {
-    try {
-      validateLength(body.password, "password", FIELD_LIMITS.PASSWORD);
-    } catch (e) {
-      errors.push((e as Error).message);
-    }
-  }
-
-  if (body.comment) {
-    try {
-      validateLength(body.comment, "comment", FIELD_LIMITS.COMMENT);
-    } catch (e) {
-      errors.push((e as Error).message);
-    }
-  }
-
-  if (body.reason) {
-    try {
-      validateLength(body.reason, "reason", FIELD_LIMITS.REJECTION_REASON);
-    } catch (e) {
-      errors.push((e as Error).message);
-    }
-  }
-
-  if (body.name) {
-    try {
-      validateLength(body.name, "name", FIELD_LIMITS.NAME);
-    } catch (e) {
-      errors.push((e as Error).message);
-    }
-  }
-
-  if (body.email) {
-    try {
-      validateLength(body.email, "email", FIELD_LIMITS.EMAIL);
-    } catch (e) {
-      errors.push((e as Error).message);
-    }
-  }
-
-  if (body.description) {
-    try {
-      validateLength(body.description, "description", FIELD_LIMITS.DESCRIPTION);
-    } catch (e) {
-      errors.push((e as Error).message);
-    }
+  };
+  for (const field of commonFieldLimits) {
+    validateField(field.key, field.limit);
   }
 
   if (errors.length > 0) {

@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import redis from "@config/redis.js";
 import { getConnection } from "@config/database.js";
-import { requestRepository } from "@/modules/request/repositories/request.repository.js";
-import { FileType } from "@/modules/request/request.types.js";
+import { requestRepository } from "@/modules/request-data/repositories/request.repository.js";
+import { FileType } from "@/modules/request-contracts/request.types.js";
 
 const OCR_QUEUE_KEY = "request:ocr:precheck:queue";
 const OCR_WORKER_BRPOP_TIMEOUT_SEC = 5;
@@ -53,7 +53,11 @@ const getOcrServiceBase = (): string => {
     process.env.OCR_API_URL ||
     ""
   ).trim();
-  return base.replace(/\/+$/, "");
+  let normalized = base;
+  while (normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
 };
 
 const getPerFileTimeoutMs = (): number => {
@@ -122,6 +126,51 @@ const updateRequestOcrPrecheck = async (
   }
 };
 
+const parseOcrBatchResult = async (
+  response: Response,
+  fallbackName: string,
+): Promise<OcrBatchResultItem> => {
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(body || `OCR service returned ${response.status}`);
+  }
+  const payload = (await response.json()) as OcrBatchResponse;
+  const result = payload.results?.[0];
+  if (!result) {
+    throw new Error("OCR response missing result item");
+  }
+  if (!result.ok) {
+    throw new Error(result.error || "OCR file processing failed");
+  }
+  return {
+    name: result.name || fallbackName,
+    ok: true,
+    markdown: result.markdown || "",
+  };
+};
+
+const callOcrOnce = async (
+  fileName: string,
+  fileBuffer: Buffer,
+  ocrBase: string,
+  timeoutMs: number,
+): Promise<OcrBatchResultItem> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const form = new FormData();
+    form.append("files", new Blob([fileBuffer]), fileName);
+    const response = await fetch(`${ocrBase}/ocr-batch`, {
+      method: "POST",
+      body: form,
+      signal: controller.signal,
+    });
+    return await parseOcrBatchResult(response, fileName);
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 const callOcrForSingleFile = async (
   fileName: string,
   fileBuffer: Buffer,
@@ -132,39 +181,10 @@ const callOcrForSingleFile = async (
   const retryCount = getRetryCount();
 
   for (let attempt = 0; attempt <= retryCount; attempt += 1) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const form = new FormData();
-      form.append("files", new Blob([fileBuffer]), fileName);
-      const response = await fetch(`${ocrBase}/ocr-batch`, {
-        method: "POST",
-        body: form,
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(body || `OCR service returned ${response.status}`);
-      }
-
-      const payload = (await response.json()) as OcrBatchResponse;
-      const result = payload.results?.[0];
-      if (!result) {
-        throw new Error("OCR response missing result item");
-      }
-      if (!result.ok) {
-        throw new Error(result.error || "OCR file processing failed");
-      }
-      clearTimeout(timeout);
-      return {
-        name: result.name || fileName,
-        ok: true,
-        markdown: result.markdown || "",
-      };
+      return await callOcrOnce(fileName, fileBuffer, ocrBase, timeoutMs);
     } catch (error) {
-      clearTimeout(timeout);
-      const isLastAttempt = attempt === retryCount;
-      if (isLastAttempt) {
+      if (attempt === retryCount) {
         return {
           name: fileName,
           ok: false,

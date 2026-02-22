@@ -33,7 +33,7 @@ function buildSafeFilename(
   const base = path.basename(originalName, ext);
   const sanitizedBase = base.replaceAll(/[^a-zA-Z0-9.-]/g, "_");
   const hash = crypto
-    .createHash("sha1")
+    .createHash("sha256")
     .update(originalName)
     .digest("hex")
     .slice(0, 8);
