@@ -10,7 +10,6 @@
     "start": "TZ=Asia/Bangkok node dist/index.js",
     "sync:all": "TZ=Asia/Bangkok tsx src/scripts/ops/runners/sync-service.ts",
     "report:legacy-movements": "TZ=Asia/Bangkok tsx src/scripts/ops/runners/legacy-movements-report.ts",
-    "smoke:access-review-queue": "TZ=Asia/Bangkok tsx src/scripts/ops/runners/access-review-queue-smoke.ts",
     "assign:roles": "TZ=Asia/Bangkok tsx src/scripts/admin/assign_roles.ts",
     "db:setup": "TZ=Asia/Bangkok tsx src/scripts/db/setup.ts",
     "db:sync-schema:hardening": "TZ=Asia/Bangkok tsx src/scripts/db/sync_schema_hardening.ts",

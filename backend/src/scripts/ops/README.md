@@ -26,24 +26,6 @@ npm run jobs:run notification-outbox
 npm run jobs:run sync
 ```
 
-## Access review queue smoke test
-
-Run end-to-end smoke for:
-- seed test users
-- run full sync
-- verify queue has records + pagination
-- resolve one queue item
-- cleanup test data (default)
-
-```bash
-npm run smoke:access-review-queue
-```
-
-Optional env:
-
-- `ACCESS_REVIEW_SMOKE_COUNT` (default `12`): expected mismatch records for pagination check
-- `ACCESS_REVIEW_SMOKE_KEEP_DATA` (default `false`): keep seeded data after test
-
 `movement-cut` is intentionally on-demand as a safety-net, because movement cutoff is already applied immediately in sync flow.
 
 ## Legacy movement report
