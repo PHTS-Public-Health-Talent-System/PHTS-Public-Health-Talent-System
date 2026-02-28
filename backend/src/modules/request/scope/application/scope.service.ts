@@ -7,13 +7,12 @@
 
 import { delCache, setJsonCache } from '@shared/utils/cache.js';
 import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
+import { buildScopesFromSpecialPosition } from '@/modules/request/scope/domain/scope-parser.js';
 import {
   ApproverScopes,
-  parseSpecialPositionScopes,
-  removeOverlaps,
   resolveApproverRole,
   inferScopeType,
-} from '@/modules/request/scope/utils.js';
+} from '@/modules/request/scope/domain/scope.utils.js';
 
 const SCOPE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 
@@ -82,54 +81,9 @@ export async function getApproverScopes(
   }
 
   const specialPosition = await requestRepository.findSpecialPosition(citizenId);
-  const scopes = parseAndClassifyScopes(specialPosition);
+  const scopes = buildScopesFromSpecialPosition(specialPosition);
   await setJsonCache(redisKey, scopes, SCOPE_CACHE_TTL_SECONDS);
   return scopes;
-}
-
-/**
- * Parse special_position and classify into ward/dept scopes
- *
- * The special_position format varies but typically includes patterns like:
- * - "หัวหน้าตึก/หัวหน้างาน-XXX" for HEAD_WARD
- * - "หัวหน้ากลุ่มงาน-XXX" for HEAD_DEPT
- * - Multiple entries separated by semicolons
- */
-function parseAndClassifyScopes(
-  specialPosition: string | null,
-): ApproverScopes {
-  if (!specialPosition) {
-    return { wardScopes: [], deptScopes: [] };
-  }
-
-  const allScopes = parseSpecialPositionScopes(specialPosition);
-  const wardScopes: string[] = [];
-  const deptScopes: string[] = [];
-
-  for (const scope of allScopes) {
-    if (isWardScope(scope)) {
-      const scopeName = extractScopeName(scope);
-      pushScope(wardScopes, scopeName);
-      if (inferScopeType(scopeName) === "DEPT") {
-        pushScope(deptScopes, scopeName);
-      }
-      continue;
-    }
-    if (isDeptScope(scope)) {
-      const scopeName = extractScopeName(scope);
-      pushScope(deptScopes, scopeName);
-      continue;
-    }
-    addInferredScope(scope, wardScopes, deptScopes);
-  }
-
-  // Remove overlaps: if scope exists in both, keep in deptScopes only
-  const cleanedWardScopes = removeOverlaps(wardScopes, deptScopes);
-
-  return {
-    wardScopes: cleanedWardScopes,
-    deptScopes,
-  };
 }
 
 /**
@@ -377,38 +331,6 @@ export async function getScopeFilterForSelectedScope(
   }
 
   return buildSelectedScopeFilter(selectedScope);
-}
-
-function isWardScope(scope: string): boolean {
-  return scope.includes("หัวหน้าตึก") || scope.includes("หัวหน้างาน-");
-}
-
-function isDeptScope(scope: string): boolean {
-  return scope.includes("หัวหน้ากลุ่มงาน");
-}
-
-function extractScopeName(scope: string): string {
-  const parts = scope.split("-");
-  return parts.length > 1 ? parts.slice(1).join("-").trim() : scope.trim();
-}
-
-function pushScope(target: string[], scopeName: string) {
-  if (scopeName && inferScopeType(scopeName) !== "IGNORE") {
-    target.push(scopeName);
-  }
-}
-
-function addInferredScope(
-  scope: string,
-  wardScopes: string[],
-  deptScopes: string[],
-) {
-  const scopeType = inferScopeType(scope);
-  if (scopeType === "UNIT") {
-    wardScopes.push(scope);
-  } else if (scopeType === "DEPT") {
-    deptScopes.push(scope);
-  }
 }
 
 function buildWardConditions(scopes: string[]): {

@@ -12,10 +12,10 @@ import { ApiResponse, UserRole } from '@/types/auth.js';
 import { requestQueryService } from '@/modules/request/read/services/query.service.js';
 import { requestCommandService } from '@/modules/request/services/command.service.js';
 import { requestApprovalService } from '@/modules/request/services/approval.service.js';
-import * as reassignService from '@/modules/request/reassign/reassign.service.js';
+import * as reassignService from '@/modules/request/reassign/application/reassign.service.js';
 import * as rateService from '@/modules/master-data/services/rate.service.js';
 
-import { getUserScopesForDisplay, getUserScopesWithMembers } from '@/modules/request/scope/scope.service.js';
+import { getUserScopesForDisplay, getUserScopesWithMembers } from '@/modules/request/scope/application/scope.service.js';
 
 import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 import {

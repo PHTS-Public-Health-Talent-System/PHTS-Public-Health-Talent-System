@@ -14,7 +14,7 @@ import {
   getScopeFilterForSelectedScope,
   canApproverAccessRequest,
   getApproverScopes,
-} from '@/modules/request/scope/scope.service.js';
+} from '@/modules/request/scope/application/scope.service.js';
 import { requestRepository } from '@/modules/request/data/repositories/request.repository.js'; // [NEW]
 
 // ============================================================================

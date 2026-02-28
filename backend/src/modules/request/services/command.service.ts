@@ -24,7 +24,7 @@ import {
   parseJsonField,
 } from '@/modules/request/services/helpers.js';
 import { requestQueryService } from '@/modules/request/read/services/query.service.js'; // Use the class instance
-import { enqueueRequestOcrPrecheck } from '@/modules/request/services/ocr-precheck.service.js';
+import { enqueueRequestOcrPrecheck } from '@/modules/ocr/services/ocr-precheck.service.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 import { requestRepository } from '@/modules/request/data/repositories/request.repository.js'; // [NEW]
 import { resolveProfessionCode } from '@shared/utils/profession.js';

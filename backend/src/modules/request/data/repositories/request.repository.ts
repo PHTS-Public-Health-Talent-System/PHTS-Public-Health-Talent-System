@@ -1245,6 +1245,23 @@ export class RequestRepository {
     return rows.length ? Number(rows[0].total) : 0;
   }
 
+  async isActivePtsOfficer(
+    userId: number,
+    connection?: PoolConnection,
+  ): Promise<boolean> {
+    const db = this.getDb(connection);
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT id
+       FROM users
+       WHERE id = ?
+         AND role = 'PTS_OFFICER'
+         AND is_active = 1
+       LIMIT 1`,
+      [userId],
+    );
+    return rows.length > 0;
+  }
+
   async findLeastLoadedOfficer(): Promise<number | null> {
     const [rows] = await pool.query<RowDataPacket[]>(
       `

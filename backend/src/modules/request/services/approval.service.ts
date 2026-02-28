@@ -22,7 +22,7 @@ import {
 import {
   canApproverAccessRequest,
   isRequestOwner,
-} from '@/modules/request/scope/scope.service.js';
+} from '@/modules/request/scope/application/scope.service.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 
