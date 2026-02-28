@@ -5,7 +5,6 @@ import {
   PeriodStatus,
   SnapshotStatus,
 } from "@/modules/payroll/entities/payroll.entity.js";
-import { PayrollSchemaRepository } from "@/modules/payroll/repositories/schema.repository.js";
 
 export class PayrollPeriodRepository {
   static buildListPeriodsQuery(): string {
@@ -342,7 +341,6 @@ export class PayrollPeriodRepository {
     isLocked: boolean,
     conn: PoolConnection,
   ): Promise<void> {
-    await PayrollSchemaRepository.ensurePayPeriodPhaseAColumns();
     await conn.execute(
       `
       UPDATE pay_periods
@@ -359,7 +357,6 @@ export class PayrollPeriodRepository {
     conn: PoolConnection,
     options?: { readyAt?: Date | null },
   ): Promise<void> {
-    await PayrollSchemaRepository.ensurePayPeriodPhaseAColumns();
     await conn.execute(
       `
       UPDATE pay_periods
@@ -399,7 +396,6 @@ export class PayrollPeriodRepository {
     periodId: number,
     conn?: PoolConnection,
   ): Promise<string[]> {
-    await PayrollSchemaRepository.ensureProfessionReviewTable();
     const executor = conn ?? db;
     const [rows] = await executor.query<RowDataPacket[]>(
       `
@@ -421,7 +417,6 @@ export class PayrollPeriodRepository {
     actorId: number,
     conn?: PoolConnection,
   ): Promise<void> {
-    await PayrollSchemaRepository.ensureProfessionReviewTable();
     const executor = conn ?? db;
     if (reviewed) {
       await executor.execute(
@@ -452,7 +447,6 @@ export class PayrollPeriodRepository {
     periodId: number,
     conn?: PoolConnection,
   ): Promise<void> {
-    await PayrollSchemaRepository.ensureProfessionReviewTable();
     const executor = conn ?? db;
     await executor.execute(
       `DELETE FROM pay_period_profession_reviews WHERE period_id = ?`,

@@ -163,8 +163,6 @@ export class PayrollCalculationService {
     try {
       await conn.beginTransaction();
 
-      await PayrollRepository.ensurePayResultChecksTable();
-      await PayrollRepository.ensurePayPeriodPhaseAColumns();
       const period = await PayrollRepository.findPeriodByIdForUpdate(
         periodId,
         conn,

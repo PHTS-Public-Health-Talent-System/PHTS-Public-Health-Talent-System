@@ -5,7 +5,6 @@ import {
   PeriodStatus,
   SnapshotStatus,
 } from "@/modules/payroll/entities/payroll.entity.js";
-import { PayrollSchemaRepository } from "@/modules/payroll/repositories/schema.repository.js";
 import { PayrollPeriodRepository } from "@/modules/payroll/repositories/period.repository.js";
 import { PayrollPayoutRepository } from "@/modules/payroll/repositories/payout.repository.js";
 import {
@@ -16,18 +15,6 @@ import {
 export type { BatchEmployeeData };
 
 export class PayrollRepository {
-  static async ensurePayPeriodPhaseAColumns(): Promise<void> {
-    return PayrollSchemaRepository.ensurePayPeriodPhaseAColumns();
-  }
-
-  static async ensureProfessionReviewTable(): Promise<void> {
-    return PayrollSchemaRepository.ensureProfessionReviewTable();
-  }
-
-  static async ensurePayResultChecksTable(): Promise<void> {
-    return PayrollSchemaRepository.ensurePayResultChecksTable();
-  }
-
   static buildListPeriodsQuery(): string {
     return PayrollPeriodRepository.buildListPeriodsQuery();
   }

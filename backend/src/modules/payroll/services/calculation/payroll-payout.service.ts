@@ -27,12 +27,10 @@ export class PayrollPayoutService {
   }
 
   static async getPeriodPayouts(periodId: number) {
-    await PayrollRepository.ensurePayResultChecksTable();
     return PayrollRepository.findPayoutsByPeriod(periodId);
   }
 
   static async getPayoutDetail(payoutId: number) {
-    await PayrollRepository.ensurePayResultChecksTable();
     const payout = await PayrollRepository.findPayoutDetailById(payoutId);
     if (!payout) throw new Error("Payout not found");
     const items = await PayrollRepository.findPayoutItemsByPayoutId(payoutId);

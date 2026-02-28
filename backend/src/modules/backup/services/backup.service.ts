@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { stat } from "node:fs/promises";
 import { BackupRepository } from '@/modules/backup/repositories/backup.repository.js';
@@ -13,6 +14,7 @@ const BACKUP_LAST_RUN_PREFIX = 'system:backup:last-run:';
 const DEFAULT_BACKUP_HOUR = 2;
 const DEFAULT_BACKUP_MINUTE = 0;
 const DEFAULT_BACKUP_TIMEZONE = process.env.BACKUP_JOB_TIMEZONE || 'Asia/Bangkok';
+const CURRENT_BACKUP_SCRIPT_REL = 'src/scripts/ops/backup/backup.sh';
 
 type BackupConfig = {
   enabled: boolean;
@@ -113,7 +115,9 @@ export async function setBackupScheduleConfig(input: {
 export async function shouldRunScheduledBackup(at: Date = new Date()): Promise<boolean> {
   const schedule = await getBackupScheduleConfig();
   const parts = getZonedDateParts(at, schedule.timezone);
-  if (parts.hour !== schedule.hour || parts.minute !== schedule.minute) {
+  const currentMinuteOfDay = parts.hour * 60 + parts.minute;
+  const scheduleMinuteOfDay = schedule.hour * 60 + schedule.minute;
+  if (currentMinuteOfDay < scheduleMinuteOfDay) {
     return false;
   }
 
@@ -140,6 +144,37 @@ function parseBackupArgs(raw: string): string[] {
     throw new Error("BACKUP_ARGS must be a JSON array of strings");
   }
   return parsed;
+}
+
+function resolveExistingPath(candidates: string[]): string | null {
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function normalizeBackupArgs(command: string, args: string[], workdir: string): string[] {
+  const executable = path.basename(command).toLowerCase();
+  const isShellCommand = executable === 'bash' || executable === 'sh';
+  if (!isShellCommand || args.length === 0) return args;
+
+  const [firstArg, ...rest] = args;
+  const normalizedFirstArg = firstArg.replace(/\\/g, '/');
+  const isCurrentScriptArg =
+    normalizedFirstArg === CURRENT_BACKUP_SCRIPT_REL ||
+    normalizedFirstArg.endsWith(`/${CURRENT_BACKUP_SCRIPT_REL}`);
+  if (!isCurrentScriptArg) return args;
+
+  const existingCurrentPath = resolveExistingPath([
+    path.resolve(workdir, CURRENT_BACKUP_SCRIPT_REL),
+    path.resolve(process.cwd(), CURRENT_BACKUP_SCRIPT_REL),
+  ]);
+
+  if (existingCurrentPath) {
+    return [existingCurrentPath, ...rest];
+  }
+
+  return args;
 }
 
 function resolveBackupFilePath(output: string, workdir: string): string | null {
@@ -188,7 +223,11 @@ export async function runBackupJob(options?: {
 
   try {
     validateBackupCommand(config.command);
-    const args = parseBackupArgs(config.argsRaw);
+    const args = normalizeBackupArgs(
+      config.command,
+      parseBackupArgs(config.argsRaw),
+      config.workdir,
+    );
     const result = await execFileAsync(config.command, args, {
       cwd: config.workdir,
       timeout: config.timeoutMs,
