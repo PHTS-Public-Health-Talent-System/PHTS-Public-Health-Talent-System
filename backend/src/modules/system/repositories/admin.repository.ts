@@ -145,6 +145,11 @@ export class AdminRepository {
     position_name: string | null;
     updated_at: Date | null;
     created_at: Date | null;
+    scopes: Array<{
+      scope_type: 'UNIT' | 'DEPT';
+      scope_name: string;
+      source: string;
+    }>;
   } | null> {
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT
@@ -166,7 +171,7 @@ export class AdminRepository {
        LIMIT 1`,
       [userId],
     );
-    return (rows[0] as {
+    const userRow = (rows[0] as {
       id: number;
       citizen_id: string;
       role: string;
@@ -179,5 +184,24 @@ export class AdminRepository {
       updated_at: Date | null;
       created_at: Date | null;
     } | undefined) ?? null;
+
+    if (!userRow) return null;
+
+    const [scopeRows] = await db.query<RowDataPacket[]>(
+      `SELECT scope_type, scope_name, source
+       FROM special_position_scope_map
+       WHERE user_id = ? AND role = ? AND is_active = 1
+       ORDER BY scope_type, scope_name`,
+      [userRow.id, userRow.role],
+    );
+
+    return {
+      ...userRow,
+      scopes: scopeRows.map((row) => ({
+        scope_type: String(row.scope_type) === 'DEPT' ? 'DEPT' : 'UNIT',
+        scope_name: String(row.scope_name ?? ''),
+        source: String(row.source ?? 'AUTO'),
+      })),
+    };
   }
 }

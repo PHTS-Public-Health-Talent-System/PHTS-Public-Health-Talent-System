@@ -4,6 +4,42 @@ import type { NotificationOutboxPayload } from '@/modules/notification/entities/
 import type { PoolConnection } from "mysql2/promise";
 import { NotificationType } from '@/modules/notification/entities/notification.entity.js';
 
+const DEFAULT_MAX_ATTEMPTS = 8;
+const DEFAULT_RETRY_BASE_SECONDS = 30;
+const DEFAULT_RETRY_MAX_SECONDS = 1800;
+const DEFAULT_PROCESSING_TIMEOUT_SECONDS = 300;
+
+const toSafeInt = (raw: string | undefined, fallback: number, min: number, max: number): number => {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(value)));
+};
+
+const getMaxAttempts = (): number =>
+  toSafeInt(process.env.NOTIFICATION_OUTBOX_MAX_ATTEMPTS, DEFAULT_MAX_ATTEMPTS, 1, 100);
+
+const getRetryBaseSeconds = (): number =>
+  toSafeInt(process.env.NOTIFICATION_OUTBOX_RETRY_BASE_SECONDS, DEFAULT_RETRY_BASE_SECONDS, 1, 3600);
+
+const getRetryMaxSeconds = (): number => {
+  const maxSeconds = toSafeInt(
+    process.env.NOTIFICATION_OUTBOX_RETRY_MAX_SECONDS,
+    DEFAULT_RETRY_MAX_SECONDS,
+    1,
+    7 * 24 * 3600,
+  );
+  const baseSeconds = getRetryBaseSeconds();
+  return Math.max(baseSeconds, maxSeconds);
+};
+
+const getProcessingTimeoutSeconds = (): number =>
+  toSafeInt(
+    process.env.NOTIFICATION_OUTBOX_PROCESSING_TIMEOUT_SECONDS,
+    DEFAULT_PROCESSING_TIMEOUT_SECONDS,
+    30,
+    24 * 3600,
+  );
+
 export class NotificationOutboxService {
   static async enqueue(
     payload: NotificationOutboxPayload,
@@ -16,16 +52,33 @@ export class NotificationOutboxService {
     processed: number;
     sent: number;
     failed: number;
+    requeued: number;
   }> {
+    const maxAttempts = getMaxAttempts();
+    const retryBaseSeconds = getRetryBaseSeconds();
+    const retryMaxSeconds = getRetryMaxSeconds();
+    const processingTimeoutSeconds = getProcessingTimeoutSeconds();
     const conn = await NotificationOutboxRepository.getConnection();
     let processed = 0;
     let sent = 0;
     let failed = 0;
+    let requeued = 0;
 
     try {
       await conn.beginTransaction();
 
-      const rows = await NotificationOutboxRepository.fetchPending(limit, conn);
+      requeued = await NotificationOutboxRepository.reclaimStuckProcessing(
+        processingTimeoutSeconds,
+        maxAttempts,
+        retryBaseSeconds,
+        retryMaxSeconds,
+        conn,
+      );
+      const rows = await NotificationOutboxRepository.fetchPending(
+        limit,
+        maxAttempts,
+        conn,
+      );
       for (const row of rows) {
         processed += 1;
         try {
@@ -34,7 +87,14 @@ export class NotificationOutboxService {
           sent += 1;
         } catch (err: any) {
           const msg = err?.message ?? String(err);
-          await NotificationOutboxRepository.markFailed(row.outbox_id, msg, conn);
+          await NotificationOutboxRepository.markFailed(
+            row.outbox_id,
+            msg,
+            maxAttempts,
+            retryBaseSeconds,
+            retryMaxSeconds,
+            conn,
+          );
           failed += 1;
         }
       }
@@ -47,7 +107,7 @@ export class NotificationOutboxService {
       conn.release();
     }
 
-    return { processed, sent, failed };
+    return { processed, sent, failed, requeued };
   }
 
   private static async processRow(

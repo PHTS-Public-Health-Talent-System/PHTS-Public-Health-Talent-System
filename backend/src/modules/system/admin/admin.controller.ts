@@ -15,12 +15,15 @@ import {
   emitAuditEvent,
   AuditEventType,
 } from "@/modules/audit/services/audit.service.js";
+import { SnapshotRepository } from "@/modules/snapshot/repositories/snapshot.repository.js";
 import type {
   SearchUsersQuery,
   GetUserByIdParams,
   UpdateUserRoleParams,
   UpdateUserRoleBody,
   ToggleMaintenanceModeBody,
+  GetSnapshotOutboxQuery,
+  RetrySnapshotOutboxParams,
 } from "@/modules/system/admin/admin.schema.js";
 
 export const searchUsers = asyncHandler(async (req: Request, res: Response) => {
@@ -113,3 +116,46 @@ export const getVersionInfo = asyncHandler(
     });
   },
 );
+
+const getSnapshotMaxAttempts = (): number => {
+  const raw = Number(process.env.SNAPSHOT_OUTBOX_MAX_ATTEMPTS ?? 8);
+  if (!Number.isFinite(raw)) return 8;
+  return Math.max(1, Math.min(100, Math.floor(raw)));
+};
+
+export const getSnapshotOutbox = asyncHandler(async (req: Request, res: Response) => {
+  const { page, limit, status, period_id } = req.query as GetSnapshotOutboxQuery;
+  const data = await SnapshotRepository.findSnapshotOutboxRows({
+    page: Number(page || 1),
+    limit: Number(limit || 10),
+    status,
+    periodId: period_id ? Number(period_id) : undefined,
+    maxAttempts: getSnapshotMaxAttempts(),
+  });
+  res.json({ success: true, data });
+});
+
+export const retrySnapshotOutbox = asyncHandler(async (req: Request, res: Response) => {
+  const { outboxId } = req.params as unknown as RetrySnapshotOutboxParams;
+  const ok = await SnapshotRepository.retryOutboxRow(Number(outboxId));
+  if (!ok) {
+    res.status(404).json({
+      success: false,
+      error: {
+        code: 'SNAPSHOT_OUTBOX_NOT_RETRYABLE',
+        message: 'ไม่พบรายการที่ลองใหม่ได้',
+      },
+    });
+    return;
+  }
+  res.json({ success: true, message: 'นำรายการกลับเข้าคิวแล้ว' });
+});
+
+export const retrySnapshotDeadLetters = asyncHandler(async (_req: Request, res: Response) => {
+  const count = await SnapshotRepository.retryDeadLetterRows(getSnapshotMaxAttempts());
+  res.json({
+    success: true,
+    data: { count },
+    message: count > 0 ? `นำกลับเข้าคิว ${count} รายการแล้ว` : 'ไม่มี dead-letter ที่ต้องลองใหม่',
+  });
+});

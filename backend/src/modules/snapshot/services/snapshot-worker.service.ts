@@ -43,8 +43,10 @@ const workerLoop = async (): Promise<void> => {
       const result = await processSnapshotOutboxBatch(batchLimit);
       if (result.processed > 0) {
         console.log(
-          `[SnapshotQueue] processed=${result.processed} sent=${result.sent} failed=${result.failed}`,
+          `[SnapshotQueue] processed=${result.processed} sent=${result.sent} failed=${result.failed} requeued=${result.requeued}`,
         );
+      } else if (result.requeued > 0) {
+        console.log(`[SnapshotQueue] requeued=${result.requeued}`);
       }
     } catch (error) {
       console.error("[SnapshotQueue] worker error:", error);
@@ -75,4 +77,3 @@ export const stopSnapshotWorker = async (): Promise<void> => {
   }
   console.log("[SnapshotQueue] worker stopped");
 };
-

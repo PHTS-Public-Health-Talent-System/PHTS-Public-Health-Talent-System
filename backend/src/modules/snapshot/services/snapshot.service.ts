@@ -24,6 +24,46 @@ export enum SnapshotStatus {
   FAILED = "FAILED",
 }
 
+const DEFAULT_SNAPSHOT_MAX_ATTEMPTS = 8;
+const DEFAULT_SNAPSHOT_RETRY_BASE_SECONDS = 30;
+const DEFAULT_SNAPSHOT_RETRY_MAX_SECONDS = 1800;
+const DEFAULT_SNAPSHOT_PROCESSING_TIMEOUT_SECONDS = 300;
+
+const toSafeInt = (raw: string | undefined, fallback: number, min: number, max: number): number => {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(value)));
+};
+
+const getSnapshotMaxAttempts = (): number =>
+  toSafeInt(process.env.SNAPSHOT_OUTBOX_MAX_ATTEMPTS, DEFAULT_SNAPSHOT_MAX_ATTEMPTS, 1, 100);
+
+const getSnapshotRetryBaseSeconds = (): number =>
+  toSafeInt(
+    process.env.SNAPSHOT_OUTBOX_RETRY_BASE_SECONDS,
+    DEFAULT_SNAPSHOT_RETRY_BASE_SECONDS,
+    1,
+    3600,
+  );
+
+const getSnapshotRetryMaxSeconds = (): number => {
+  const maxSeconds = toSafeInt(
+    process.env.SNAPSHOT_OUTBOX_RETRY_MAX_SECONDS,
+    DEFAULT_SNAPSHOT_RETRY_MAX_SECONDS,
+    1,
+    7 * 24 * 3600,
+  );
+  return Math.max(getSnapshotRetryBaseSeconds(), maxSeconds);
+};
+
+const getSnapshotProcessingTimeoutSeconds = (): number =>
+  toSafeInt(
+    process.env.SNAPSHOT_OUTBOX_PROCESSING_TIMEOUT_SECONDS,
+    DEFAULT_SNAPSHOT_PROCESSING_TIMEOUT_SECONDS,
+    30,
+    24 * 3600,
+  );
+
 /**
  * Period with snapshot info
  */
@@ -53,66 +93,6 @@ export interface Snapshot {
   created_at: Date;
 }
 
-let snapshotOutboxTableReady = false;
-let payPeriodsPhaseAReady = false;
-
-async function hasColumn(tableName: string, columnName: string): Promise<boolean> {
-  return SnapshotRepository.hasColumn(tableName, columnName);
-}
-
-async function ensurePayPeriodsPhaseAColumns(): Promise<void> {
-  if (payPeriodsPhaseAReady) return;
-  if (!(await hasColumn("pay_periods", "is_locked"))) {
-    await SnapshotRepository.executeRaw(
-      `
-      ALTER TABLE pay_periods
-      ADD COLUMN is_locked TINYINT(1) NOT NULL DEFAULT 0
-      `,
-    );
-  }
-  if (!(await hasColumn("pay_periods", "snapshot_status"))) {
-    await SnapshotRepository.executeRaw(
-      `
-      ALTER TABLE pay_periods
-      ADD COLUMN snapshot_status
-      ENUM('PENDING','PROCESSING','READY','FAILED')
-      NOT NULL DEFAULT 'PENDING'
-      `,
-    );
-  }
-  if (!(await hasColumn("pay_periods", "snapshot_ready_at"))) {
-    await SnapshotRepository.executeRaw(
-      `
-      ALTER TABLE pay_periods
-      ADD COLUMN snapshot_ready_at DATETIME NULL
-      `,
-    );
-  }
-  payPeriodsPhaseAReady = true;
-}
-
-async function ensureSnapshotOutboxTable(): Promise<void> {
-  if (snapshotOutboxTableReady) return;
-  await SnapshotRepository.executeRaw(
-    `
-    CREATE TABLE IF NOT EXISTS pay_snapshot_outbox (
-      outbox_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-      period_id INT NOT NULL,
-      requested_by INT NULL,
-      status ENUM('PENDING','PROCESSING','SENT','FAILED') NOT NULL DEFAULT 'PENDING',
-      attempts INT NOT NULL DEFAULT 0,
-      last_error TEXT NULL,
-      available_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      processed_at DATETIME NULL,
-      INDEX idx_snapshot_outbox_status_available (status, available_at),
-      INDEX idx_snapshot_outbox_period (period_id)
-    )
-    `,
-  );
-  snapshotOutboxTableReady = true;
-}
-
 function resolveSnapshotStatus(row: any): SnapshotStatus {
   const fromNew = String(row?.snapshot_status ?? "").toUpperCase();
   if (
@@ -136,7 +116,6 @@ function isSnapshotReady(period: PeriodWithSnapshot): boolean {
 export async function getPeriodWithSnapshot(
   periodId: number,
 ): Promise<PeriodWithSnapshot | null> {
-  await ensurePayPeriodsPhaseAColumns();
   const row = await SnapshotRepository.findPeriodWithSnapshot(periodId);
   if (!row) return null;
   return {
@@ -157,7 +136,6 @@ export async function getPeriodWithSnapshot(
  * Check if period snapshot is ready
  */
 export async function isPeriodFrozen(periodId: number): Promise<boolean> {
-  await ensurePayPeriodsPhaseAColumns();
   return SnapshotRepository.isPeriodFrozen(periodId);
 }
 
@@ -175,8 +153,6 @@ export async function enqueuePeriodSnapshotGeneration(
   periodId: number,
   requestedBy: number | null,
 ): Promise<void> {
-  await ensurePayPeriodsPhaseAColumns();
-  await ensureSnapshotOutboxTable();
   const connection = await SnapshotRepository.getConnection();
   try {
     await connection.beginTransaction();
@@ -228,16 +204,27 @@ export async function processSnapshotOutboxBatch(limit: number = 50): Promise<{
   processed: number;
   sent: number;
   failed: number;
+  requeued: number;
 }> {
-  await ensurePayPeriodsPhaseAColumns();
-  await ensureSnapshotOutboxTable();
+  const maxAttempts = getSnapshotMaxAttempts();
+  const retryBaseSeconds = getSnapshotRetryBaseSeconds();
+  const retryMaxSeconds = getSnapshotRetryMaxSeconds();
+  const processingTimeoutSeconds = getSnapshotProcessingTimeoutSeconds();
   const conn = await SnapshotRepository.getConnection();
   let processed = 0;
   let sent = 0;
   let failed = 0;
+  let requeued = 0;
   try {
     await conn.beginTransaction();
-    const rows = await SnapshotRepository.findOutboxBatchForUpdate(limit, conn);
+    requeued = await SnapshotRepository.reclaimStuckProcessing(
+      processingTimeoutSeconds,
+      maxAttempts,
+      retryBaseSeconds,
+      retryMaxSeconds,
+      conn,
+    );
+    const rows = await SnapshotRepository.findOutboxBatchForUpdate(limit, maxAttempts, conn);
 
     for (const row of rows as any[]) {
       processed += 1;
@@ -257,6 +244,9 @@ export async function processSnapshotOutboxBatch(limit: number = 50): Promise<{
         await SnapshotRepository.markOutboxFailed(
           outboxId,
           String(error?.message ?? "snapshot generation failed"),
+          maxAttempts,
+          retryBaseSeconds,
+          retryMaxSeconds,
           conn,
         );
         await SnapshotRepository.setPeriodSnapshotFailed(periodId, conn);
@@ -280,7 +270,7 @@ export async function processSnapshotOutboxBatch(limit: number = 50): Promise<{
   } finally {
     conn.release();
   }
-  return { processed, sent, failed };
+  return { processed, sent, failed, requeued };
 }
 
 async function generateSnapshotForPeriod(
@@ -431,7 +421,6 @@ export async function unfreezePeriod(
   unfrozenBy: number,
   reason: string,
 ): Promise<void> {
-  await ensurePayPeriodsPhaseAColumns();
   if (!reason || reason.trim() === "") {
     throw new Error("Reason is required for unfreezing");
   }

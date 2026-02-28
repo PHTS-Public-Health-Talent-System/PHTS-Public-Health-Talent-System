@@ -12,7 +12,7 @@ DB_PASSWORD="${DB_PASSWORD:-}"
 DB_NAME="${DB_NAME:-phts_system}"
 
 if [[ -z "${BACKUP_FILE}" ]]; then
-  echo "Usage: ./src/scripts/jobs/restore.sh <backup.sql.gz>"
+  echo "Usage: ./src/scripts/ops/backup/restore.sh <backup.sql.gz>"
   exit 1
 fi
 

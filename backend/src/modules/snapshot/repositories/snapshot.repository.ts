@@ -9,22 +9,91 @@ import db, { getConnection } from '@config/database.js';
 import { Snapshot, SnapshotType, PeriodWithSnapshot } from '@/modules/snapshot/entities/snapshot.entity.js';
 
 export class SnapshotRepository {
-  static async hasColumn(tableName: string, columnName: string): Promise<boolean> {
-    const [rows] = await db.query<RowDataPacket[]>(
-      `
-      SELECT COUNT(*) AS cnt
-      FROM information_schema.columns
-      WHERE table_schema = DATABASE()
-        AND table_name = ?
-        AND column_name = ?
-      `,
-      [tableName, columnName],
-    );
-    return Number((rows[0] as any)?.cnt ?? 0) > 0;
-  }
+  static async findSnapshotOutboxRows(params: {
+    page: number;
+    limit: number;
+    status?: 'PENDING' | 'PROCESSING' | 'FAILED' | 'SENT' | 'DEAD_LETTER';
+    periodId?: number;
+    maxAttempts: number;
+  }): Promise<{
+    rows: Array<{
+      outbox_id: number;
+      period_id: number;
+      requested_by: number | null;
+      status: string;
+      attempts: number;
+      last_error: string | null;
+      available_at: Date;
+      created_at: Date;
+      processed_at: Date | null;
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+    total_pages: number;
+  }> {
+    const page = Number.isFinite(params.page) && params.page > 0 ? Math.floor(params.page) : 1;
+    const limitRaw = Number.isFinite(params.limit) && params.limit > 0 ? Math.floor(params.limit) : 20;
+    const limit = Math.min(limitRaw, 100);
+    const offset = (page - 1) * limit;
+    const safeMaxAttempts = Math.max(1, Math.floor(params.maxAttempts));
 
-  static async executeRaw(sql: string, params: any[] = []): Promise<void> {
-    await db.query(sql, params);
+    const whereParts: string[] = [];
+    const whereParams: Array<string | number> = [];
+
+    if (params.status === 'DEAD_LETTER') {
+      whereParts.push(`status = 'FAILED' AND attempts >= ?`);
+      whereParams.push(safeMaxAttempts);
+    } else if (params.status === 'FAILED') {
+      whereParts.push(`status = 'FAILED' AND attempts < ?`);
+      whereParams.push(safeMaxAttempts);
+    } else if (params.status) {
+      whereParts.push(`status = ?`);
+      whereParams.push(params.status);
+    }
+
+    if (params.periodId && Number.isFinite(params.periodId)) {
+      whereParts.push('period_id = ?');
+      whereParams.push(params.periodId);
+    }
+
+    const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
+
+    const [countRows] = await db.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total
+       FROM pay_snapshot_outbox
+       ${whereClause}`,
+      whereParams,
+    );
+    const total = Number((countRows[0] as { total?: number } | undefined)?.total ?? 0);
+    const totalPages = total > 0 ? Math.ceil(total / limit) : 1;
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT outbox_id, period_id, requested_by, status, attempts, last_error, available_at, created_at, processed_at
+       FROM pay_snapshot_outbox
+       ${whereClause}
+       ORDER BY created_at DESC, outbox_id DESC
+       LIMIT ? OFFSET ?`,
+      [...whereParams, limit, offset],
+    );
+
+    return {
+      rows: rows as Array<{
+        outbox_id: number;
+        period_id: number;
+        requested_by: number | null;
+        status: string;
+        attempts: number;
+        last_error: string | null;
+        available_at: Date;
+        created_at: Date;
+        processed_at: Date | null;
+      }>,
+      total,
+      page,
+      limit,
+      total_pages: totalPages,
+    };
   }
 
   static async setPeriodSnapshotPending(
@@ -180,14 +249,18 @@ export class SnapshotRepository {
 
   static async findOutboxBatchForUpdate(
     limit: number,
+    maxAttempts: number,
     conn: PoolConnection,
   ): Promise<RowDataPacket[]> {
     const safeLimit = Math.max(1, Math.min(limit, 200));
+    const safeMaxAttempts = Math.max(1, Math.floor(maxAttempts));
     const [rows] = await conn.query<RowDataPacket[]>(
       `
-      SELECT outbox_id, period_id, requested_by, attempts
+      SELECT outbox_id, period_id, requested_by, attempts, status, last_error, available_at, created_at, processed_at
       FROM pay_snapshot_outbox
-      WHERE status IN ('PENDING', 'FAILED') AND available_at <= NOW()
+      WHERE status IN ('PENDING', 'FAILED')
+        AND attempts < ${safeMaxAttempts}
+        AND available_at <= NOW()
       ORDER BY status ASC, available_at ASC, outbox_id ASC
       LIMIT ${safeLimit}
       FOR UPDATE SKIP LOCKED
@@ -198,7 +271,9 @@ export class SnapshotRepository {
 
   static async markOutboxProcessing(outboxId: number, conn: PoolConnection): Promise<void> {
     await conn.execute(
-      `UPDATE pay_snapshot_outbox SET status = 'PROCESSING' WHERE outbox_id = ?`,
+      `UPDATE pay_snapshot_outbox
+       SET status = 'PROCESSING', available_at = NOW()
+       WHERE outbox_id = ?`,
       [outboxId],
     );
   }
@@ -215,14 +290,102 @@ export class SnapshotRepository {
   static async markOutboxFailed(
     outboxId: number,
     message: string,
+    maxAttempts: number,
+    retryBaseSeconds: number,
+    retryMaxSeconds: number,
     conn: PoolConnection,
   ): Promise<void> {
+    const safeMaxAttempts = Math.max(1, Math.floor(maxAttempts));
+    const safeRetryBaseSeconds = Math.max(1, Math.floor(retryBaseSeconds));
+    const safeRetryMaxSeconds = Math.max(safeRetryBaseSeconds, Math.floor(retryMaxSeconds));
     await conn.execute(
       `UPDATE pay_snapshot_outbox
-       SET status = 'FAILED', attempts = attempts + 1, last_error = ?
+       SET status = 'FAILED',
+           attempts = attempts + 1,
+           last_error = ?,
+           available_at = CASE
+             WHEN attempts + 1 >= ? THEN DATE_ADD(NOW(), INTERVAL 3650 DAY)
+             ELSE DATE_ADD(
+               NOW(),
+               INTERVAL LEAST(?, POW(2, GREATEST(attempts, 0)) * ?) SECOND
+             )
+           END
        WHERE outbox_id = ?`,
-      [message.slice(0, 2000), outboxId],
+      [
+        message.slice(0, 2000),
+        safeMaxAttempts,
+        safeRetryMaxSeconds,
+        safeRetryBaseSeconds,
+        outboxId,
+      ],
     );
+  }
+
+  static async reclaimStuckProcessing(
+    processingTimeoutSeconds: number,
+    maxAttempts: number,
+    retryBaseSeconds: number,
+    retryMaxSeconds: number,
+    conn: PoolConnection,
+  ): Promise<number> {
+    const safeTimeoutSeconds = Math.max(10, Math.floor(processingTimeoutSeconds));
+    const safeMaxAttempts = Math.max(1, Math.floor(maxAttempts));
+    const safeRetryBaseSeconds = Math.max(1, Math.floor(retryBaseSeconds));
+    const safeRetryMaxSeconds = Math.max(safeRetryBaseSeconds, Math.floor(retryMaxSeconds));
+    const [result] = await conn.execute<ResultSetHeader>(
+      `UPDATE pay_snapshot_outbox
+       SET status = 'FAILED',
+           attempts = attempts + 1,
+           last_error = CONCAT('PROCESSING_TIMEOUT_', ?, 's'),
+           available_at = CASE
+             WHEN attempts + 1 >= ? THEN DATE_ADD(NOW(), INTERVAL 3650 DAY)
+             ELSE DATE_ADD(
+               NOW(),
+               INTERVAL LEAST(?, POW(2, GREATEST(attempts, 0)) * ?) SECOND
+             )
+           END
+       WHERE status = 'PROCESSING'
+         AND attempts < ?
+         AND available_at <= DATE_SUB(NOW(), INTERVAL ? SECOND)`,
+      [
+        safeTimeoutSeconds,
+        safeMaxAttempts,
+        safeRetryMaxSeconds,
+        safeRetryBaseSeconds,
+        safeMaxAttempts,
+        safeTimeoutSeconds,
+      ],
+    );
+    return Number(result.affectedRows ?? 0);
+  }
+
+  static async retryOutboxRow(outboxId: number): Promise<boolean> {
+    const [result] = await db.execute<ResultSetHeader>(
+      `UPDATE pay_snapshot_outbox
+       SET status = 'PENDING',
+           attempts = 0,
+           available_at = NOW(),
+           processed_at = NULL
+       WHERE outbox_id = ?
+         AND status = 'FAILED'`,
+      [outboxId],
+    );
+    return Number(result.affectedRows ?? 0) > 0;
+  }
+
+  static async retryDeadLetterRows(maxAttempts: number): Promise<number> {
+    const safeMaxAttempts = Math.max(1, Math.floor(maxAttempts));
+    const [result] = await db.execute<ResultSetHeader>(
+      `UPDATE pay_snapshot_outbox
+       SET status = 'PENDING',
+           attempts = 0,
+           available_at = NOW(),
+           processed_at = NULL
+       WHERE status = 'FAILED'
+         AND attempts >= ?`,
+      [safeMaxAttempts],
+    );
+    return Number(result.affectedRows ?? 0);
   }
 
   // ── Payout queries for snapshot ─────────────────────────────────────────────
