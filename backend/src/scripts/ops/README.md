@@ -34,7 +34,7 @@ Use this to inspect `emp_movements` rows that still do not have `source_movement
 These are legacy/manual rows that were not linked to current HRMS source records.
 
 ```bash
-npm run report:legacy-movements
+TZ=Asia/Bangkok tsx src/scripts/ops/runners/legacy-movements-report.ts
 ```
 
 The report shows:
