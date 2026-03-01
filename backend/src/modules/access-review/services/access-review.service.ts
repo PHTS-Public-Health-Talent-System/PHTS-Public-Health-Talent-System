@@ -8,6 +8,7 @@
 
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
+import { IdentityRolePolicyRepository } from '@/modules/identity/repositories/identity-role-policy.repository.js';
 import { IdentityRolePolicyService } from '@/modules/identity/services/identity-role-policy.service.js';
 import {
   inferScopeType,
@@ -157,7 +158,11 @@ async function buildRiskDetectionCandidates(
   options?: { syncTimestamp?: Date | null; citizenId?: string | null },
 ): Promise<RiskDetectionCandidate[]> {
   const users = await AccessReviewRepository.findNonAdminUsers(connection);
+  const activeHeadScopes = await IdentityRolePolicyRepository.findActiveHeadScopes(connection);
   const syncTimestamp = options?.syncTimestamp ?? null;
+  const scopedHeadRoleSet = new Set(
+    activeHeadScopes.map((row) => `${String(row.citizen_id)}|${String(row.role)}`),
+  );
 
   return (users as any[])
     .filter((user) =>
@@ -177,9 +182,14 @@ async function buildRiskDetectionCandidates(
       const currentRole = String(user.role ?? "");
       const isUserActive = Number(user.is_active ?? 0) === 1;
       const isProtectedRole = IdentityRolePolicyService.PROTECTED_ROLES.has(currentRole);
-      const expectedRole = isProtectedRole
+      const derivedRole = isProtectedRole
         ? currentRole
         : IdentityRolePolicyService.deriveRole(hrRow as any);
+      const expectedRole =
+        (derivedRole === 'HEAD_WARD' || derivedRole === 'HEAD_DEPT') &&
+        !scopedHeadRoleSet.has(`${hrRow.citizen_id}|${derivedRole}`)
+          ? 'USER'
+          : derivedRole;
       const roleMismatch = isUserActive && expectedRole !== currentRole;
       const inactiveStatus = isUserActive && isInactiveEmployeeStatus(user.employee_status);
       const scopeExplanation = buildScopeExplanation(currentRole, user.special_position);
@@ -532,6 +542,42 @@ export async function resolveAccessReviewQueueItem(params: {
       conn: connection,
     });
     await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function resolveAccessReviewQueueItems(params: {
+  queueIds: number[];
+  action: AccessReviewQueueResolveAction;
+  actorId: number;
+  note?: string | null;
+}): Promise<{ updatedCount: number }> {
+  const queueIds = [...new Set(params.queueIds.map((queueId) => Number(queueId)).filter(Number.isFinite))];
+  if (queueIds.length === 0) {
+    throw new Error('Queue ids are required');
+  }
+
+  const connection = await AccessReviewRepository.getConnection();
+  try {
+    await connection.beginTransaction();
+    for (const queueId of queueIds) {
+      await AccessReviewRepository.resolveQueueItem({
+        queueId,
+        status:
+          params.action === "DISMISS"
+            ? AccessReviewQueueStatus.DISMISSED
+            : AccessReviewQueueStatus.RESOLVED,
+        actorId: params.actorId,
+        note: params.note ?? null,
+        conn: connection,
+      });
+    }
+    await connection.commit();
+    return { updatedCount: queueIds.length };
   } catch (error) {
     await connection.rollback();
     throw error;

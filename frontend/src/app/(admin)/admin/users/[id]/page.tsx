@@ -20,11 +20,12 @@ import {
   Briefcase,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useSystemUserById, useUserSyncAudits } from '@/features/system/hooks';
-import { useEntityAuditTrail } from '@/features/audit/hooks';
-import { useAccessReviewQueue } from '@/features/access-review/hooks';
-import type { AccessReviewQueueRow, AccessReviewQueueStatus } from '@/features/access-review/api';
-import type { UserSyncAuditRecord } from '@/features/system/types';
+import { useSystemUserById } from '@/features/system/users';
+import { useUserSyncAudits } from '@/features/system/sync';
+import { useEntityAuditTrail } from '@/features/audit/entity';
+import { useAccessReviewQueue } from '@/features/access-review/queue';
+import type { AccessReviewQueueRow, AccessReviewQueueStatus } from '@/features/access-review/shared';
+import type { UserSyncAuditRecord } from '@/features/system/shared';
 import { formatThaiDateTime } from '@/shared/utils/thai-locale';
 import { getRoleLabel } from '@/shared/utils/role-label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -161,9 +162,6 @@ const getSyncActionBadgeClass = (action: UserSyncAuditRecord['action']) => {
 const getRolePolicyHint = (roleCode: string) => {
   if (roleCode === 'HEAD_DEPT' || roleCode === 'HEAD_WARD') {
     return 'สิทธิ์นี้อิงข้อมูล HRMS จาก special_position และอาจถูกซิงก์ปรับอัตโนมัติ';
-  }
-  if (roleCode === 'ADMIN' || roleCode === 'PTS_OFFICER') {
-    return 'สิทธิ์นี้เป็นสิทธิ์ที่แอดมินกำหนดและไม่ควรถูกซิงก์ทับ';
   }
   return 'สิทธิ์นี้ใช้ค่าปัจจุบันของบัญชีผู้ใช้ และจะเปลี่ยนเมื่อมีการจัดการโดยผู้ดูแลหรือกติกาเฉพาะ';
 };
@@ -467,11 +465,11 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                 />
                 <div className="space-y-2 sm:col-span-2 pt-2 border-t border-border/50">
                   <span className="text-xs font-medium text-muted-foreground">
-                    ขอบเขตสิทธิ์ (Data Scopes)
+                    ขอบเขตการดูแล
                   </span>
                   {!user.scopes || user.scopes.length === 0 ? (
                     <p className="text-sm text-muted-foreground/80 italic">
-                      เข้าถึงข้อมูลตามสิทธิ์ Role พื้นฐานเท่านั้น (ไม่มี Scope พิเศษ)
+                      ไม่พบขอบการดูแลพิเศษ ใช้สิทธิ์ตามบทบาทที่กำหนดไว้
                     </p>
                   ) : (
                     <div className="flex flex-wrap gap-2">

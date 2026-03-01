@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useCallback, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -15,13 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -36,30 +29,29 @@ import {
   ShieldCheck,
   Filter,
   Search,
-  MoreHorizontal,
   CheckCircle2,
   XCircle,
   UserCog,
-  AlertTriangle,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
-  Eye,
   X,
   ArrowRight,
-  Database,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  AccessReviewQueueRowItem,
+  getPayloadEntries,
+  getQueueReasonLabel,
   useAccessReviewQueue,
   useResolveAccessReviewQueueItem,
-} from '@/features/access-review/hooks';
-import type { AccessReviewQueueRow, AccessReviewQueueStatus } from '@/features/access-review/api';
-import { useUpdateUserRole } from '@/features/system/hooks';
-import { formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
+  useResolveAccessReviewQueueItems,
+} from '@/features/access-review/queue';
+import type { AccessReviewQueueRow, AccessReviewQueueStatus } from '@/features/access-review/shared';
+import { useUpdateUserRole } from '@/features/system/users';
+import { formatThaiNumber } from '@/shared/utils/thai-locale';
 import { getRoleLabel, ROLE_OPTIONS } from '@/shared/utils/role-label';
 import { cn } from '@/lib/utils';
+import { AdminPageShell } from '@/components/admin/admin-page-shell';
 
 const LIMIT_OPTIONS = [10, 20, 50] as const;
 
@@ -70,58 +62,11 @@ type RoleChangeDialogState = {
   hasError?: boolean;
 } | null;
 
-const PAYLOAD_LABELS: Record<string, string> = {
-  expected_role: 'บทบาทที่ควรเป็น',
-  current_role: 'บทบาทปัจจุบัน',
-  previous_role: 'บทบาทเดิม',
-  employee_status: 'สถานะบุคลากร',
-  status_code: 'รหัสสถานะ',
-  expected_is_active: 'สถานะบัญชีที่ควรเป็น',
-  current_is_active: 'สถานะบัญชีปัจจุบัน',
-  profile_changed_fields: 'ฟิลด์ที่เปลี่ยน',
-  source: 'แหล่งที่มา',
-  sync_batch_id: 'รอบซิงก์',
-  reason: 'เหตุผล',
-};
-
-const getQueueReasonLabel = (reasonCode: string) => {
-  switch (reasonCode) {
-    case 'NEW_USER': return 'ผู้ใช้ใหม่จากรอบซิงก์';
-    case 'ROLE_MISMATCH': return 'บทบาทไม่ตรงกติกา';
-    case 'PROFILE_CHANGED': return 'ข้อมูลบุคลากรเปลี่ยน';
-    case 'INACTIVE_BUT_ACTIVE': return 'บุคลากรไม่พร้อมใช้งาน แต่บัญชีเปิดอยู่';
-    default: return reasonCode;
-  }
-};
-
-const getQueueStatusBadge = (status: AccessReviewQueueStatus) => {
-  switch (status) {
-    case 'OPEN': return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1"><AlertTriangle className="h-3 w-3" /> ค้างตรวจ</Badge>;
-    case 'IN_REVIEW': return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">กำลังตรวจ</Badge>;
-    case 'RESOLVED': return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1"><CheckCircle2 className="h-3 w-3" /> ปิดแล้ว</Badge>;
-    case 'DISMISSED': return <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200">ยกเลิกเคส</Badge>;
-    default: return <Badge variant="outline">{status}</Badge>;
-  }
-};
-
-const formatPayloadValue = (value: unknown): string => {
-  if (value === null || value === undefined || value === '') return '-';
-  if (Array.isArray(value)) return value.map((item) => formatPayloadValue(item)).join(', ');
-  if (typeof value === 'boolean') return value ? 'ใช่' : 'ไม่ใช่';
-  if (typeof value === 'object') return Object.entries(value as Record<string, unknown>).map(([k, v]) => `${k}: ${formatPayloadValue(v)}`).join(' | ');
-  return String(value);
-};
-
-const getPayloadEntries = (payload?: Record<string, unknown> | null) => {
-  if (!payload) return [];
-  return Object.entries(payload)
-    .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    .map(([key, value]) => ({
-      key,
-      label: PAYLOAD_LABELS[key] ?? key,
-      value: formatPayloadValue(value),
-    }));
-};
+type BulkQueueActionDialogState = {
+  action: 'RESOLVE' | 'DISMISS';
+  queueIds: number[];
+  note: string;
+} | null;
 
 export default function AccessReviewPage() {
   const [queuePage, setQueuePage] = useState(1);
@@ -137,8 +82,10 @@ export default function AccessReviewPage() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   const [expandedQueueIds, setExpandedQueueIds] = useState<number[]>([]);
+  const [selectedQueueIds, setSelectedQueueIds] = useState<number[]>([]);
   const [queueRoleDraft, setQueueRoleDraft] = useState<Record<number, string>>({});
   const [roleChangeDialog, setRoleChangeDialog] = useState<RoleChangeDialogState>(null);
+  const [bulkQueueActionDialog, setBulkQueueActionDialog] = useState<BulkQueueActionDialogState>(null);
 
   const queueQuery = useAccessReviewQueue({
     page: queuePage,
@@ -152,10 +99,14 @@ export default function AccessReviewPage() {
   });
 
   const resolveQueueMutation = useResolveAccessReviewQueueItem();
+  const resolveQueueItemsMutation = useResolveAccessReviewQueueItems();
   const updateUserRoleMutation = useUpdateUserRole();
 
   const queueResponse = queueQuery.data;
-  const queueRows = (queueResponse?.rows ?? []) as AccessReviewQueueRow[];
+  const queueRows = useMemo(
+    () => (queueResponse?.rows ?? []) as AccessReviewQueueRow[],
+    [queueResponse?.rows],
+  );
   const queueReasonOptions = queueResponse?.reason_options ?? [];
   const queueTotalPages = Math.max(1, Math.ceil(Number(queueResponse?.total ?? 0) / Number(queueResponse?.limit ?? queueLimit)));
 
@@ -166,33 +117,86 @@ export default function AccessReviewPage() {
     queueBatchFilter.trim() ? { key: 'batch', label: `Batch #${queueBatchFilter.trim()}`, clear: () => { setQueueBatchFilter(''); setQueuePage(1); } } : null,
   ].filter(Boolean) as Array<{ key: string; label: string; clear: () => void }>;
 
-  const getDraftRole = (row: AccessReviewQueueRow): string => queueRoleDraft[row.queue_id] ?? row.current_role;
-  const isExpanded = (queueId: number) => expandedQueueIds.includes(queueId);
-  const toggleExpanded = (queueId: number) => {
+  const expandedQueueIdSet = useMemo(() => new Set(expandedQueueIds), [expandedQueueIds]);
+  const selectedQueueIdSet = useMemo(() => new Set(selectedQueueIds), [selectedQueueIds]);
+  const openQueueIds = useMemo(
+    () => queueRows.filter((row) => row.status === 'OPEN').map((row) => row.queue_id),
+    [queueRows],
+  );
+  const openQueueIdSet = useMemo(() => new Set(openQueueIds), [openQueueIds]);
+  const selectedOpenQueueIds = useMemo(
+    () => selectedQueueIds.filter((queueId) => openQueueIdSet.has(queueId)),
+    [openQueueIdSet, selectedQueueIds],
+  );
+  const isAllOpenRowsSelected = openQueueIds.length > 0 && selectedOpenQueueIds.length === openQueueIds.length;
+  const isPartiallySelected = selectedOpenQueueIds.length > 0 && !isAllOpenRowsSelected;
+  const payloadEntriesByQueueId = useMemo(
+    () =>
+      new Map(queueRows.map((row) => [row.queue_id, getPayloadEntries(row.payload_json)])),
+    [queueRows],
+  );
+  const toggleExpanded = useCallback((queueId: number) => {
     setExpandedQueueIds((prev) => prev.includes(queueId) ? prev.filter((id) => id !== queueId) : [...prev, queueId]);
-  };
+  }, []);
 
-  const handleRoleDraftChange = (queueId: number, role: string) => {
+  const handleRoleDraftChange = useCallback((queueId: number, role: string) => {
     setQueueRoleDraft((prev) => ({ ...prev, [queueId]: role }));
+  }, []);
+
+  const toggleQueueSelection = useCallback((queueId: number, checked: boolean) => {
+    setSelectedQueueIds((prev) =>
+      checked ? [...new Set([...prev, queueId])] : prev.filter((id) => id !== queueId),
+    );
+  }, []);
+
+  const toggleSelectAllOpenRows = (checked: boolean) => {
+    if (!checked) {
+      setSelectedQueueIds((prev) => prev.filter((queueId) => !openQueueIds.includes(queueId)));
+      return;
+    }
+    setSelectedQueueIds((prev) => [...new Set([...prev, ...openQueueIds])]);
   };
 
-  const handleResolveQueue = async (queueId: number, action: 'RESOLVE' | 'DISMISS') => {
+  const handleResolveQueue = useCallback(async (queueId: number, action: 'RESOLVE' | 'DISMISS') => {
     try {
       await resolveQueueMutation.mutateAsync({ id: queueId, payload: { action } });
       toast.success(action === 'RESOLVE' ? 'ปิดเคสเรียบร้อยแล้ว' : 'ยกเลิกเคสเรียบร้อยแล้ว');
-      await queueQuery.refetch();
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'อัปเดตคิวไม่สำเร็จ');
     }
-  };
+  }, [resolveQueueMutation]);
 
-  const handleFixRoleAndResolve = async (row: AccessReviewQueueRow) => {
+  const handleFixRoleAndResolve = useCallback(async (row: AccessReviewQueueRow, nextRole: string) => {
     if (row.status !== 'OPEN') return toast.error('แก้ไขสิทธิ์ได้เฉพาะเคสที่ยังค้างตรวจเท่านั้น');
 
-    const nextRole = getDraftRole(row);
     if (!nextRole || nextRole === row.current_role) return toast.error('กรุณาเลือกบทบาทใหม่ที่แตกต่างจากเดิม');
 
     setRoleChangeDialog({ row, nextRole, reason: '' });
+  }, []);
+
+  const handleBulkQueueAction = async () => {
+    if (!bulkQueueActionDialog || bulkQueueActionDialog.queueIds.length === 0) return;
+
+    try {
+      const result = await resolveQueueItemsMutation.mutateAsync({
+        payload: {
+          queue_ids: bulkQueueActionDialog.queueIds,
+          action: bulkQueueActionDialog.action,
+          note: bulkQueueActionDialog.note.trim() || undefined,
+        },
+      });
+      toast.success(
+        bulkQueueActionDialog.action === 'RESOLVE'
+          ? `ปิดเคสพร้อมกันแล้ว ${formatThaiNumber(result.updatedCount)} รายการ`
+          : `ยกเลิกเคสพร้อมกันแล้ว ${formatThaiNumber(result.updatedCount)} รายการ`,
+      );
+      setSelectedQueueIds((prev) =>
+        prev.filter((queueId) => !bulkQueueActionDialog.queueIds.includes(queueId)),
+      );
+      setBulkQueueActionDialog(null);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'อัปเดตคิวแบบชุดไม่สำเร็จ');
+    }
   };
 
   const submitRoleChangeAndResolve = async () => {
@@ -214,7 +218,6 @@ export default function AccessReviewPage() {
       });
       toast.success('อัปเดตสิทธิ์และปิดเคสเรียบร้อย');
       setRoleChangeDialog(null);
-      await queueQuery.refetch();
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'แก้ไขสิทธิ์ไม่สำเร็จ');
     }
@@ -231,21 +234,23 @@ export default function AccessReviewPage() {
   };
 
   return (
-    <div className="p-6 lg:p-8 space-y-6 max-w-[1400px] mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-primary" /> ตรวจสอบสิทธิ์การใช้งาน (Access Review)
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            จัดการคิวแจ้งเตือนความผิดปกติของสิทธิ์ผู้ใช้งานที่ตรวจพบหลังจากการซิงก์ข้อมูล
-          </p>
-        </div>
-        <Button size="sm" variant="outline" className="gap-2 bg-background shadow-sm" onClick={() => queueQuery.refetch()} disabled={queueQuery.isFetching}>
+    <AdminPageShell
+      eyebrow="Review Queue"
+      title="ตรวจสอบสิทธิ์การใช้งาน"
+      description="จัดการคิวแจ้งเตือนความผิดปกติของสิทธิ์ผู้ใช้งานที่ตรวจพบหลังจากการซิงก์ข้อมูล"
+      icon={ShieldCheck}
+      actions={
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-2 bg-background/90 shadow-sm"
+          onClick={() => queueQuery.refetch()}
+          disabled={queueQuery.isFetching}
+        >
           <RefreshCw className={cn("h-4 w-4 text-muted-foreground", queueQuery.isFetching && "animate-spin")} /> ดึงข้อมูลล่าสุด
         </Button>
-      </div>
+      }
+    >
 
       <Card className="border-border shadow-sm flex flex-col">
         <CardHeader className="border-b bg-muted/5 pb-4">
@@ -274,6 +279,49 @@ export default function AccessReviewPage() {
         </CardHeader>
 
         <CardContent className="p-0 flex-1 flex flex-col">
+          {selectedOpenQueueIds.length > 0 && (
+            <div className="border-b bg-amber-50/60 px-4 py-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="text-sm text-amber-900">
+                  เลือกไว้ <span className="font-semibold">{formatThaiNumber(selectedOpenQueueIds.length)}</span> เคส
+                  <span className="text-amber-700"> จากหน้าปัจจุบัน</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2 border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
+                    onClick={() =>
+                      setBulkQueueActionDialog({
+                        action: 'RESOLVE',
+                        queueIds: selectedOpenQueueIds,
+                        note: '',
+                      })
+                    }
+                  >
+                    <CheckCircle2 className="h-4 w-4" /> ปิดเคสที่เลือก
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2 bg-white"
+                    onClick={() =>
+                      setBulkQueueActionDialog({
+                        action: 'DISMISS',
+                        queueIds: selectedOpenQueueIds,
+                        note: '',
+                      })
+                    }
+                  >
+                    <XCircle className="h-4 w-4" /> ยกเลิกเคสที่เลือก
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedQueueIds([])}>
+                    ล้างการเลือก
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
           {/* Smart Filter Bar */}
           <div className="p-4 border-b bg-muted/10 space-y-4">
             <div className="flex flex-col sm:flex-row gap-3">
@@ -358,6 +406,16 @@ export default function AccessReviewPage() {
             <table className="w-full text-sm text-left">
               <thead className="bg-muted/30 text-xs uppercase text-muted-foreground border-b border-border/60">
                 <tr>
+                  <th className="px-4 py-3 w-[52px]">
+                    <div className="flex items-center justify-center">
+                      <Checkbox
+                        checked={isAllOpenRowsSelected ? true : isPartiallySelected ? 'indeterminate' : false}
+                        onCheckedChange={(checked) => toggleSelectAllOpenRows(checked === true)}
+                        aria-label="เลือกทุกเคสที่เปิดอยู่ในหน้านี้"
+                        disabled={openQueueIds.length === 0}
+                      />
+                    </div>
+                  </th>
                   <th className="px-4 py-3 font-medium whitespace-nowrap w-[25%]">ผู้ใช้งาน</th>
                   <th className="px-4 py-3 font-medium whitespace-nowrap w-[25%]">รายละเอียดปัญหา</th>
                   <th className="px-4 py-3 font-medium whitespace-nowrap">ข้อมูลปัจจุบัน</th>
@@ -369,6 +427,7 @@ export default function AccessReviewPage() {
                 {queueQuery.isLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>
+                      <td className="p-4"><Skeleton className="h-4 w-4 rounded-sm" /></td>
                       <td className="p-4"><div className="space-y-2"><Skeleton className="h-4 w-32" /><Skeleton className="h-3 w-24" /></div></td>
                       <td className="p-4"><div className="space-y-2"><Skeleton className="h-4 w-40" /><Skeleton className="h-5 w-20 rounded-full" /></div></td>
                       <td className="p-4"><div className="space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-4 w-16" /></div></td>
@@ -378,7 +437,7 @@ export default function AccessReviewPage() {
                   ))
                 ) : queueRows.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="h-48 text-center text-muted-foreground">
+                    <td colSpan={6} className="h-48 text-center text-muted-foreground">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <ShieldCheck className="h-10 w-10 text-muted-foreground/30 mb-2" />
                         <p>ไม่พบคิวค้างตรวจตามเงื่อนไขที่กำหนด</p>
@@ -387,149 +446,22 @@ export default function AccessReviewPage() {
                   </tr>
                 ) : (
                   queueRows.map((row) => (
-                    <>
-                      <tr key={row.queue_id} className={cn("hover:bg-muted/30 group transition-colors", isExpanded(row.queue_id) && "bg-muted/10")}>
-                        <td className="p-4 align-top">
-                          <div className="flex items-start gap-2">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="mt-0.5 h-7 w-7 shrink-0 text-muted-foreground md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                              onClick={() => toggleExpanded(row.queue_id)}
-                              aria-label={isExpanded(row.queue_id) ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
-                            >
-                              {isExpanded(row.queue_id) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                            </Button>
-                            <div className="flex flex-col gap-1">
-                              <span className="font-semibold text-foreground">{row.user_name || 'ไม่ระบุชื่อ'}</span>
-                              <span className="text-xs text-muted-foreground font-mono bg-muted/50 w-fit px-1.5 py-0.5 rounded">{row.citizen_id}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-4 align-top">
-                          <div className="flex flex-col items-start gap-2">
-                            <span className="font-medium text-sm text-foreground">{getQueueReasonLabel(row.reason_code)}</span>
-                            {getQueueStatusBadge(row.status)}
-                          </div>
-                        </td>
-                        <td className="p-4 align-top">
-                          <div className="flex flex-col gap-1.5">
-                            <span className="text-sm font-medium">{getRoleLabel(row.current_role)}</span>
-                            <div className="flex items-center gap-1.5">
-                              <div className={cn("h-1.5 w-1.5 rounded-full", row.is_active === 1 ? "bg-emerald-500" : "bg-slate-300")} />
-                              <span className={cn("text-xs", row.is_active === 1 ? "text-foreground" : "text-muted-foreground")}>
-                                {row.is_active === 1 ? 'บัญชีเปิดใช้งาน' : 'บัญชีปิดใช้งาน'}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-4 align-top">
-                          <div className="flex flex-col gap-1 text-xs">
-                            <span className="text-foreground">{formatThaiDateTime(row.last_detected_at, { dateStyle: 'medium', timeStyle: 'short' })}</span>
-                            <span className="text-muted-foreground" title={`First seen: Batch #${row.source_batch_id}`}>Batch: #{row.last_seen_batch_id ?? '-'}</span>
-                          </div>
-                        </td>
-                        <td className="p-4 align-top text-right">
-                          <div className="flex justify-end gap-2 items-center">
-                            {/* Inline Edit Role Only if OPEN */}
-                            {row.status === 'OPEN' && (
-                              <Select value={getDraftRole(row)} onValueChange={(val) => handleRoleDraftChange(row.queue_id, val)} disabled={resolveQueueMutation.isPending || updateUserRoleMutation.isPending}>
-                                <SelectTrigger className="h-8 w-[140px] text-xs bg-background"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  {ROLE_OPTIONS.map((role) => <SelectItem key={role} value={role}>{getRoleLabel(role)}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
-                            )}
-
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuItem asChild>
-                                  <Link href={`/admin/users/${row.user_id}`} className="cursor-pointer">
-                                    <Eye className="mr-2 h-4 w-4 text-muted-foreground" /> ดูรายละเอียดผู้ใช้นี้
-                                  </Link>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => toggleExpanded(row.queue_id)}>
-                                  {isExpanded(row.queue_id) ? <ChevronUp className="mr-2 h-4 w-4 text-muted-foreground" /> : <ChevronDown className="mr-2 h-4 w-4 text-muted-foreground" />}
-                                  {isExpanded(row.queue_id) ? 'ซ่อนรายละเอียดเคส' : 'ดูรายละเอียดเคส'}
-                                </DropdownMenuItem>
-
-                                {row.status === 'OPEN' ? (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => handleFixRoleAndResolve(row)} className="text-primary focus:text-primary font-medium">
-                                      <UserCog className="mr-2 h-4 w-4" /> บันทึกสิทธิ์ + ปิดเคส
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleResolveQueue(row.queue_id, 'RESOLVE')} className="text-emerald-600 focus:text-emerald-600">
-                                      <CheckCircle2 className="mr-2 h-4 w-4" /> ปิดเคส (ข้อมูลถูกแล้ว)
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => handleResolveQueue(row.queue_id, 'DISMISS')} className="text-muted-foreground">
-                                      <XCircle className="mr-2 h-4 w-4" /> ยกเลิกเคสนี้
-                                    </DropdownMenuItem>
-                                  </>
-                                ) : null}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </td>
-                      </tr>
-                      {/* Expanded Detail Row */}
-                      {isExpanded(row.queue_id) && (
-                        <tr className="bg-muted/10 border-b">
-                          <td colSpan={5} className="px-14 py-5">
-                            <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-                              {/* Left detail column */}
-                              <div className="space-y-4">
-                                <div>
-                                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5"><Database className="h-3 w-3" /> ข้อมูลเปรียบเทียบจากระบบตรวจจับ (Payload)</p>
-                                  {getPayloadEntries(row.payload_json).length > 0 ? (
-                                    <div className="grid gap-2 sm:grid-cols-2">
-                                      {getPayloadEntries(row.payload_json).map((entry) => (
-                                        <div key={entry.key} className="rounded-md border bg-background px-3 py-2 shadow-sm">
-                                          <p className="text-[10px] text-muted-foreground">{entry.label}</p>
-                                          <p className="mt-0.5 break-words text-sm font-medium text-foreground">{entry.value}</p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <div className="rounded-lg border border-dashed bg-background px-3 py-4 text-sm text-muted-foreground text-center">
-                                      ไม่มีรายละเอียดเพิ่มเติมจาก Payload ของคิวนี้
-                                    </div>
-                                  )}
-                                </div>
-
-                                {row.note && (
-                                  <div>
-                                     <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5"><AlertTriangle className="h-3 w-3" /> หมายเหตุเพิ่มเติม</p>
-                                     <div className="rounded-md border bg-amber-50/50 px-3 py-2 shadow-sm text-sm text-amber-800">
-                                       {row.note}
-                                     </div>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Right recommendation column */}
-                              <div className="space-y-3">
-                                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 shadow-sm">
-                                  <p className="text-xs font-semibold uppercase tracking-wide text-primary flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5" /> แนวทางจัดการ</p>
-                                  <ul className="mt-2.5 space-y-2.5 text-sm text-foreground/80 list-outside pl-4">
-                                    <li className="leading-relaxed">หากบทบาทปัจจุบัน <span className="font-semibold text-foreground">ไม่ถูกต้อง</span> ให้เลือกบทบาทใหม่ใน Dropdown ด้านบน แล้วกด <strong>“บันทึกสิทธิ์ + ปิดเคส”</strong> </li>
-                                    <li className="leading-relaxed">หากตรวจสอบแล้วข้อมูลปัจจุบัน <span className="font-semibold text-foreground">ถูกต้องอยู่แล้ว</span> ให้กดปุ่ม 3 จุด เลือก <strong>“ปิดเคส (ข้อมูลถูกแล้ว)”</strong></li>
-                                    <li className="leading-relaxed text-muted-foreground text-xs">หากเคสนี้เป็นข้อมูลซ้ำซ้อนให้ใช้ “ยกเลิกเคสนี้” (Dismiss)</li>
-                                  </ul>
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </>
+                    <AccessReviewQueueRowItem
+                      key={row.queue_id}
+                      row={row}
+                      isExpanded={expandedQueueIdSet.has(row.queue_id)}
+                      isSelected={selectedQueueIdSet.has(row.queue_id)}
+                      draftRole={queueRoleDraft[row.queue_id] ?? row.current_role}
+                      payloadEntries={payloadEntriesByQueueId.get(row.queue_id) ?? []}
+                      isActionPending={
+                        resolveQueueMutation.isPending || updateUserRoleMutation.isPending
+                      }
+                      onToggleExpanded={toggleExpanded}
+                      onToggleSelection={toggleQueueSelection}
+                      onRoleDraftChange={handleRoleDraftChange}
+                      onFixRoleAndResolve={handleFixRoleAndResolve}
+                      onResolveQueue={handleResolveQueue}
+                    />
                   ))
                 )}
               </tbody>
@@ -631,6 +563,73 @@ export default function AccessReviewPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+
+      <Dialog
+        open={!!bulkQueueActionDialog}
+        onOpenChange={(open) => {
+          if (!open) setBulkQueueActionDialog(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-primary">
+              {bulkQueueActionDialog?.action === 'RESOLVE' ? (
+                <CheckCircle2 className="h-5 w-5" />
+              ) : (
+                <XCircle className="h-5 w-5" />
+              )}
+              {bulkQueueActionDialog?.action === 'RESOLVE' ? 'ยืนยันการปิดหลายเคส' : 'ยืนยันการยกเลิกหลายเคส'}
+            </DialogTitle>
+            <DialogDescription>
+              การดำเนินการนี้จะอัปเดตคิวที่เลือกพร้อมกันในครั้งเดียว และบันทึกประวัติให้ทุกเคส
+            </DialogDescription>
+          </DialogHeader>
+
+          {bulkQueueActionDialog && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border bg-muted/10 px-4 py-3 text-sm">
+                จะ{bulkQueueActionDialog.action === 'RESOLVE' ? 'ปิด' : 'ยกเลิก'}ทั้งหมด{' '}
+                <span className="font-semibold">{formatThaiNumber(bulkQueueActionDialog.queueIds.length)}</span> เคส
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bulk-queue-note">หมายเหตุเพิ่มเติม</Label>
+                <Textarea
+                  id="bulk-queue-note"
+                  rows={3}
+                  value={bulkQueueActionDialog.note}
+                  onChange={(event) =>
+                    setBulkQueueActionDialog((prev) =>
+                      prev ? { ...prev, note: event.target.value } : prev,
+                    )
+                  }
+                  placeholder="เช่น ตรวจสอบแล้วข้อมูลถูกต้องทั้งหมดตามกติกาใหม่"
+                  className="resize-none"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setBulkQueueActionDialog(null)}>
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={handleBulkQueueAction}
+              disabled={resolveQueueItemsMutation.isPending}
+              className="gap-2"
+            >
+              {resolveQueueItemsMutation.isPending ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : bulkQueueActionDialog?.action === 'RESOLVE' ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <XCircle className="h-4 w-4" />
+              )}
+              {bulkQueueActionDialog?.action === 'RESOLVE' ? 'ยืนยันปิดหลายเคส' : 'ยืนยันยกเลิกหลายเคส'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </AdminPageShell>
   );
 }

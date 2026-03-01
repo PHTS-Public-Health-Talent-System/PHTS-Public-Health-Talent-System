@@ -181,6 +181,33 @@ export async function resolveQueueItem(
 }
 
 /**
+ * Resolve or dismiss multiple queue items
+ * POST /api/access-review/queue/bulk-resolve
+ */
+export async function bulkResolveQueueItems(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const reviewerId = req.user!.userId;
+    const { queue_ids, action, note } = req.body as {
+      queue_ids: number[];
+      action: "RESOLVE" | "DISMISS";
+      note?: string;
+    };
+    const result = await accessReviewService.resolveAccessReviewQueueItems({
+      queueIds: queue_ids,
+      actorId: reviewerId,
+      action,
+      note: note ?? null,
+    });
+    res.json({ success: true, data: result, message: "Queue items updated" });
+  } catch (error: any) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+}
+
+/**
  * Update review result for a user
  * PUT /api/access-review/items/:id
  */

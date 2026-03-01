@@ -12,6 +12,7 @@ import { UserRole } from '@/types/auth.js';
 import * as accessReviewController from '@/modules/access-review/access-review.controller.js';
 import {
   autoReviewCycleSchema,
+  bulkResolveQueueItemsSchema,
   getCyclesSchema,
   getCycleSchema,
   getItemsSchema,
@@ -69,6 +70,12 @@ router.get(
 );
 
 // Resolve/dismiss queue item
+router.post(
+  "/queue/bulk-resolve",
+  validate(bulkResolveQueueItemsSchema),
+  accessReviewController.bulkResolveQueueItems,
+);
+
 router.post(
   "/queue/:id/resolve",
   validate(resolveQueueItemSchema),

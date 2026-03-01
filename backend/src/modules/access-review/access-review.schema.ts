@@ -112,8 +112,17 @@ export const resolveQueueItemSchema = z.object({
   }),
 });
 
+export const bulkResolveQueueItemsSchema = z.object({
+  body: z.object({
+    queue_ids: z.array(z.number().int().positive()).min(1).max(200),
+    action: z.enum(["RESOLVE", "DISMISS"]),
+    note: z.string().max(500).optional(),
+  }),
+});
+
 export type GetQueueQuery = z.infer<typeof getQueueSchema>["query"];
 export type GetQueueEventsParams = z.infer<typeof getQueueEventsSchema>["params"];
 export type GetQueueEventsQuery = z.infer<typeof getQueueEventsSchema>["query"];
 export type ResolveQueueItemParams = z.infer<typeof resolveQueueItemSchema>["params"];
 export type ResolveQueueItemBody = z.infer<typeof resolveQueueItemSchema>["body"];
+export type BulkResolveQueueItemsBody = z.infer<typeof bulkResolveQueueItemsSchema>["body"];

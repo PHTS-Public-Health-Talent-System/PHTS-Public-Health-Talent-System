@@ -14,14 +14,15 @@ import {
   CheckCircle2,
   Inbox,
 } from 'lucide-react';
-import { PageHeader } from '@/components/page-header';
+import { AdminPageShell } from '@/components/admin/admin-page-shell';
 import { StatCards, type StatItem } from '@/components/stat-cards';
 import { DataTableCard } from '@/components/data-table-card';
 import { QuickActions } from '@/components/quick-actions';
-import { useMaintenanceStatus, useSearchUsers, useSystemJobStatus } from '@/features/system/hooks';
-import { useAccessReviewQueue } from '@/features/access-review/hooks';
-import { useAuditSummary } from '@/features/audit/hooks';
-import { useAllAnnouncements } from '@/features/announcement/hooks';
+import { useSearchUsers } from '@/features/system/users';
+import { useMaintenanceStatus, useSystemJobStatus } from '@/features/system/runtime';
+import { useAccessReviewQueue } from '@/features/access-review/queue';
+import { useAuditSummary } from '@/features/audit/summary';
+import { useAllAnnouncements } from '@/features/announcement/listing';
 import { Badge } from '@/components/ui/badge';
 import { formatThaiDate, formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
 import { cn } from '@/lib/utils';
@@ -156,11 +157,12 @@ export default function AdminDashboardPage() {
   );
 
   return (
-    <div className="p-6 lg:p-8 space-y-8 max-w-[1400px] mx-auto">
-      <PageHeader
-        title="แดชบอร์ดผู้ดูแลระบบ"
-        description="ภาพรวมระบบ ความปลอดภัย และการจัดการผู้ใช้งาน"
-      />
+    <AdminPageShell
+      eyebrow="Admin Overview"
+      title="แดชบอร์ดผู้ดูแลระบบ"
+      description="ภาพรวมระบบ ความปลอดภัย การซิงก์ และรายการที่ผู้ดูแลควรติดตามก่อนกระทบงานจริง"
+      icon={Shield}
+    >
 
       {/* Stats Overview */}
       <StatCards stats={stats} />
@@ -384,6 +386,6 @@ export default function AdminDashboardPage() {
 
       {/* Quick Actions */}
       <QuickActions actions={quickActions} />
-    </div>
+    </AdminPageShell>
   );
 }
