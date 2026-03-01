@@ -246,8 +246,9 @@ export const setEligibilityGapRange = (
   missingRanges: { start: string; end: string }[],
 ): void => {
   if (missingRanges.length === 1) {
-    agg.startDate = missingRanges[0]!.start;
-    agg.endDate = missingRanges[0]!.end;
+    const [onlyRange] = missingRanges;
+    agg.startDate = onlyRange.start;
+    agg.endDate = onlyRange.end;
     return;
   }
   agg.startDate = null;

@@ -217,7 +217,7 @@ export function getEnvNumber(
  */
 export function getEnvBoolean(
   key: string,
-  defaultValue: boolean = false,
+  defaultValue = false,
 ): boolean {
   const value = process.env[key];
   if (!value) return defaultValue;

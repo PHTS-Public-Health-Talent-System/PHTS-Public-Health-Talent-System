@@ -714,7 +714,7 @@ export class AccessReviewRepository {
     };
   }
 
-  static async getReviewQueueEvents(queueId: number, limit: number = 100): Promise<Array<Record<string, unknown>>> {
+  static async getReviewQueueEvents(queueId: number, limit = 100): Promise<Array<Record<string, unknown>>> {
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT event_id, queue_id, event_type, batch_id, actor_id, event_payload, created_at
        FROM access_review_queue_events

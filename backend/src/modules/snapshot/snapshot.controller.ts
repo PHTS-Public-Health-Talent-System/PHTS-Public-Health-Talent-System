@@ -42,7 +42,12 @@ export async function freezePeriod(
 ): Promise<void> {
   try {
     const periodId = Number.parseInt(req.params.id, 10);
-    const userId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const userId = user.userId;
 
     await snapshotService.freezePeriod(periodId, userId);
     res.json({ success: true, message: "Period frozen successfully" });
@@ -61,7 +66,12 @@ export async function unfreezePeriod(
 ): Promise<void> {
   try {
     const periodId = Number.parseInt(req.params.id, 10);
-    const userId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const userId = user.userId;
     const { reason } = req.body;
 
     await snapshotService.unfreezePeriod(periodId, userId, reason);

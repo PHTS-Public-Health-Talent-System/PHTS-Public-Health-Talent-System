@@ -54,10 +54,12 @@ export class PayrollCalculationService {
     returnReportRows.forEach((row) => {
       const citizenId = leaveIdToCitizen.get(row.leave_record_id);
       if (!citizenId) return;
-      if (!returnReportMap.has(citizenId)) {
-        returnReportMap.set(citizenId, []);
+      let reportRows = returnReportMap.get(citizenId);
+      if (!reportRows) {
+        reportRows = [];
+        returnReportMap.set(citizenId, reportRows);
       }
-      returnReportMap.get(citizenId)!.push(row);
+      reportRows.push(row);
     });
     return returnReportMap;
   }
@@ -274,8 +276,12 @@ function buildGroupMap(
   for (const row of rows) {
     transform?.(row);
     const key = row.citizen_id;
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(row);
+    let group = map.get(key);
+    if (!group) {
+      group = [];
+      map.set(key, group);
+    }
+    group.push(row);
   }
   return map;
 }

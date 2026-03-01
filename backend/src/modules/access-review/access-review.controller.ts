@@ -163,7 +163,12 @@ export async function resolveQueueItem(
 ): Promise<void> {
   try {
     const queueId = Number.parseInt(req.params.id, 10);
-    const reviewerId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const reviewerId = user.userId;
     const { action, note } = req.body as {
       action: "RESOLVE" | "DISMISS";
       note?: string;
@@ -189,7 +194,12 @@ export async function bulkResolveQueueItems(
   res: Response<ApiResponse>,
 ): Promise<void> {
   try {
-    const reviewerId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const reviewerId = user.userId;
     const { queue_ids, action, note } = req.body as {
       queue_ids: number[];
       action: "RESOLVE" | "DISMISS";
@@ -218,7 +228,12 @@ export async function updateItem(
   try {
     const itemId = Number.parseInt(req.params.id, 10);
     const { result, note } = req.body;
-    const reviewerId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const reviewerId = user.userId;
 
     if (!result || !Object.values(ReviewResult).includes(result)) {
       res.status(400).json({ success: false, error: "Invalid review result" });
@@ -247,7 +262,12 @@ export async function completeCycle(
 ): Promise<void> {
   try {
     const cycleId = Number.parseInt(req.params.id, 10);
-    const completedBy = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const completedBy = user.userId;
     const { autoKeepPending, note } = (req.body ?? {}) as {
       autoKeepPending?: boolean;
       note?: string;
@@ -273,7 +293,12 @@ export async function autoReviewCycle(
 ): Promise<void> {
   try {
     const cycleId = Number.parseInt(req.params.id, 10);
-    const reviewerId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const reviewerId = user.userId;
     const { disableInactive } = (req.body ?? {}) as {
       disableInactive?: boolean;
     };

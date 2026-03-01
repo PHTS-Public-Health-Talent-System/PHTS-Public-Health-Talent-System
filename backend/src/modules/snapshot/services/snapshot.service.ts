@@ -200,7 +200,7 @@ function calculateDepartmentSummary(
     .sort((a, b) => b.amount - a.amount);
 }
 
-export async function processSnapshotOutboxBatch(limit: number = 50): Promise<{
+export async function processSnapshotOutboxBatch(limit = 50): Promise<{
   processed: number;
   sent: number;
   failed: number;

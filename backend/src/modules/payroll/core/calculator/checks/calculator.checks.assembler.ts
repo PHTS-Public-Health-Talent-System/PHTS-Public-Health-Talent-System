@@ -216,8 +216,8 @@ export const addLicenseEvidence = (
   checkAggs: Map<PayrollCheckCode, CheckAgg>,
   licenses: LicenseRow[],
 ): void => {
-  if (!checkAggs.has("NO_LICENSE")) return;
-  const agg = checkAggs.get("NO_LICENSE")!;
+  const agg = checkAggs.get("NO_LICENSE");
+  if (!agg) return;
   for (const lic of licenses) {
     pushEvidence(
       agg,

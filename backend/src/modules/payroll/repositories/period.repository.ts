@@ -138,7 +138,7 @@ export class PayrollPeriodRepository {
 
   static async findPeriodsByStatus(
     status: PeriodStatus,
-    limit: number = 10,
+    limit = 10,
   ): Promise<PayPeriod[]> {
     const safeLimit = Math.max(1, Math.min(limit, 100));
     const [rows] = await db.query<RowDataPacket[]>(

@@ -138,11 +138,14 @@ describe('access review role mismatch policy', () => {
           action: 'RESOLVE' | 'DISMISS';
           note?: string | null;
         }) => Promise<{ updatedCount: number }>;
-      }).resolveAccessReviewQueueItems;
+    }).resolveAccessReviewQueueItems;
 
     expect(resolveMany).toBeDefined();
+    if (!resolveMany) {
+      throw new Error('resolveAccessReviewQueueItems should be defined');
+    }
 
-    const result = await resolveMany!({
+    const result = await resolveMany({
       queueIds: [101, 102, 103],
       actorId: 7,
       action: 'RESOLVE',

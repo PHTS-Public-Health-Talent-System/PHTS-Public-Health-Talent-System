@@ -55,7 +55,7 @@ export class PayrollRepository {
 
   static async findPeriodsByStatus(
     status: PeriodStatus,
-    limit: number = 10,
+    limit = 10,
   ): Promise<PayPeriod[]> {
     return PayrollPeriodRepository.findPeriodsByStatus(status, limit);
   }

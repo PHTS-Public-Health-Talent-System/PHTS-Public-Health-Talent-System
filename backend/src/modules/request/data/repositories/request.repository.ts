@@ -19,7 +19,7 @@ export class RequestRepository {
   // --- READ Operations ---
 
   async findEligibilityList(
-    activeOnly: boolean = true,
+    activeOnly = true,
     connection?: PoolConnection,
   ): Promise<RowDataPacket[]> {
     const db = this.getDb(connection);

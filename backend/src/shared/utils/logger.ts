@@ -39,7 +39,7 @@ class Logger {
   private readonly minLevel: LogLevel;
   private readonly module: string;
 
-  constructor(module: string = "App") {
+  constructor(module = "App") {
     this.module = module;
     const envLevel = process.env.LOG_LEVEL || "info";
     this.minLevel = LogLevel[envLevel.toUpperCase() as keyof typeof LogLevel] ?? LogLevel.INFO;

@@ -25,8 +25,8 @@ export class NotificationService {
     userId: number,
     title: string,
     message: string,
-    link: string = "#",
-    type: string = "SYSTEM",
+    link = "#",
+    type = "SYSTEM",
     connection?: PoolConnection,
   ): Promise<number> {
     const notificationType =
@@ -51,8 +51,8 @@ export class NotificationService {
     role: string,
     title: string,
     message: string,
-    link: string = "#",
-    type: NotificationType = NotificationType.SYSTEM,
+    link = "#",
+    type = NotificationType.SYSTEM,
     connection?: PoolConnection,
   ): Promise<number> {
     return NotificationOutboxService.enqueue(
@@ -107,7 +107,7 @@ export class NotificationService {
    */
   static async getMyNotifications(
     userId: number,
-    limit: number = 20,
+    limit = 20,
   ): Promise<NotificationWithCount> {
     const [notifications, unreadCount] = await Promise.all([
       NotificationRepository.findByUserId(userId, limit),
@@ -194,7 +194,7 @@ export class NotificationService {
   /**
    * Delete old notifications (cleanup job)
    */
-  static async cleanupOldNotifications(days: number = 90): Promise<number> {
+  static async cleanupOldNotifications(days = 90): Promise<number> {
     return NotificationRepository.deleteOlderThan(days);
   }
 }

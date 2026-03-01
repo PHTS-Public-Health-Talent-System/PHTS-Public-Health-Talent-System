@@ -396,9 +396,10 @@ export class RequestCommandService {
           effective_date: new Date(effectiveDateStr),
           status: RequestStatus.DRAFT,
           current_step: 1,
-          submission_data: this.buildSubmissionDataJson(data)
-            ? JSON.parse(this.buildSubmissionDataJson(data)!)
-            : null,
+          submission_data: (() => {
+            const submissionDataJson = this.buildSubmissionDataJson(data);
+            return submissionDataJson ? JSON.parse(submissionDataJson) : null;
+          })(),
         },
         connection,
       );
@@ -586,7 +587,10 @@ export class RequestCommandService {
       });
 
       const updatedEntity = await requestRepository.findById(requestId);
-      return mapRequestRow(updatedEntity!) as PTSRequest;
+      if (!updatedEntity) {
+        throw new Error("Request not found after creation");
+      }
+      return mapRequestRow(updatedEntity) as PTSRequest;
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -777,7 +781,10 @@ export class RequestCommandService {
       await connection.commit();
 
       const updatedEntity = await requestRepository.findById(requestId);
-      return mapRequestRow(updatedEntity!) as PTSRequest;
+      if (!updatedEntity) {
+        throw new Error("Request not found after cancellation update");
+      }
+      return mapRequestRow(updatedEntity) as PTSRequest;
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -838,7 +845,7 @@ export class RequestCommandService {
       }
 
       const rate = await requestRepository.findRateByDetails(
-        professionCode!,
+        professionCode,
         data.group_no,
         data.item_no ?? null,
         data.sub_item_no ?? null,

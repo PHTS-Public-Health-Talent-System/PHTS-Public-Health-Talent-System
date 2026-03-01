@@ -17,8 +17,8 @@ export class NotificationRepository {
     userId: number,
     title: string,
     message: string,
-    link: string = "#",
-    type: NotificationType = NotificationType.SYSTEM,
+    link = "#",
+    type = NotificationType.SYSTEM,
     conn?: PoolConnection,
   ): Promise<number> {
     const executor = conn ?? db;
@@ -71,7 +71,7 @@ export class NotificationRepository {
 
   static async findByUserId(
     userId: number,
-    limit: number = 20,
+    limit = 20,
     conn?: PoolConnection,
   ): Promise<Notification[]> {
     const safeLimit = Math.max(1, Math.min(limit, 100));

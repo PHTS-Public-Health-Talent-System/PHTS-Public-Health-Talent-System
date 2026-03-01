@@ -385,7 +385,10 @@ export class RequestApprovalService {
       await connection.commit();
 
       const updatedEntity = await requestRepository.findById(requestId);
-      return mapRequestRow(updatedEntity!) as PTSRequest;
+      if (!updatedEntity) {
+        throw new Error("Request not found after approval update");
+      }
+      return mapRequestRow(updatedEntity) as PTSRequest;
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -502,7 +505,10 @@ export class RequestApprovalService {
       await connection.commit();
 
       const updatedEntity = await requestRepository.findById(requestId);
-      return mapRequestRow(updatedEntity!) as PTSRequest;
+      if (!updatedEntity) {
+        throw new Error("Request not found after reject update");
+      }
+      return mapRequestRow(updatedEntity) as PTSRequest;
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -615,7 +621,10 @@ export class RequestApprovalService {
       await connection.commit();
 
       const updatedEntity = await requestRepository.findById(requestId);
-      return mapRequestRow(updatedEntity!) as PTSRequest;
+      if (!updatedEntity) {
+        throw new Error("Request not found after return update");
+      }
+      return mapRequestRow(updatedEntity) as PTSRequest;
     } catch (error) {
       await connection.rollback();
       throw error;

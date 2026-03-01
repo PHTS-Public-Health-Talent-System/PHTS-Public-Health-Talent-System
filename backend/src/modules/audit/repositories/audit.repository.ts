@@ -89,7 +89,7 @@ export class AuditRepository {
   static async findByEntity(
     entityType: string,
     entityId: number,
-    limit: number = 100,
+    limit = 100,
     conn?: PoolConnection,
   ): Promise<AuditEvent[]> {
     const executor = conn ?? db;

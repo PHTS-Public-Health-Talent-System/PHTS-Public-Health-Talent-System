@@ -273,8 +273,12 @@ async function processApprovalTimelineRows(
     }
 
     const duration = await calculateBusinessDaysFast(lastEventTime, createdAt, holidays);
-    if (!state.durationsByStep.has(step)) state.durationsByStep.set(step, []);
-    state.durationsByStep.get(step)!.push(duration);
+    let durations = state.durationsByStep.get(step);
+    if (!durations) {
+      durations = [];
+      state.durationsByStep.set(step, durations);
+    }
+    durations.push(duration);
     state.totalsByStep.set(step, (state.totalsByStep.get(step) ?? 0) + 1);
     const slaDays = configMap.get(step)?.sla_days ?? 0;
     if (slaDays > 0 && duration <= slaDays) {
@@ -319,8 +323,12 @@ async function buildStepStats(
   const timelineByRequest = new Map<number, any[]>();
   approvals.forEach((row) => {
     const requestId = Number(row.request_id);
-    if (!timelineByRequest.has(requestId)) timelineByRequest.set(requestId, []);
-    timelineByRequest.get(requestId)!.push(row);
+    let timeline = timelineByRequest.get(requestId);
+    if (!timeline) {
+      timeline = [];
+      timelineByRequest.set(requestId, timeline);
+    }
+    timeline.push(row);
   });
 
   const state = await aggregateStepDurations(timelineByRequest, holidays, configMap);

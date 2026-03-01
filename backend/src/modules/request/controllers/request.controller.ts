@@ -610,19 +610,21 @@ export class RequestController {
   cancelRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
      if (!req.user) throw new AuthenticationError("Unauthorized access");
      assertNotAdmin(req);
+     const user = req.user;
      const requestId = parseInt(req.params.id);
-     await requestCommandService.cancelRequest(requestId, req.user!.userId);
+     await requestCommandService.cancelRequest(requestId, user.userId);
      res.json({ success: true, message: "Cancelled" });
   });
 
   submitRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
      if (!req.user) throw new AuthenticationError("Unauthorized access");
      assertNotAdmin(req);
+     const user = req.user;
      const requestId = parseInt(req.params.id);
      const result = await requestCommandService.submitRequest(
        requestId,
-       req.user!.userId,
-       req.user!.role,
+       user.userId,
+       user.role,
      );
      res.json({ success: true, message: "Submitted", data: result });
   });

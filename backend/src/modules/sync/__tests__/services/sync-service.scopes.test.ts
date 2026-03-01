@@ -48,7 +48,7 @@ describe('buildScopesFromSpecialPosition', () => {
         syncSpecialPositionScopes: (conn: unknown, deps: Record<string, unknown>) => Promise<void>;
       }
     ).syncSpecialPositionScopes;
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     const conn = {
       query: jest.fn().mockResolvedValue([
         [

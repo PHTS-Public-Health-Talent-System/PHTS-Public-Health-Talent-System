@@ -102,13 +102,13 @@ export class RequestQueryService {
   }
 
   async getEligibilityList(
-    activeOnly: boolean = true,
+    activeOnly = true,
   ): Promise<Record<string, unknown>[]> {
     return requestRepository.findEligibilityList(activeOnly);
   }
 
   async getEligibilitySummary(
-    activeOnly: boolean = true,
+    activeOnly = true,
   ): Promise<{
     updated_at: string | null;
     total_people: number;

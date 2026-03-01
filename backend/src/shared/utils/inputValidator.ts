@@ -126,7 +126,7 @@ export function validatePassword(password: string): void {
 /**
  * Validate name fields
  */
-export function validateName(name: string, fieldName: string = "name"): void {
+export function validateName(name: string, fieldName = "name"): void {
   validateLength(name, fieldName, FIELD_LIMITS.NAME);
   if (name.trim().length === 0) {
     throw new Error(`${fieldName} cannot be empty`);
@@ -155,7 +155,7 @@ export function validateEmail(email: string): void {
 /**
  * Validate comment/note fields
  */
-export function validateComment(comment: string, fieldName: string = "comment"): void {
+export function validateComment(comment: string, fieldName = "comment"): void {
   if (!comment || comment.trim().length === 0) {
     throw new Error(`${fieldName} cannot be empty`);
   }

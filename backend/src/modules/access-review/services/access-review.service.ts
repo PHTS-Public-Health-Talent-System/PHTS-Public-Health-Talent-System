@@ -196,15 +196,19 @@ async function buildRiskDetectionCandidates(
 
       const profileSyncedAt = toDateOrNull(user.profile_synced_at);
       const changedByLatestSync =
-        isUserActive &&
-        Boolean(syncTimestamp) &&
-        Boolean(profileSyncedAt) &&
-        profileSyncedAt!.getTime() >= syncTimestamp!.getTime();
+        Boolean(
+          isUserActive &&
+            syncTimestamp &&
+            profileSyncedAt &&
+            profileSyncedAt.getTime() >= syncTimestamp.getTime(),
+        );
       const userCreatedAt = toDateOrNull(user.created_at);
       const isNewUser =
-        Boolean(syncTimestamp) &&
-        Boolean(userCreatedAt) &&
-        userCreatedAt!.getTime() >= syncTimestamp!.getTime();
+        Boolean(
+          syncTimestamp &&
+            userCreatedAt &&
+            userCreatedAt.getTime() >= syncTimestamp.getTime(),
+        );
 
       const reasons: AccessReviewReasonCode[] = [];
       if (isNewUser) reasons.push(AccessReviewReasonCode.NEW_USER);

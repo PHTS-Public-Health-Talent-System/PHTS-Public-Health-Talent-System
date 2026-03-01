@@ -48,7 +48,7 @@ export class NotificationOutboxService {
     return NotificationOutboxRepository.enqueue(payload, conn);
   }
 
-  static async processBatch(limit: number = 100): Promise<{
+  static async processBatch(limit = 100): Promise<{
     processed: number;
     sent: number;
     failed: number;

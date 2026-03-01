@@ -54,7 +54,7 @@ export class BackupRepository {
     );
   }
 
-  static async getBackupHistory(limit: number = 20): Promise<
+  static async getBackupHistory(limit = 20): Promise<
     Array<{
       job_id: number;
       trigger_source: string;

@@ -38,8 +38,12 @@ const attachReturnReportEvents = (
   for (const event of eventRows) {
     const leaveId = Number(event.leave_record_id);
     if (!Number.isFinite(leaveId)) continue;
-    if (!eventMap.has(leaveId)) eventMap.set(leaveId, []);
-    eventMap.get(leaveId)!.push({
+    let leaveEvents = eventMap.get(leaveId);
+    if (!leaveEvents) {
+      leaveEvents = [];
+      eventMap.set(leaveId, leaveEvents);
+    }
+    leaveEvents.push({
       report_date: String(event.report_date),
       resume_date:
         event.resume_date === null || event.resume_date === undefined

@@ -85,7 +85,10 @@ export class PayrollWorkflowService {
     });
 
     const created = await PayrollRepository.findPeriodById(insertId);
-    return created!;
+    if (!created) {
+      throw new Error("Payroll period not found after creation");
+    }
+    return created;
   }
 
   static async updatePeriodStatus(

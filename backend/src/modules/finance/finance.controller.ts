@@ -127,7 +127,12 @@ export async function markAsPaid(
   try {
     const { payoutId } = req.params as unknown as MarkAsPaidParams;
     const { comment } = req.body as MarkAsPaidBody;
-    const userId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const userId = user.userId;
 
     await markPayoutAsPaid(
       Number.parseInt(payoutId, 10),
@@ -150,7 +155,12 @@ export async function batchMarkAsPaid(
 ): Promise<void> {
   try {
     const { payoutIds } = req.body as BatchMarkAsPaidBody;
-    const userId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const userId = user.userId;
 
     const result = await batchMarkAsPaidData(payoutIds, userId);
     res.json({ success: true, data: result });
@@ -170,7 +180,12 @@ export async function cancelPayout(
   try {
     const { payoutId } = req.params as unknown as CancelPayoutParams;
     const { reason } = req.body as CancelPayoutBody;
-    const userId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const userId = user.userId;
 
     await cancelPayoutData(
       Number.parseInt(payoutId, 10),

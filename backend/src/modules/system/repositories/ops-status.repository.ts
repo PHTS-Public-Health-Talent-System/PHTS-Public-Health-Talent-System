@@ -16,7 +16,7 @@ export class OpsStatusRepository {
     }));
   }
 
-  static async findLatestNotificationOutbox(limit: number = 20): Promise<
+  static async findLatestNotificationOutbox(limit = 20): Promise<
     Array<{
       outbox_id: number;
       status: string;
@@ -52,7 +52,7 @@ export class OpsStatusRepository {
     return Number((rows[0] as { count?: number } | undefined)?.count ?? 0);
   }
 
-  static async findLatestOpenPayrollPeriods(limit: number = 5): Promise<
+  static async findLatestOpenPayrollPeriods(limit = 5): Promise<
     Array<{
       period_id: number;
       period_year: number;
@@ -138,7 +138,7 @@ export class OpsStatusRepository {
     }));
   }
 
-  static async findLatestSnapshotOutbox(limit: number = 20): Promise<
+  static async findLatestSnapshotOutbox(limit = 20): Promise<
     Array<{
       outbox_id: number;
       period_id: number;

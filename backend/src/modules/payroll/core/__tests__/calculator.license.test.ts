@@ -36,7 +36,7 @@ const buildWeekdayOneDayLeaves = (
   idStart: number,
 ) => {
   const rows: any[] = [];
-  let cursor = new Date(startDate);
+  const cursor = new Date(startDate);
   let id = idStart;
   while (rows.length < count) {
     const day = cursor.getDay();

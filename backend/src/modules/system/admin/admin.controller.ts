@@ -71,7 +71,7 @@ export const updateUserRole = asyncHandler(
 export const toggleMaintenanceMode = asyncHandler(
   async (req: Request, res: Response) => {
     const { enabled } = req.body as ToggleMaintenanceModeBody;
-    if (Boolean(enabled)) {
+    if (enabled) {
       await enableMaintenanceMode();
     } else {
       await disableMaintenanceMode();

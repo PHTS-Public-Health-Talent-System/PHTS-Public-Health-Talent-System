@@ -34,8 +34,9 @@ const attachReturnReportEvents = (
   for (const event of eventRows) {
     const leaveId = Number(event.leave_record_id);
     if (!Number.isFinite(leaveId)) continue;
-    if (!eventMap.has(leaveId)) eventMap.set(leaveId, []);
-    eventMap.get(leaveId)!.push({
+    const events = eventMap.get(leaveId) ?? [];
+    if (!eventMap.has(leaveId)) eventMap.set(leaveId, events);
+    events.push({
       report_date: formatLocalDate(event.report_date),
       resume_date: formatLocalDate(event.resume_date ?? null) || null,
       resume_study_institution: event.resume_study_institution ?? null,

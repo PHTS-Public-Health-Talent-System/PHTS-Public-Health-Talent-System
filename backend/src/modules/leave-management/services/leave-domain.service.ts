@@ -621,8 +621,12 @@ export async function getLeaveQuotaStatus(citizenId: string, fiscalYear: number)
   for (const event of returnEvents) {
     const leaveId = Number((event as any).leave_record_id);
     if (!Number.isFinite(leaveId)) continue;
-    if (!eventMap.has(leaveId)) eventMap.set(leaveId, []);
-    eventMap.get(leaveId)!.push({
+    let leaveEvents = eventMap.get(leaveId);
+    if (!leaveEvents) {
+      leaveEvents = [];
+      eventMap.set(leaveId, leaveEvents);
+    }
+    leaveEvents.push({
       report_date: String((event as any).report_date),
       resume_date:
         (event as any).resume_date === null || (event as any).resume_date === undefined

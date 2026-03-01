@@ -33,7 +33,7 @@ class TokenBlacklistService {
   async blacklistToken(
     token: string,
     expiresIn: number,
-    reason: string = "logout",
+    reason = "logout",
   ): Promise<void> {
     try {
       const key = `${TOKEN_BLACKLIST_PREFIX}${token}`;

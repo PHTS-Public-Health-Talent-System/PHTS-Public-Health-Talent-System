@@ -121,7 +121,7 @@ const createTestRedisClient = (
     duplicate: () => createTestRedisClient(store, lists),
     on: () => client,
     quit: async () => "OK",
-    disconnect: () => {},
+    disconnect: () => undefined,
   };
   return client;
 };
