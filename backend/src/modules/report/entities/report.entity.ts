@@ -10,6 +10,7 @@ export interface ReportParams {
   year: number;
   month: number;
   professionCode?: string;
+  groupNo?: number;
 }
 
 // ─── Payout Data ─────────────────────────────────────────────────────────────
@@ -18,6 +19,7 @@ export interface PayoutRow {
   period_id: number;
   citizen_id: string;
   master_rate_id: number | null;
+  title?: string | null;
   pts_rate_snapshot?: number;
   calculated_amount: number;
   retroactive_amount: number;
@@ -46,6 +48,7 @@ export interface MasterRateRow {
 
 export interface DetailReportRow {
   citizen_id: string;
+  title: string;
   first_name: string;
   last_name: string;
   position_name: string;
@@ -72,6 +75,13 @@ export interface PayPeriod {
   period_id: number;
   period_year: number;
   period_month: number;
+}
+
+export interface PersonProfileRow {
+  citizen_id: string;
+  title: string | null;
+  first_name: string | null;
+  last_name: string | null;
 }
 
 // ─── Profession Mapping ──────────────────────────────────────────────────────

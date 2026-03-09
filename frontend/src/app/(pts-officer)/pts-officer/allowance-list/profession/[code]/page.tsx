@@ -22,18 +22,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Search,
   Filter,
   FileSpreadsheet,
-  ExternalLink,
   ArrowLeft,
-  Download,
   X,
   AlertCircle,
   Loader2,
   FileWarning,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Dialog,
   DialogContent,
@@ -42,105 +59,110 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { toast } from 'sonner';
-import { exportEligibilityCsv } from '@/features/request/api';
-import { useEligibilityPaged, useEligibilitySummary } from '@/features/request/hooks';
-import { ELIGIBILITY_EXPIRING_DAYS } from '@/features/request/constants';
-import { getRateGroupBadgeClass, mapEligibility, resolveProfessionLabel } from '../../utils';
-import { Skeleton } from '@/components/ui/skeleton'; // อย่าลืม import Skeleton
 import {
-  formatThaiDate as formatThaiDateValue,
-  formatThaiDateTime,
-  formatThaiNumber,
-} from '@/shared/utils/thai-locale';
+  useDeactivateEligibility,
+  useEligibilityPaged,
+  useEligibilitySummary,
+  useReactivateEligibility,
+  useSetPrimaryEligibility,
+} from '@/features/request';
+import { getRateGroupBadgeClass, mapEligibility, resolveProfessionLabel } from '../../utils';
+import { Skeleton } from '@/components/ui/skeleton';
+import { formatThaiDate, formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
+import { buildAllowanceAlerts } from '../../alerts';
+import { cn } from '@/lib/utils'; // ตรวจสอบให้แน่ใจว่ามีฟังก์ชัน cn สำหรับรวมคลาส
+import { TableRowMoreActionsTrigger } from '@/components/common/table-row-actions';
+import { toast } from 'sonner';
 
-type LicenseStatusFilter = 'all' | 'active' | 'expiring' | 'expired';
+type AlertFilter = 'all' | 'any' | 'error' | 'no-license' | 'duplicate' | 'upcoming-change';
+const PAGE_SIZE = 50;
+type EligibilityActionType = 'set_primary' | 'deactivate' | 'reactivate';
 
-const coerceLicenseStatus = (value: string | null): LicenseStatusFilter => {
-  if (value === 'active' || value === 'expiring' || value === 'expired' || value === 'all')
+type EligibilityLifecycleStatus = 'active' | 'expired' | 'inactive';
+
+const getEligibilityLifecycleStatus = (
+  row: { is_active?: boolean | number | null; expiry_date?: string | null },
+  now = new Date(),
+): EligibilityLifecycleStatus => {
+  if (row.is_active === false || row.is_active === 0) return 'inactive';
+  const expiry = row.expiry_date ? new Date(row.expiry_date) : null;
+  if (expiry && !Number.isNaN(expiry.getTime()) && expiry.getTime() < now.getTime()) {
+    return 'expired';
+  }
+  return 'active';
+};
+
+const lifecycleStatusMeta: Record<EligibilityLifecycleStatus, { label: string; className: string }> =
+  {
+    active: {
+      label: 'ใช้งาน',
+      className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    },
+    expired: {
+      label: 'หมดอายุ',
+      className: 'bg-amber-50 text-amber-700 border-amber-200',
+    },
+    inactive: {
+      label: 'ไม่ใช้งาน',
+      className: 'bg-slate-100 text-slate-700 border-slate-200',
+    },
+  };
+
+const coerceAlertFilter = (value: string | null): AlertFilter => {
+  if (
+    value === 'all' ||
+    value === 'any' ||
+    value === 'error' ||
+    value === 'no-license' ||
+    value === 'duplicate' ||
+    value === 'upcoming-change'
+  ) {
     return value;
+  }
   return 'all';
 };
 
-const formatThaiDate = (value?: string | null) => {
-  return formatThaiDateValue(value);
-};
-
-const buildAlerts = (row: {
-  expiry_date?: string | null;
-  effective_date?: string | null;
-  original_status?: string | null;
-}) => {
-  const alerts: { title: string; detail?: string; severity: 'error' | 'warning' }[] = [];
-  const now = new Date();
-
-  if (row.expiry_date) {
-    const expiry = new Date(row.expiry_date);
-    if (!Number.isNaN(expiry.getTime())) {
-      const diffDays = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      if (diffDays < 0) {
-        alerts.push({
-          title: 'ใบอนุญาตหมดอายุ',
-          detail: `หมดอายุเมื่อ ${formatThaiDate(row.expiry_date)}`,
-          severity: 'error',
-        });
-      } else if (diffDays <= ELIGIBILITY_EXPIRING_DAYS) {
-        alerts.push({
-          title: 'ใบอนุญาตใกล้หมดอายุ',
-          detail: `หมดอายุวันที่ ${formatThaiDate(row.expiry_date)} (เหลือ ${diffDays} วัน)`,
-          severity: 'warning',
-        });
-      }
-    }
-  }
-
-  const status = (row.original_status ?? '').trim();
-  if (status) {
-    if (/(ลา|ลาออก|เกษีย|ศึกษาต่อ|พ้นสภาพ|ไม่ปฏิบัติ|พักงาน)/.test(status)) {
-      alerts.push({ title: 'สถานะบุคลากรต้องตรวจสอบ', detail: status, severity: 'warning' });
-    }
-  }
-
-  return alerts;
-};
-
-// --- Component: Table Skeleton ---
-const TableSkeleton = () => (
+const TableSkeleton = ({ showSubItemColumn = false }: { showSubItemColumn?: boolean }) => (
   <>
     {Array.from({ length: 5 }).map((_, i) => (
       <TableRow key={i}>
-        <TableCell>
-          <Skeleton className="h-4 w-8" />
+        <TableCell className="text-center">
+          <Skeleton className="h-4 w-8 mx-auto" />
         </TableCell>
         <TableCell>
           <Skeleton className="h-4 w-12" />
         </TableCell>
         <TableCell>
-          <Skeleton className="h-4 w-24" />
-        </TableCell>
-        <TableCell>
-          <Skeleton className="h-4 w-24" />
-        </TableCell>
-        <TableCell>
-          <Skeleton className="h-4 w-20" />
-        </TableCell>
-        <TableCell>
           <Skeleton className="h-4 w-32" />
         </TableCell>
         <TableCell>
-          <Skeleton className="h-6 w-8 rounded-full" />
-        </TableCell>
-        <TableCell>
-          <Skeleton className="h-4 w-8" />
-        </TableCell>
-        <TableCell>
           <Skeleton className="h-4 w-20" />
         </TableCell>
         <TableCell>
-          <Skeleton className="h-6 w-16" />
+          <Skeleton className="h-4 w-24" />
         </TableCell>
-        <TableCell>
-          <Skeleton className="h-8 w-8" />
+        <TableCell className="text-center">
+          <Skeleton className="h-6 w-8 rounded-full mx-auto" />
+        </TableCell>
+        <TableCell className="text-center">
+          <Skeleton className="h-4 w-8 mx-auto" />
+        </TableCell>
+        {showSubItemColumn && (
+          <TableCell className="text-center">
+            <Skeleton className="h-4 w-8 mx-auto" />
+          </TableCell>
+        )}
+        <TableCell className="text-right">
+          <Skeleton className="h-4 w-16 ml-auto" />
+        </TableCell>
+        <TableCell className="text-center">
+          <Skeleton className="h-6 w-16 rounded-full mx-auto" />
+        </TableCell>
+        <TableCell className="text-center">
+          <Skeleton className="h-6 w-8 mx-auto" />
+        </TableCell>
+        <TableCell className="text-center">
+          <Skeleton className="h-8 w-8 mx-auto" />
         </TableCell>
       </TableRow>
     ))}
@@ -166,14 +188,27 @@ export default function AllowanceListByProfessionPage({
   const [subDepartmentFilter, setSubDepartmentFilter] = useState(
     searchParams.get('sub_department') ?? '',
   );
-  const [licenseStatusFilter, setLicenseStatusFilter] = useState<LicenseStatusFilter>(
-    (searchParams.get('license_status') as LicenseStatusFilter) ?? 'all',
+  const [alertFilter, setAlertFilter] = useState<AlertFilter>(
+    coerceAlertFilter(searchParams.get('alert_filter')),
+  );
+  const [activeTab, setActiveTab] = useState<'active' | 'inactive'>(
+    searchParams.get('tab') === 'inactive' ? 'inactive' : 'active',
   );
 
   const page = Number(searchParams.get('page') ?? '1') || 1;
-  const limit = Number(searchParams.get('limit') ?? '20') || 20;
+  const limit = PAGE_SIZE;
+  const urlSearchQuery = searchParams.get('q') ?? '';
 
-  const { data: summary } = useEligibilitySummary(true);
+  const { data: summary } = useEligibilitySummary({
+    active_only: '1',
+    profession_code: normalizedCode,
+    search: urlSearchQuery.trim() ? urlSearchQuery.trim() : undefined,
+    rate_group: rateGroupFilter,
+    department: departmentFilter.trim() ? departmentFilter.trim() : undefined,
+    sub_department: subDepartmentFilter.trim() ? subDepartmentFilter.trim() : undefined,
+    alert_filter: alertFilter,
+  });
+
   const professionSummaries = useMemo(() => {
     const rows = summary?.by_profession ?? [];
     return rows
@@ -199,21 +234,21 @@ export default function AllowanceListByProfessionPage({
       page,
       limit,
       profession_code: normalizedCode,
-      search: searchQuery.trim() ? searchQuery.trim() : undefined,
+      search: urlSearchQuery.trim() ? urlSearchQuery.trim() : undefined,
       rate_group: rateGroupFilter,
       department: departmentFilter.trim() ? departmentFilter.trim() : undefined,
       sub_department: subDepartmentFilter.trim() ? subDepartmentFilter.trim() : undefined,
-      license_status: licenseStatusFilter,
+      alert_filter: alertFilter,
     };
   }, [
     page,
     limit,
     normalizedCode,
-    searchQuery,
+    urlSearchQuery,
     rateGroupFilter,
     departmentFilter,
     subDepartmentFilter,
-    licenseStatusFilter,
+    alertFilter,
   ]);
 
   const {
@@ -222,17 +257,70 @@ export default function AllowanceListByProfessionPage({
     isFetching,
   } = useEligibilityPaged(eligibilityQueryParams);
 
+  const inactiveQueryParams = useMemo(
+    () => ({
+      ...eligibilityQueryParams,
+      active_only: '2' as const,
+      page: 1,
+      limit: 100,
+    }),
+    [eligibilityQueryParams],
+  );
+  const { data: inactivePaged } = useEligibilityPaged(inactiveQueryParams);
+  const setPrimaryEligibility = useSetPrimaryEligibility();
+  const deactivateEligibility = useDeactivateEligibility();
+  const reactivateEligibility = useReactivateEligibility();
+  const [pendingAction, setPendingAction] = useState<{
+    type: EligibilityActionType;
+    eligibilityId: number;
+    fullName: string;
+  } | null>(null);
+
   const tableRows = useMemo(() => {
     const items = eligibilityPaged?.items ?? [];
     return items.map((row) => {
-      const alerts = buildAlerts(row);
+      const alerts = buildAllowanceAlerts(row);
+      const lifecycleStatus = getEligibilityLifecycleStatus(row);
+      const duplicateCount = Number(row.active_eligibility_count ?? 0);
+      const hasDuplicateActive = Number.isFinite(duplicateCount) && duplicateCount > 1;
       return {
         raw: row,
         person: mapEligibility(row),
         alerts,
+        lifecycleStatus,
+        duplicateCount,
+        hasDuplicateActive,
       };
     });
   }, [eligibilityPaged?.items]);
+
+  const alertSummary = useMemo(() => {
+    const professionSummary =
+      summary?.by_profession.find((item) => item.profession_code === normalizedCode) ?? null;
+    const overall = summary?.alert_summary;
+
+    return {
+      any: professionSummary?.people_with_alerts ?? overall?.people_with_alerts ?? 0,
+      error: professionSummary?.critical_people ?? overall?.critical_people ?? 0,
+      noLicense: professionSummary?.no_license_people ?? overall?.no_license_people ?? 0,
+      duplicate: professionSummary?.duplicate_people ?? overall?.duplicate_people ?? 0,
+      upcomingChange:
+        professionSummary?.upcoming_change_people ?? overall?.upcoming_change_people ?? 0,
+    };
+  }, [normalizedCode, summary]);
+
+  const inactiveRows = useMemo(() => {
+    const items = inactivePaged?.items ?? [];
+    return items
+      .map((row) => ({
+        raw: row,
+        person: mapEligibility(row),
+        deactivatedDate: row.expiry_date ?? null,
+        requestNo: row.request_no ?? null,
+      }))
+      .sort((a, b) => String(b.deactivatedDate ?? '').localeCompare(String(a.deactivatedDate ?? '')));
+  }, [inactivePaged?.items]);
+  const inactiveTotalCount = inactivePaged?.meta.total ?? inactiveRows.length;
 
   const rateGroupOptions = useMemo(() => {
     return Array.from(new Set(tableRows.map((row) => row.person.rateGroup)))
@@ -245,28 +333,45 @@ export default function AllowanceListByProfessionPage({
   const updatedAt = eligibilityPaged?.meta.updated_at
     ? formatThaiDateTime(eligibilityPaged.meta.updated_at)
     : null;
+  const showSubItemColumn = Boolean(eligibilityPaged?.meta.has_sub_item_no);
 
-  const updateQuery = (next: Record<string, string | undefined>) => {
+  const updateQuery = (
+    next: Record<string, string | undefined>,
+    options?: { replace?: boolean },
+  ) => {
     const sp = new URLSearchParams(searchParams.toString());
     Object.entries(next).forEach(([k, v]) => {
-      if (!v || v === '' || v === 'all') sp.delete(k);
+      if (!v || v === 'all') sp.delete(k);
       else sp.set(k, v);
     });
-    router.push(
-      `/pts-officer/allowance-list/profession/${normalizedCode === 'ALL' ? 'all' : normalizedCode}?${sp.toString()}`,
-    );
+    const basePath = `/pts-officer/allowance-list/profession/${normalizedCode === 'ALL' ? 'all' : normalizedCode}`;
+    const nextQuery = sp.toString();
+    const currentQuery = searchParams.toString();
+    if (nextQuery === currentQuery) return;
+    const href = nextQuery ? `${basePath}?${nextQuery}` : basePath;
+    if (options?.replace) {
+      router.replace(href, { scroll: false });
+      return;
+    }
+    router.push(href);
   };
 
-  // Handle Reset Filters
   const handleResetFilters = () => {
     setSearchQuery('');
     setRateGroupFilter('all');
     setDepartmentFilter('');
     setSubDepartmentFilter('');
-    setLicenseStatusFilter('all');
+    setAlertFilter('all');
     router.push(
-      `/pts-officer/allowance-list/profession/${normalizedCode === 'ALL' ? 'all' : normalizedCode}?page=1&limit=${limit}`,
+      `/pts-officer/allowance-list/profession/${normalizedCode === 'ALL' ? 'all' : normalizedCode}?page=1`,
     );
+  };
+
+  // Helper function สำหรับการคลิกที่ Badge
+  const toggleAlertFilter = (value: AlertFilter) => {
+    const nextValue = alertFilter === value ? 'all' : value;
+    setAlertFilter(nextValue);
+    updateQuery({ alert_filter: nextValue, page: '1' });
   };
 
   useEffect(() => {
@@ -274,52 +379,87 @@ export default function AllowanceListByProfessionPage({
     setRateGroupFilter(searchParams.get('rate_group') ?? 'all');
     setDepartmentFilter(searchParams.get('department') ?? '');
     setSubDepartmentFilter(searchParams.get('sub_department') ?? '');
-    setLicenseStatusFilter(coerceLicenseStatus(searchParams.get('license_status')));
+    setAlertFilter(coerceAlertFilter(searchParams.get('alert_filter')));
+    setActiveTab(searchParams.get('tab') === 'inactive' ? 'inactive' : 'active');
   }, [searchParams]);
 
   useEffect(() => {
     const t = setTimeout(() => {
-      updateQuery({ q: searchQuery.trim() || undefined, page: '1' });
+      updateQuery({ q: searchQuery.trim() || undefined, page: '1' }, { replace: true });
     }, 400);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
-  const handleExport = async () => {
-    try {
-      const blob = await exportEligibilityCsv({
-        active_only: '1',
-        profession_code: normalizedCode,
-        search: searchQuery.trim() ? searchQuery.trim() : undefined,
-        rate_group: rateGroupFilter,
-        department: departmentFilter.trim() ? departmentFilter.trim() : undefined,
-        sub_department: subDepartmentFilter.trim() ? subDepartmentFilter.trim() : undefined,
-        license_status: licenseStatusFilter,
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `eligibility_${normalizedCode}_${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch {
-      toast.error('ไม่สามารถ export ได้');
-    }
-  };
-
-  // เช็คว่ามีการ Filter อยู่หรือไม่ เพื่อแสดงปุ่ม Reset
   const hasActiveFilters =
     searchQuery ||
     rateGroupFilter !== 'all' ||
     departmentFilter ||
     subDepartmentFilter ||
-    licenseStatusFilter !== 'all';
+    alertFilter !== 'all';
+
+  const handleTabChange = (nextTab: string) => {
+    const normalized = nextTab === 'inactive' ? 'inactive' : 'active';
+    setActiveTab(normalized);
+    const params = new URLSearchParams(searchParams.toString());
+    if (normalized === 'active') params.delete('tab');
+    else params.set('tab', 'inactive');
+    router.replace(
+      `/pts-officer/allowance-list/profession/${normalizedCode === 'ALL' ? 'all' : normalizedCode}${params.toString() ? `?${params.toString()}` : ''}`,
+      { scroll: false },
+    );
+  };
+
+  const isActionPending =
+    setPrimaryEligibility.isPending || deactivateEligibility.isPending || reactivateEligibility.isPending;
+
+  const actionDialogMeta = useMemo(() => {
+    if (!pendingAction) return null;
+    if (pendingAction.type === 'set_primary') {
+      return {
+        title: 'ยืนยันตั้งเป็นสิทธิ์ใช้งานหลัก',
+        description: `ระบบจะตั้งสิทธิ์ของ ${pendingAction.fullName} เป็นสิทธิ์ใช้งานหลัก และปิดสิทธิ์ที่ซ้ำกันในวิชาชีพเดียวกัน`,
+        confirmText: 'ตั้งเป็นสิทธิ์หลัก',
+        variant: 'default' as const,
+      };
+    }
+    if (pendingAction.type === 'deactivate') {
+      return {
+        title: 'ยืนยันปิดสิทธิ์',
+        description: `คุณต้องการปิดสิทธิ์ของ ${pendingAction.fullName} ใช่หรือไม่`,
+        confirmText: 'ปิดสิทธิ์',
+        variant: 'destructive' as const,
+      };
+    }
+    return {
+      title: 'ยืนยันเปิดสิทธิ์กลับ',
+      description: `ระบบจะเปิดสิทธิ์ของ ${pendingAction.fullName} และตั้งให้เป็นสิทธิ์หลัก`,
+      confirmText: 'เปิดสิทธิ์กลับ',
+      variant: 'default' as const,
+    };
+  }, [pendingAction]);
+
+  const handleConfirmEligibilityAction = async () => {
+    if (!pendingAction) return;
+    try {
+      if (pendingAction.type === 'set_primary') {
+        await setPrimaryEligibility.mutateAsync({ eligibilityId: pendingAction.eligibilityId });
+        toast.success('ตั้งเป็นสิทธิ์ใช้งานหลักเรียบร้อย');
+      } else if (pendingAction.type === 'deactivate') {
+        await deactivateEligibility.mutateAsync({ eligibilityId: pendingAction.eligibilityId });
+        toast.success('ปิดสิทธิ์เรียบร้อย');
+      } else {
+        await reactivateEligibility.mutateAsync({ eligibilityId: pendingAction.eligibilityId });
+        toast.success('เปิดสิทธิ์กลับเรียบร้อย');
+      }
+      setPendingAction(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'ดำเนินการไม่สำเร็จ');
+    }
+  };
 
   return (
     <div className="p-8 space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-2">
           <Link
@@ -343,24 +483,17 @@ export default function AllowanceListByProfessionPage({
             </p>
           )}
         </div>
-        <Button variant="outline" onClick={() => void handleExport()} className="shrink-0">
-          <Download className="mr-2 h-4 w-4" />
-          ส่งออก CSV
-        </Button>
       </div>
 
-      {/* Filters Section */}
-      <Card>
+      <Card className="border-border/80 bg-background/95 shadow-sm">
         <CardContent className="pt-6">
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-12">
-              <div className="md:col-span-3">
+              <div className="md:col-span-4 lg:col-span-3">
                 <Select
                   value={normalizedCode === 'ALL' ? 'all' : normalizedCode}
                   onValueChange={(value) =>
-                    router.push(
-                      `/pts-officer/allowance-list/profession/${value}?page=1&limit=${limit}`,
-                    )
+                    router.push(`/pts-officer/allowance-list/profession/${value}?page=1`)
                   }
                 >
                   <SelectTrigger>
@@ -377,7 +510,7 @@ export default function AllowanceListByProfessionPage({
                 </Select>
               </div>
 
-              <div className="relative md:col-span-6">
+              <div className="relative md:col-span-8 lg:col-span-9">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="ค้นหาชื่อ-สกุล..."
@@ -391,21 +524,9 @@ export default function AllowanceListByProfessionPage({
                   </div>
                 )}
               </div>
-
-              <div className="md:col-span-3 flex justify-end">
-                {hasActiveFilters && (
-                  <Button
-                    variant="ghost"
-                    onClick={handleResetFilters}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="mr-2 h-4 w-4" /> ล้างตัวกรอง
-                  </Button>
-                )}
-              </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-3 lg:grid-cols-4">
               <Select
                 value={rateGroupFilter}
                 onValueChange={(value) => {
@@ -437,7 +558,7 @@ export default function AllowanceListByProfessionPage({
                 }}
               />
               <Input
-                placeholder="กรองหน่วยงาน (หน่วยงานย่อย)"
+                placeholder="กรองหน่วยงานย่อย"
                 value={subDepartmentFilter}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -446,29 +567,126 @@ export default function AllowanceListByProfessionPage({
                 }}
               />
               <Select
-                value={licenseStatusFilter}
+                value={alertFilter}
                 onValueChange={(value) => {
-                  const next = coerceLicenseStatus(value);
-                  setLicenseStatusFilter(next);
-                  updateQuery({ license_status: next, page: '1' });
+                  const next = coerceAlertFilter(value);
+                  setAlertFilter(next);
+                  updateQuery({ alert_filter: next, page: '1' });
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="สถานะใบอนุญาต" />
+                  <AlertCircle className="mr-2 h-4 w-4 text-muted-foreground" />
+                  <SelectValue placeholder="ตัวกรองการเตือน" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">สถานะใบอนุญาต: ทั้งหมด</SelectItem>
-                  <SelectItem value="active">ใช้งานได้</SelectItem>
-                  <SelectItem value="expiring">ใกล้หมดอายุ ({ELIGIBILITY_EXPIRING_DAYS} วัน)</SelectItem>
-                  <SelectItem value="expired">หมดอายุ</SelectItem>
+                  <SelectItem value="all">การเตือน: ทั้งหมด</SelectItem>
+                  <SelectItem value="any">มีรายการเตือน</SelectItem>
+                  <SelectItem value="error">เฉพาะต้องตรวจด่วน</SelectItem>
+                  <SelectItem value="no-license">ไม่มีใบอนุญาต</SelectItem>
+                  <SelectItem value="duplicate">พบสิทธิซ้ำ</SelectItem>
+                  <SelectItem value="upcoming-change">สถานะใกล้เปลี่ยน</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+              {/* เปลี่ยน Badges ให้เป็น Interactive (คลิกได้) เพื่อกรองข้อมูลทันที */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge
+                  variant="outline"
+                  onClick={() => toggleAlertFilter('any')}
+                  className={cn(
+                    'cursor-pointer transition-colors',
+                    alertFilter === 'any'
+                      ? 'bg-secondary text-secondary-foreground'
+                      : 'text-muted-foreground hover:bg-secondary/50',
+                  )}
+                >
+                  ติดเตือน {formatThaiNumber(alertSummary.any)} ราย
+                </Badge>
+                <Badge
+                  variant="outline"
+                  onClick={() => toggleAlertFilter('error')}
+                  className={cn(
+                    'cursor-pointer transition-colors',
+                    alertFilter === 'error'
+                      ? 'bg-rose-100 border-rose-300 text-rose-800'
+                      : 'border-rose-200 text-rose-700 hover:bg-rose-50',
+                  )}
+                >
+                  ต้องตรวจด่วน {formatThaiNumber(alertSummary.error)}
+                </Badge>
+                <Badge
+                  variant="outline"
+                  onClick={() => toggleAlertFilter('no-license')}
+                  className={cn(
+                    'cursor-pointer transition-colors',
+                    alertFilter === 'no-license'
+                      ? 'bg-slate-100 border-slate-300 text-slate-800'
+                      : 'border-slate-200 text-slate-700 hover:bg-slate-50',
+                  )}
+                >
+                  ไม่มีใบอนุญาต {formatThaiNumber(alertSummary.noLicense)}
+                </Badge>
+                <Badge
+                  variant="outline"
+                  onClick={() => toggleAlertFilter('duplicate')}
+                  className={cn(
+                    'cursor-pointer transition-colors',
+                    alertFilter === 'duplicate'
+                      ? 'bg-amber-100 border-amber-300 text-amber-800'
+                      : 'border-amber-200 text-amber-700 hover:bg-amber-50',
+                  )}
+                >
+                  สิทธิซ้ำ {formatThaiNumber(alertSummary.duplicate)}
+                </Badge>
+                <Badge
+                  variant="outline"
+                  onClick={() => toggleAlertFilter('upcoming-change')}
+                  className={cn(
+                    'cursor-pointer transition-colors',
+                    alertFilter === 'upcoming-change'
+                      ? 'bg-blue-100 border-blue-300 text-blue-800'
+                      : 'border-blue-200 text-blue-700 hover:bg-blue-50',
+                  )}
+                >
+                  สถานะใกล้เปลี่ยน {formatThaiNumber(alertSummary.upcomingChange)}
+                </Badge>
+              </div>
+
+              {hasActiveFilters && (
+                <Button
+                  variant="ghost"
+                  onClick={handleResetFilters}
+                  className="text-muted-foreground hover:text-foreground h-8 px-3"
+                >
+                  <X className="mr-2 h-4 w-4" /> ล้างตัวกรอง
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Table Section */}
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+        <div className="flex items-center justify-between">
+          <TabsList className="bg-muted/50 p-1">
+            <TabsTrigger value="active" className="gap-2 data-[state=active]:shadow-sm">
+              กำลังใช้งาน
+              <Badge variant="secondary" className="ml-1 text-[10px]">
+                {formatThaiNumber(totalCount)}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="inactive" className="gap-2 data-[state=active]:shadow-sm">
+              ปิดใช้งานแล้ว
+              <Badge variant="secondary" className="ml-1 text-[10px]">
+                {formatThaiNumber(inactiveTotalCount)}
+              </Badge>
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+      {activeTab === 'active' ? (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between py-4">
           <CardTitle className="flex items-center gap-2 text-lg font-semibold">
@@ -479,54 +697,57 @@ export default function AllowanceListByProfessionPage({
         <CardContent className="p-0">
           <div className="border-t border-border overflow-hidden">
             <div className="max-h-[600px] overflow-auto">
-              {' '}
-              {/* ทำให้ Table Scroll ได้ถ้าข้อมูลยาว */}
               <Table>
-                <TableHeader className="bg-secondary/30 sticky top-0 z-10 shadow-sm">
-                  <TableRow>
-                    <TableHead className="font-semibold w-[50px] text-center">#</TableHead>
-                    <TableHead className="font-semibold w-[80px]">คำนำหน้า</TableHead>
+                <TableHeader className="bg-secondary/30 sticky top-0 z-10 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-secondary/30">
+                    <TableRow>
+                      <TableHead className="font-semibold w-[50px] text-center">#</TableHead>
+                      <TableHead className="font-semibold w-[80px]">คำนำหน้า</TableHead>
                     <TableHead className="font-semibold">ชื่อ-สกุล</TableHead>
                     <TableHead className="font-semibold">วิชาชีพ</TableHead>
                     <TableHead className="font-semibold">ตำแหน่ง</TableHead>
-                    <TableHead className="font-semibold text-center">กลุ่ม</TableHead>
-                    <TableHead className="font-semibold text-center">ข้อ</TableHead>
-                    <TableHead className="font-semibold text-right">อัตรา (บาท)</TableHead>
-                    <TableHead className="font-semibold text-center w-[80px]">เตือน</TableHead>
-                    <TableHead className="font-semibold text-center w-[60px]"></TableHead>
+                      <TableHead className="font-semibold text-center">กลุ่ม</TableHead>
+                      <TableHead className="font-semibold text-center">ข้อ</TableHead>
+                      {showSubItemColumn && (
+                        <TableHead className="font-semibold text-center">ข้อย่อย</TableHead>
+                      )}
+                      <TableHead className="font-semibold text-right">อัตรา (บาท)</TableHead>
+                      <TableHead className="font-semibold text-center w-[110px]">สถานะสิทธิ์</TableHead>
+                      <TableHead className="font-semibold text-center w-[80px]">เตือน</TableHead>
+                    <TableHead className="font-semibold text-center w-[110px]">จัดการ</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
-                    <TableSkeleton />
+                    <TableSkeleton showSubItemColumn={showSubItemColumn} />
                   ) : tableRows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10}>
+                      <TableCell colSpan={showSubItemColumn ? 12 : 11}>
                         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                           <FileWarning className="h-10 w-10 mb-2 opacity-20" />
-                          <p>ไม่พบรายการที่ค้นหา</p>
+                          <p>ไม่พบรายชื่อที่ตรงกับตัวกรองนี้</p>
                         </div>
                       </TableCell>
                     </TableRow>
                   ) : (
-                    tableRows.map((row, index) => (
-                      <TableRow
-                        key={row.person.id}
-                        className="group hover:bg-secondary/20 transition-colors"
-                      >
-                        <TableCell className="text-center text-xs text-muted-foreground">
-                          {(page - 1) * limit + index + 1}
-                        </TableCell>
-                        <TableCell>{row.person.prefix}</TableCell>
-                        <TableCell className="font-medium">
-                          {/* Clickable Name for better UX */}
-                          <Link
-                            href={`/pts-officer/allowance-list/${row.person.id}?profession=${normalizedCode}${searchParams.toString() ? `&${searchParams.toString()}` : ''}`}
-                            className="hover:underline hover:text-primary flex items-center gap-2"
-                          >
-                            {row.person.firstName} {row.person.lastName}
-                          </Link>
-                        </TableCell>
+                    tableRows.map((row, index) => {
+                      const detailHref = `/pts-officer/allowance-list/${row.person.id}?profession=${normalizedCode}${searchParams.toString() ? `&${searchParams.toString()}` : ''}`;
+                      return (
+                        <TableRow
+                          key={row.person.id}
+                          className="group hover:bg-secondary/20 transition-colors"
+                        >
+                          <TableCell className="text-center text-xs text-muted-foreground">
+                            {(page - 1) * limit + index + 1}
+                          </TableCell>
+                          <TableCell>{row.person.prefix}</TableCell>
+                          <TableCell className="font-medium">
+                            <Link
+                              href={detailHref}
+                              className="hover:underline hover:text-primary flex items-center gap-2"
+                            >
+                              {row.person.firstName} {row.person.lastName}
+                            </Link>
+                          </TableCell>
                         <TableCell>
                           <span className="text-xs bg-secondary px-2 py-1 rounded-full text-secondary-foreground whitespace-nowrap">
                             {row.person.professionLabel}
@@ -546,12 +767,32 @@ export default function AllowanceListByProfessionPage({
                           </span>
                         </TableCell>
                         <TableCell className="text-center text-sm">{row.person.rateItem}</TableCell>
+                        {showSubItemColumn && (
+                          <TableCell className="text-center text-sm">
+                            {row.raw.sub_item_no !== null &&
+                            row.raw.sub_item_no !== undefined &&
+                            String(row.raw.sub_item_no).trim()
+                              ? String(row.raw.sub_item_no).trim()
+                              : '-'}
+                          </TableCell>
+                        )}
                         <TableCell className="text-right font-mono font-medium text-foreground/80">
                           {formatThaiNumber(row.person.baseRate)}
                         </TableCell>
                         <TableCell className="text-center">
+                          <Badge
+                            variant="outline"
+                            className={lifecycleStatusMeta[row.lifecycleStatus].className}
+                          >
+                            {lifecycleStatusMeta[row.lifecycleStatus].label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
                           {row.alerts.length === 0 ? (
-                            <Badge variant="outline" className="text-muted-foreground border-border/60">
+                            <Badge
+                              variant="outline"
+                              className="text-muted-foreground border-border/60"
+                            >
                               0
                             </Badge>
                           ) : (
@@ -562,12 +803,13 @@ export default function AllowanceListByProfessionPage({
                                   size="sm"
                                   className="h-8 px-2 hover:bg-transparent"
                                 >
+                                  {/* ปรับสีให้ Soft ลงเพื่อ Design Consistency เมื่อเทียบกับด้านใน Dialog */}
                                   {row.alerts.some((a) => a.severity === 'error') ? (
-                                    <Badge className="bg-rose-500 hover:bg-rose-600 border-none animate-pulse">
+                                    <Badge className="bg-rose-100 hover:bg-rose-200 text-rose-700 border-none">
                                       !
                                     </Badge>
                                   ) : (
-                                    <Badge className="bg-amber-500 hover:bg-amber-600 border-none">
+                                    <Badge className="bg-amber-100 hover:bg-amber-200 text-amber-700 border-none">
                                       {row.alerts.length}
                                     </Badge>
                                   )}
@@ -577,7 +819,7 @@ export default function AllowanceListByProfessionPage({
                                 <DialogHeader>
                                   <DialogTitle className="flex items-center gap-2">
                                     <AlertCircle className="h-5 w-5 text-warning" />
-                                    สิ่งที่ต้องตรวจสอบ
+                                    รายการเตือน
                                   </DialogTitle>
                                 </DialogHeader>
                                 <div className="py-2 space-y-3">
@@ -605,22 +847,83 @@ export default function AllowanceListByProfessionPage({
                             </Dialog>
                           )}
                         </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                            asChild
-                          >
-                            <Link
-                              href={`/pts-officer/allowance-list/${row.person.id}?profession=${normalizedCode}${searchParams.toString() ? `&${searchParams.toString()}` : ''}`}
-                            >
-                              <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                            </Link>
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                          <TableCell className="text-center">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <TableRowMoreActionsTrigger label="จัดการสิทธิ์" />
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                                  จัดการสิทธิ์
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem asChild>
+                                  <Link href={detailHref}>ดูรายละเอียดสิทธิ์</Link>
+                                </DropdownMenuItem>
+                                {row.raw.request_id ? (
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`/pts-officer/requests/${row.raw.request_id}`}>
+                                      ดูคำขอต้นทาง
+                                    </Link>
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem disabled>ดูคำขอต้นทาง</DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  disabled={isActionPending}
+                                  onSelect={() =>
+                                    setPendingAction({
+                                      type: 'set_primary',
+                                      eligibilityId: row.raw.eligibility_id,
+                                      fullName: `${row.person.firstName} ${row.person.lastName}`.trim(),
+                                    })
+                                  }
+                                >
+                                  ตั้งเป็นสิทธิ์ใช้งานหลัก
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={row.lifecycleStatus !== 'active' || isActionPending}
+                                  onSelect={() =>
+                                    setPendingAction({
+                                      type: 'deactivate',
+                                      eligibilityId: row.raw.eligibility_id,
+                                      fullName: `${row.person.firstName} ${row.person.lastName}`.trim(),
+                                    })
+                                  }
+                                >
+                                  ปิดสิทธิ์
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={row.lifecycleStatus === 'active' || isActionPending}
+                                  onSelect={() =>
+                                    setPendingAction({
+                                      type: 'reactivate',
+                                      eligibilityId: row.raw.eligibility_id,
+                                      fullName: `${row.person.firstName} ${row.person.lastName}`.trim(),
+                                    })
+                                  }
+                                >
+                                  เปิดสิทธิ์กลับ
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem asChild>
+                                  <a href={detailHref} target="_blank" rel="noreferrer">
+                                    เปิดในแท็บใหม่
+                                  </a>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => navigator.clipboard.writeText(`${window.location.origin}${detailHref}`)}
+                                >
+                                  คัดลอกลิงก์
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -650,19 +953,7 @@ export default function AllowanceListByProfessionPage({
               >
                 ถัดไป
               </Button>
-              <Select
-                value={String(limit)}
-                onValueChange={(value) => updateQuery({ limit: value, page: '1' })}
-              >
-                <SelectTrigger className="h-9 w-[110px] bg-background border-input">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="20">20 / หน้า</SelectItem>
-                  <SelectItem value="50">50 / หน้า</SelectItem>
-                  <SelectItem value="100">100 / หน้า</SelectItem>
-                </SelectContent>
-              </Select>
+              <span className="text-xs text-muted-foreground">หน้า ละ {limit} รายการ</span>
             </div>
 
             <div className="flex items-center gap-2 text-sm">
@@ -675,6 +966,153 @@ export default function AllowanceListByProfessionPage({
           </div>
         </CardContent>
       </Card>
+      ) : (
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between py-4">
+          <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+            <FileSpreadsheet className="h-5 w-5 text-primary" />
+            รายชื่อผู้ถูกปิดใช้งานแล้ว
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="border-t border-border overflow-hidden">
+            <div className="max-h-[600px] overflow-auto">
+              <Table>
+                <TableHeader className="bg-secondary/30 sticky top-0 z-10 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-secondary/30">
+                  <TableRow>
+                    <TableHead className="font-semibold w-[60px] text-center">#</TableHead>
+                    <TableHead className="font-semibold">ชื่อ-สกุล</TableHead>
+                    <TableHead className="font-semibold">วิชาชีพ</TableHead>
+                    <TableHead className="font-semibold text-center">กลุ่ม/ข้อ</TableHead>
+                    <TableHead className="font-semibold text-right">อัตรา (บาท)</TableHead>
+                    <TableHead className="font-semibold">วันที่เริ่มมีผล</TableHead>
+                    <TableHead className="font-semibold">วันที่ปิดใช้งาน</TableHead>
+                    <TableHead className="font-semibold">คำขอต้นทาง</TableHead>
+                    <TableHead className="font-semibold text-center w-[110px]">จัดการ</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {inactiveRows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9}>
+                        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                          <FileWarning className="h-10 w-10 mb-2 opacity-20" />
+                          <p>ไม่พบผู้ถูกปิดใช้งานตามตัวกรองนี้</p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    inactiveRows.map((row, index) => {
+                      const detailHref = `/pts-officer/allowance-list/${row.person.id}?profession=${normalizedCode}${searchParams.toString() ? `&${searchParams.toString()}` : ''}`;
+                      return (
+                        <TableRow key={`inactive-${row.person.id}-${index}`}>
+                          <TableCell className="text-center text-xs text-muted-foreground">
+                            {index + 1}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            <Link href={detailHref} className="hover:underline hover:text-primary">
+                              {row.person.firstName} {row.person.lastName}
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs bg-secondary px-2 py-1 rounded-full text-secondary-foreground whitespace-nowrap">
+                              {row.person.professionLabel}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center text-sm">
+                            {row.person.rateGroup} / {row.person.rateItem}
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            {formatThaiNumber(row.person.baseRate)}
+                          </TableCell>
+                          <TableCell>{formatThaiDate(row.raw.effective_date ?? null)}</TableCell>
+                          <TableCell>{formatThaiDate(row.deactivatedDate)}</TableCell>
+                          <TableCell>
+                            {row.raw.request_id ? (
+                              <Link
+                                href={`/pts-officer/requests/${row.raw.request_id}`}
+                                className="text-primary hover:underline"
+                              >
+                                {row.requestNo ?? row.raw.request_id}
+                              </Link>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <TableRowMoreActionsTrigger label="จัดการสิทธิ์ที่ปิดใช้งานแล้ว" />
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem
+                                  disabled={isActionPending}
+                                  onSelect={() =>
+                                    setPendingAction({
+                                      type: 'reactivate',
+                                      eligibilityId: row.raw.eligibility_id,
+                                      fullName: `${row.person.firstName} ${row.person.lastName}`.trim(),
+                                    })
+                                  }
+                                >
+                                  เปิดสิทธิ์กลับ
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem asChild>
+                                  <Link href={detailHref}>ดูรายละเอียดสิทธิ์</Link>
+                                </DropdownMenuItem>
+                                {row.raw.request_id ? (
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`/pts-officer/requests/${row.raw.request_id}`}>
+                                      ดูคำขอต้นทาง
+                                    </Link>
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem disabled>ดูคำขอต้นทาง</DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      )}
+      </Tabs>
+
+      <AlertDialog open={Boolean(pendingAction)} onOpenChange={(open) => !open && setPendingAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{actionDialogMeta?.title ?? 'ยืนยันการดำเนินการ'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {actionDialogMeta?.description ?? 'กรุณายืนยันการดำเนินการ'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isActionPending}>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isActionPending}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleConfirmEligibilityAction();
+              }}
+              className={
+                actionDialogMeta?.variant === 'destructive'
+                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                  : undefined
+              }
+            >
+              {actionDialogMeta?.confirmText ?? 'ยืนยัน'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

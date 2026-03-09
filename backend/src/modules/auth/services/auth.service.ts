@@ -6,18 +6,18 @@
 
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { getJwtSecret } from '@config/jwt.js';
-import { isValidCitizenId } from '@shared/utils/validationUtils.js';
-import { AuthRepository } from '@/modules/auth/repositories/auth.repository.js';
+import { getJwtSecret } from "@config/jwt.js";
+import { isValidCitizenId } from "@shared/utils/validationUtils.js";
+import { AuthRepository } from "@/modules/auth/repositories/auth.repository.js";
 import {
   UserProfile,
   LoginResult,
   JwtPayload,
-} from '@/modules/auth/entities/auth.entity.js';
+} from "@/modules/auth/entities/auth.entity.js";
 import {
   emitAuditEvent,
   AuditEventType,
-} from '@/modules/audit/services/audit.service.js';
+} from "@/modules/audit/services/audit.service.js";
 
 // ─── Custom Errors ────────────────────────────────────────────────────────────
 
@@ -91,8 +91,11 @@ export class AuthService {
 
     const jwtSecret = getJwtSecret();
     const disableTokenExpiry =
-      String(process.env.DEMO_DISABLE_TOKEN_EXPIRY || "").toLowerCase() === "true";
-    const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "24h";
+      String(process.env.DEMO_DISABLE_TOKEN_EXPIRY || "").toLowerCase() ===
+      "true";
+    const jwtExpiresIn: jwt.SignOptions["expiresIn"] =
+      (process.env.JWT_EXPIRES_IN as jwt.SignOptions["expiresIn"]) || "24h";
+    // Demo toggle: allow non-expiring token to avoid forced re-login during presentation.
     const token = disableTokenExpiry
       ? jwt.sign(jwtPayload, jwtSecret)
       : jwt.sign(jwtPayload, jwtSecret, { expiresIn: jwtExpiresIn });
@@ -136,22 +139,30 @@ export class AuthService {
     const licenseProfile = await AuthRepository.findLatestLicenseByCitizenId(
       user.citizen_id,
     );
+    const headScopeRoles =
+      user.role === "HEAD_SCOPE"
+        ? await AuthRepository.findHeadScopeRolesByUser(user.user_id, user.citizen_id)
+        : [];
     const licenseStatusRaw = licenseProfile?.status?.toUpperCase() ?? null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const licenseValidUntil = licenseProfile?.valid_until
       ? new Date(licenseProfile.valid_until)
       : null;
-    let license_status: UserProfile['license_status'] = null;
+    let license_status: UserProfile["license_status"] = null;
     if (licenseProfile) {
-      if (licenseStatusRaw && licenseStatusRaw !== 'ACTIVE') {
-        license_status = 'INACTIVE';
+      if (licenseStatusRaw && licenseStatusRaw !== "ACTIVE") {
+        license_status = "INACTIVE";
       } else if (licenseValidUntil && licenseValidUntil < today) {
-        license_status = 'EXPIRED';
-      } else if (licenseValidUntil || licenseStatusRaw === 'ACTIVE' || licenseStatusRaw === null) {
-        license_status = 'ACTIVE';
+        license_status = "EXPIRED";
+      } else if (
+        licenseValidUntil ||
+        licenseStatusRaw === "ACTIVE" ||
+        licenseStatusRaw === null
+      ) {
+        license_status = "ACTIVE";
       } else {
-        license_status = 'UNKNOWN';
+        license_status = "UNKNOWN";
       }
     }
 
@@ -159,6 +170,9 @@ export class AuthService {
       id: user.user_id,
       citizen_id: user.citizen_id,
       role: user.role,
+      head_scope_roles: headScopeRoles as Array<
+        UserProfile["head_scope_roles"] extends Array<infer T> ? T : never
+      >,
       is_active: user.is_active,
       last_login_at: user.last_login_at,
       first_name: employeeProfile?.first_name ?? null,
@@ -181,7 +195,12 @@ export class AuthService {
 
   static async updateUserProfile(
     userId: number,
-    payload: { first_name: string; last_name: string; email?: string; phone?: string },
+    payload: {
+      first_name: string;
+      last_name: string;
+      email?: string;
+      phone?: string;
+    },
     requestInfo?: { ipAddress: string; userAgent: string },
   ): Promise<UserProfile> {
     const user = await AuthRepository.findById(userId);

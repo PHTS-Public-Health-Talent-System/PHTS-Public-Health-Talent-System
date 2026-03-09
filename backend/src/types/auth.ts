@@ -12,8 +12,9 @@
  */
 export enum UserRole {
   USER = "USER",
-  HEAD_WARD = "HEAD_WARD",
-  HEAD_DEPT = "HEAD_DEPT",
+  HEAD_SCOPE = "HEAD_SCOPE",
+  WARD_SCOPE = "WARD_SCOPE",
+  DEPT_SCOPE = "DEPT_SCOPE",
   PTS_OFFICER = "PTS_OFFICER",
   HEAD_HR = "HEAD_HR",
   HEAD_FINANCE = "HEAD_FINANCE",
@@ -63,6 +64,7 @@ export interface UserProfile {
   id: number;
   citizen_id: string;
   role: UserRole;
+  head_scope_roles?: Array<UserRole.WARD_SCOPE | UserRole.DEPT_SCOPE>;
   is_active: boolean;
   last_login_at: Date | null;
   first_name?: string | null;

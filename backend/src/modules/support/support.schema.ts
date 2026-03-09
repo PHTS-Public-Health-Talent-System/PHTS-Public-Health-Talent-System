@@ -38,7 +38,7 @@ export const updateSupportStatusSchema = z.object({
 export const supportTicketMessageSchema = z.object({
   params: supportTicketIdParamSchema.shape.params,
   body: z.object({
-    message: z.string().trim().min(1).max(2000),
+    message: z.string().trim().min(1).max(2000).optional(),
   }),
 });
 

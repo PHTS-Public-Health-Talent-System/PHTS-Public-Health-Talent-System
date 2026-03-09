@@ -1,4 +1,4 @@
-import { PayrollManagementScreen } from '@/features/payroll/screens/pts-officer/PayrollManagementScreen';
+import { PayrollManagementScreen } from '@/features/payroll/screens';
 
 export const dynamic = 'force-dynamic';
 

@@ -11,6 +11,7 @@ const reportQuery = z.object({
     .max(50)
     .regex(/^[A-Z0-9_-]+$/i, "Invalid profession code")
     .optional(),
+  groupNo: z.coerce.number().int().min(1).max(99).optional(),
 });
 
 export const downloadDetailReportSchema = z.object({
@@ -18,7 +19,7 @@ export const downloadDetailReportSchema = z.object({
 });
 
 export const downloadSummaryReportSchema = z.object({
-  query: reportQuery.omit({ profession: true }),
+  query: reportQuery.omit({ profession: true, groupNo: true }),
 });
 
 export type DownloadDetailReportQuery = z.infer<typeof downloadDetailReportSchema>["query"];

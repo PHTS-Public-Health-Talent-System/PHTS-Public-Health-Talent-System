@@ -131,13 +131,8 @@ body {
     --primary-foreground: 0 0% 100%;
   }
 
-  .role-theme-head-ward {
-    --primary: 192 91% 36%;
-    --primary-foreground: 0 0% 100%;
-  }
-
-  .role-theme-head-dept {
-    --primary: 243 75% 59%;
+  .role-theme-head-scope {
+    --primary: 231 69% 55%;
     --primary-foreground: 0 0% 100%;
   }
 

@@ -10,8 +10,11 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        success: 'bg-emerald-600 text-white hover:bg-emerald-700',
+        warning: 'bg-amber-500 text-white hover:bg-amber-600',
         destructive:
           'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+        dangerGhost: 'text-rose-600 hover:bg-rose-50 hover:text-rose-700',
         outline:
           'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
         secondary:
@@ -21,6 +24,7 @@ const buttonVariants = cva(
       },
       size: {
         default: 'h-10 px-4 py-2',
+        action: 'h-9 px-4',
         sm: 'h-9 rounded-md px-3',
         lg: 'h-11 rounded-md px-8',
         icon: 'h-10 w-10',

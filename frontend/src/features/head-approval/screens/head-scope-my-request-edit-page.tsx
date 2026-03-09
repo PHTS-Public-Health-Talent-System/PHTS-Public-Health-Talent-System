@@ -3,8 +3,8 @@
 import { use } from "react"
 import { ArrowLeft, AlertCircle } from "lucide-react"
 import Link from "next/link"
-import { RequestWizard } from "@/features/request/components/wizard/request-wizard"
-import { useRequestDetail } from "@/features/request/hooks"
+import { RequestWizard } from "@/features/request/create/wizard/request-wizard"
+import { useRequestDetail } from "@/features/request/core/hooks"
 import type { RequestWithDetails } from "@/types/request.types"
 
 type HeadScopeMyRequestEditPageProps = {
@@ -34,7 +34,7 @@ export function HeadScopeMyRequestEditPage({ params, basePath }: HeadScopeMyRequ
           className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          กลับไปรายการคำขอ
+          กลับไปคำขอของฉัน
         </Link>
         <div className="rounded-lg border border-destructive/50 p-6 text-center">
           <AlertCircle className="mx-auto h-12 w-12 text-destructive/50" />
@@ -54,7 +54,7 @@ export function HeadScopeMyRequestEditPage({ params, basePath }: HeadScopeMyRequ
           className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          กลับไปรายการคำขอ
+          กลับไปคำขอของฉัน
         </Link>
         <h1 className="text-2xl font-bold text-foreground">แก้ไขคำขอ พ.ต.ส.</h1>
         <p className="mt-1 text-muted-foreground">

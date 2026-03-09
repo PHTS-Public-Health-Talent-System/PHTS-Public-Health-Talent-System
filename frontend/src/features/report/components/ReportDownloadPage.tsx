@@ -22,7 +22,10 @@ import {
 import { useDownloadDetailReport, useDownloadSummaryReport } from '@/features/report/hooks';
 import { usePeriods } from '@/features/payroll/hooks';
 import type { PayPeriod } from '@/features/payroll/api';
+import { useRateHierarchy } from '@/features/master-data/hooks';
+import type { ProfessionHierarchy } from '@/features/master-data/api';
 import { formatThaiMonthYear } from '@/shared/utils/thai-locale';
+import { resolveProfessionLabel } from '@/shared/constants/profession';
 
 type ReportType = 'detail' | 'summary';
 type ReportFormat = 'xlsx' | 'csv';
@@ -43,7 +46,8 @@ const formatPeriodLabel = (month: number, year: number) => {
   return formatThaiMonthYear(month, year);
 };
 
-const isFrozenPeriod = (period: PayPeriod) => period.is_frozen === true || period.is_frozen === 1;
+const isSnapshotReady = (period: PayPeriod) =>
+  String(period.snapshot_status ?? "").toUpperCase() === "READY";
 
 const saveBlob = (blob: Blob, filename: string) => {
   const url = window.URL.createObjectURL(blob);
@@ -59,17 +63,20 @@ export function ReportDownloadPage({
   description = 'เลือกงวดและรูปแบบไฟล์ที่ต้องการ (Excel/CSV)',
 }: ReportDownloadPageProps) {
   const periodsQuery = usePeriods();
+  const rateHierarchyQuery = useRateHierarchy();
   const detailReport = useDownloadDetailReport();
   const summaryReport = useDownloadSummaryReport();
 
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>('');
   const [customReportType, setCustomReportType] = useState<ReportType>('summary');
   const [customFormat, setCustomFormat] = useState<ReportFormat>('xlsx');
+  const [professionFilter, setProfessionFilter] = useState<string>('all');
+  const [groupFilter, setGroupFilter] = useState<string>('all');
 
   const periodOptions = useMemo<PeriodOption[]>(() => {
     const periods = (periodsQuery.data ?? []) as PayPeriod[];
     return [...periods]
-      .filter((period) => period.status === 'CLOSED' && isFrozenPeriod(period))
+      .filter((period) => period.status === 'CLOSED' && isSnapshotReady(period))
       .sort((a, b) => {
         if (b.period_year !== a.period_year) return b.period_year - a.period_year;
         return b.period_month - a.period_month;
@@ -89,6 +96,39 @@ export function ReportDownloadPage({
   }, [periodOptions, selectedPeriodId]);
 
   const isDownloading = detailReport.isPending || summaryReport.isPending;
+  const isDetailMode = customReportType === 'detail';
+
+  const professionOptions = useMemo(() => {
+    const hierarchy = (rateHierarchyQuery.data ?? []) as ProfessionHierarchy[];
+    return hierarchy
+      .map((entry) => entry.id)
+      .filter((code) => code && code !== 'ALL')
+      .sort((a, b) => a.localeCompare(b));
+  }, [rateHierarchyQuery.data]);
+
+  const groupOptions = useMemo(() => {
+    const hierarchy = (rateHierarchyQuery.data ?? []) as ProfessionHierarchy[];
+    if (professionFilter === 'all') {
+      const allGroups = new Set<number>();
+      for (const profession of hierarchy) {
+        for (const group of profession.groups ?? []) {
+          const groupNo = Number(group.id);
+          if (Number.isFinite(groupNo)) allGroups.add(groupNo);
+        }
+      }
+      return Array.from(allGroups).sort((a, b) => a - b);
+    }
+
+    const selected = hierarchy.find((entry) => entry.id === professionFilter);
+    if (!selected) return [];
+    return Array.from(
+      new Set(
+        (selected.groups ?? [])
+          .map((group) => Number(group.id))
+          .filter((value) => Number.isFinite(value)),
+      ),
+    ).sort((a, b) => a - b);
+  }, [rateHierarchyQuery.data, professionFilter]);
 
   const handleDownload = async (type: ReportType, format: ReportFormat) => {
     if (!effectivePeriod) {
@@ -100,6 +140,8 @@ export function ReportDownloadPage({
       year: effectivePeriod.year,
       month: effectivePeriod.month,
       format,
+      profession: type === 'detail' && professionFilter !== 'all' ? professionFilter : undefined,
+      groupNo: type === 'detail' && groupFilter !== 'all' ? Number(groupFilter) : undefined,
     };
 
     try {
@@ -282,6 +324,48 @@ export function ReportDownloadPage({
                     </SelectContent>
                   </Select>
                 </div>
+                {isDetailMode && (
+                  <>
+                    <div className="w-full md:w-1/3 space-y-2">
+                      <label className="text-sm font-medium">วิชาชีพ</label>
+                      <Select
+                        value={professionFilter}
+                        onValueChange={(value) => {
+                          setProfessionFilter(value);
+                          setGroupFilter('all');
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">ทุกวิชาชีพ</SelectItem>
+                          {professionOptions.map((code) => (
+                            <SelectItem key={code} value={code}>
+                              {resolveProfessionLabel(code, code)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="w-full md:w-1/3 space-y-2">
+                      <label className="text-sm font-medium">กลุ่ม</label>
+                      <Select value={groupFilter} onValueChange={setGroupFilter}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">ทุกกลุ่ม</SelectItem>
+                          {groupOptions.map((groupNo) => (
+                            <SelectItem key={groupNo} value={String(groupNo)}>
+                              กลุ่ม {groupNo}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
                 <div className="w-full md:w-1/3">
                   <Button
                     className="w-full"

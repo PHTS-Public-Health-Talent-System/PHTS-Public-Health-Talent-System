@@ -1,3 +1,7 @@
+/**
+ * payroll module - route map
+ *
+ */
 import { Router } from "express";
 import {
   approveByDirector,
@@ -7,8 +11,11 @@ import {
   calculateOnDemand,
   calculatePeriod,
   createPeriod,
+  getPeriodStatus,
   getPeriodDetail,
   getPeriodPayouts,
+  getPeriodLeaves,
+  getPeriodLeaveProfessionSummary,
   getPayoutDetail,
   getPeriodReviewProgress,
   getPeriodSummaryByProfession,
@@ -21,9 +28,9 @@ import {
   setPeriodProfessionReview,
   submitToHR,
   updatePayout,
-} from '@/modules/payroll/payroll.controller.js';
-import { protect, restrictTo } from '@middlewares/authMiddleware.js';
-import { validate } from '@shared/validate.middleware.js';
+} from "@/modules/payroll/payroll.controller.js";
+import { protect, restrictTo } from "@middlewares/authMiddleware.js";
+import { validate } from "@shared/validate.middleware.js";
 import {
   createPeriodSchema,
   calculateOnDemandSchema,
@@ -31,20 +38,66 @@ import {
   rejectPeriodSchema,
   professionReviewSchema,
   periodIdParamSchema,
+  periodLeavesQuerySchema,
   periodItemParamSchema,
   payoutIdParamSchema,
   updatePayoutSchema,
-} from '@/modules/payroll/payroll.schema.js';
-import { UserRole } from '@/types/auth.js';
+} from "@/modules/payroll/payroll.schema.js";
+import { UserRole } from "@/types/auth.js";
 
 const router = Router();
 
 // View period status (authenticated dashboard users)
 router.get(
+  "/period/status",
+  protect,
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.FINANCE_OFFICER,
+    UserRole.DIRECTOR,
+  ),
+  getPeriodStatus,
+);
+router.get(
   "/period/:periodId/payouts",
   protect,
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.FINANCE_OFFICER,
+    UserRole.DIRECTOR,
+  ),
   validate(periodIdParamSchema),
   getPeriodPayouts,
+);
+router.get(
+  "/period/:periodId/leaves",
+  protect,
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.FINANCE_OFFICER,
+    UserRole.DIRECTOR,
+  ),
+  validate(periodLeavesQuerySchema),
+  getPeriodLeaves,
+);
+router.get(
+  "/period/:periodId/leaves/summary-by-profession",
+  protect,
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.FINANCE_OFFICER,
+    UserRole.DIRECTOR,
+  ),
+  validate(periodLeavesQuerySchema),
+  getPeriodLeaveProfessionSummary,
 );
 router.get(
   "/payout/:payoutId/detail",
@@ -53,6 +106,7 @@ router.get(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
+    UserRole.FINANCE_OFFICER,
     UserRole.DIRECTOR,
   ),
   validate(payoutIdParamSchema),
@@ -73,6 +127,7 @@ router.get(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
+    UserRole.FINANCE_OFFICER,
     UserRole.DIRECTOR,
   ),
   searchPayouts,
@@ -84,6 +139,7 @@ router.get(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
+    UserRole.FINANCE_OFFICER,
     UserRole.DIRECTOR,
   ),
   listPeriods,
@@ -95,6 +151,7 @@ router.get(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
+    UserRole.FINANCE_OFFICER,
     UserRole.DIRECTOR,
   ),
   validate(periodIdParamSchema),
@@ -114,6 +171,7 @@ router.get(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
+    UserRole.FINANCE_OFFICER,
     UserRole.DIRECTOR,
   ),
   validate(periodIdParamSchema),
@@ -126,6 +184,7 @@ router.get(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
+    UserRole.FINANCE_OFFICER,
     UserRole.DIRECTOR,
   ),
   validate(periodIdParamSchema),
@@ -138,6 +197,7 @@ router.get(
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
+    UserRole.FINANCE_OFFICER,
     UserRole.DIRECTOR,
   ),
   validate(periodIdParamSchema),

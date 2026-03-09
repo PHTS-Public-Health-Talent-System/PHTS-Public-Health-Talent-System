@@ -6,7 +6,17 @@
 
 import { Request, Response } from "express";
 import { ApiResponse } from '@/types/auth.js';
-import * as financeService from '@/modules/finance/services/finance.service.js';
+import {
+  getFinanceDashboard,
+  getFinanceSummary,
+  getYearlySummary as getYearlySummaryData,
+} from '@/modules/finance/services/summary.service.js';
+import {
+  getPayoutsByPeriod as getPayoutsByPeriodData,
+  markPayoutAsPaid,
+  batchMarkAsPaid as batchMarkAsPaidData,
+  cancelPayout as cancelPayoutData,
+} from '@/modules/finance/services/payment.service.js';
 import type {
   GetSummaryQuery,
   GetYearlySummaryQuery,
@@ -28,7 +38,7 @@ export async function getDashboard(
   res: Response<ApiResponse>,
 ): Promise<void> {
   try {
-    const dashboard = await financeService.getFinanceDashboard();
+    const dashboard = await getFinanceDashboard();
     res.json({ success: true, data: dashboard });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -48,7 +58,7 @@ export async function getSummary(
     const yearNum = year ? Number.parseInt(year, 10) : undefined;
     const monthNum = month ? Number.parseInt(month, 10) : undefined;
 
-    const summary = await financeService.getFinanceSummary(yearNum, monthNum);
+    const summary = await getFinanceSummary(yearNum, monthNum);
     res.json({ success: true, data: summary });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -67,7 +77,7 @@ export async function getYearlySummary(
     const { year } = req.query as GetYearlySummaryQuery;
     const yearNum = year ? Number.parseInt(year, 10) : undefined;
 
-    const summary = await financeService.getYearlySummary(yearNum);
+    const summary = await getYearlySummaryData(yearNum);
     res.json({ success: true, data: summary });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -84,12 +94,15 @@ export async function getPayoutsByPeriod(
 ): Promise<void> {
   try {
     const { periodId } = req.params as unknown as GetPayoutsByPeriodParams;
-    const { status, search } = req.query as GetPayoutsByPeriodQuery;
+    const { status, search, professionCode, groupNo } =
+      req.query as GetPayoutsByPeriodQuery;
 
-    const payouts = await financeService.getPayoutsByPeriod(
+    const payouts = await getPayoutsByPeriodData(
       Number.parseInt(periodId, 10),
       status,
       search?.trim(),
+      professionCode,
+      groupNo ? Number.parseInt(groupNo, 10) : undefined,
     );
     res.json({ success: true, data: payouts });
   } catch (error: any) {
@@ -117,9 +130,14 @@ export async function markAsPaid(
   try {
     const { payoutId } = req.params as unknown as MarkAsPaidParams;
     const { comment } = req.body as MarkAsPaidBody;
-    const userId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const userId = user.userId;
 
-    await financeService.markPayoutAsPaid(
+    await markPayoutAsPaid(
       Number.parseInt(payoutId, 10),
       userId,
       comment,
@@ -140,9 +158,14 @@ export async function batchMarkAsPaid(
 ): Promise<void> {
   try {
     const { payoutIds } = req.body as BatchMarkAsPaidBody;
-    const userId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const userId = user.userId;
 
-    const result = await financeService.batchMarkAsPaid(payoutIds, userId);
+    const result = await batchMarkAsPaidData(payoutIds, userId);
     res.json({ success: true, data: result });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -160,9 +183,14 @@ export async function cancelPayout(
   try {
     const { payoutId } = req.params as unknown as CancelPayoutParams;
     const { reason } = req.body as CancelPayoutBody;
-    const userId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const userId = user.userId;
 
-    await financeService.cancelPayout(
+    await cancelPayoutData(
       Number.parseInt(payoutId, 10),
       userId,
       reason,

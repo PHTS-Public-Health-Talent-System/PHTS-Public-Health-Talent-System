@@ -1,4 +1,4 @@
-import { FinanceOfficerSidebar } from "@/features/navigation/components/finance-officer-sidebar"
+import { FinanceOfficerSidebar } from "@/features/navigation/components"
 export const dynamic = 'force-dynamic'
 
 

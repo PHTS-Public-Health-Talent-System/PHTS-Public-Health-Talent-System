@@ -25,6 +25,7 @@ export interface UserProfile {
   id: number;
   citizen_id: string;
   role: UserRole;
+  head_scope_roles?: Array<UserRole.WARD_SCOPE | UserRole.DEPT_SCOPE>;
   is_active: boolean;
   last_login_at: Date | null;
   first_name?: string | null;

@@ -3,10 +3,8 @@
 export const dynamic = 'force-dynamic';
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -24,9 +22,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, Download, Filter, Search, Wallet, ArrowRight } from 'lucide-react';
-import { toast } from 'sonner';
+import { Calendar, Filter, Search, Wallet } from 'lucide-react';
 import { useFinanceSummary } from '@/features/finance/hooks';
+import { TableRowViewAction } from '@/components/common';
 import {
   formatThaiCurrency,
   formatThaiMonthYear,
@@ -49,12 +47,6 @@ type FinanceSummaryRow = {
 
 const toPeriodCode = (month: number, year: number) => {
   return `PAY-${String(month).padStart(2, '0')}/${toBuddhistYear(year)}`;
-};
-
-const escapeCsv = (value: string | number) => {
-  const text = String(value ?? '');
-  if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
-  return text;
 };
 
 export default function PayoutsPage() {
@@ -109,40 +101,6 @@ export default function PayoutsPage() {
     return { totalPeriods, openPeriods };
   }, [filteredPeriods]);
 
-  const handleExport = () => {
-    if (filteredPeriods.length === 0) {
-      toast.error('ไม่พบข้อมูลรอบจ่ายสำหรับส่งออก');
-      return;
-    }
-    const headers = [
-      'รหัสรอบ',
-      'เดือน/ปี',
-      'จำนวนผู้รับเงิน',
-      'ยอดรวม',
-      'ยอดจ่ายแล้ว',
-      'ยอดคงค้าง',
-      'จำนวนรายการคงค้าง',
-    ];
-    const rows = filteredPeriods.map((row) => [
-      toPeriodCode(row.period_month, row.period_year),
-      formatThaiMonthYear(row.period_month, row.period_year),
-      row.total_employees,
-      row.total_amount,
-      row.paid_amount,
-      row.pending_amount,
-      row.pending_count,
-    ]);
-    const csv = '\uFEFF' + [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'finance-periods.csv';
-    link.click();
-    window.URL.revokeObjectURL(url);
-    toast.success('ส่งออกรายการรอบจ่ายสำเร็จ');
-  };
-
   if (isLoading) {
     return (
       <div className="p-8 space-y-6">
@@ -181,9 +139,6 @@ export default function PayoutsPage() {
             ตรวจสอบสถานะและดำเนินการโอนเงินสำหรับแต่ละรอบเดือน
           </p>
         </div>
-        <Button variant="outline" onClick={handleExport} className="bg-background">
-            <Download className="mr-2 h-4 w-4" /> ส่งออก CSV
-        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -314,19 +269,7 @@ export default function PayoutsPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            asChild
-                            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Link
-                              href={`/finance-officer/payouts/${row.period_id}`}
-                              title="ดูรายละเอียด"
-                            >
-                              <ArrowRight className="h-4 w-4" />
-                            </Link>
-                          </Button>
+                          <TableRowViewAction href={`/finance-officer/payouts/${row.period_id}`} />
                         </TableCell>
                       </TableRow>
                     );

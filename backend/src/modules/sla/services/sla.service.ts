@@ -233,6 +233,81 @@ async function calculateBusinessDaysFast(
   return count;
 }
 
+type StepAggregationState = {
+  durationsByStep: Map<number, number[]>;
+  totalsByStep: Map<number, number>;
+  onTimeByStep: Map<number, number>;
+  stepMissingEnter: number;
+  stepNegativeDuration: number;
+};
+
+const STEP_FINISH_ACTIONS = ["APPROVE", "REJECT", "RETURN", "CANCEL"];
+
+async function processApprovalTimelineRows(
+  rows: any[],
+  holidays: Set<string>,
+  configMap: Map<number, SLAConfig>,
+  state: StepAggregationState,
+): Promise<void> {
+  let lastEventTime: Date | null = null;
+
+  for (const row of rows) {
+    const action = String(row.action);
+    const step = Number(row.step_no);
+    const createdAt = new Date(row.created_at);
+
+    if (action === "SUBMIT") {
+      lastEventTime = createdAt;
+      continue;
+    }
+    if (!STEP_FINISH_ACTIONS.includes(action)) continue;
+    if (!lastEventTime) {
+      state.stepMissingEnter += 1;
+      lastEventTime = createdAt;
+      continue;
+    }
+    if (createdAt < lastEventTime) {
+      state.stepNegativeDuration += 1;
+      lastEventTime = createdAt;
+      continue;
+    }
+
+    const duration = await calculateBusinessDaysFast(lastEventTime, createdAt, holidays);
+    let durations = state.durationsByStep.get(step);
+    if (!durations) {
+      durations = [];
+      state.durationsByStep.set(step, durations);
+    }
+    durations.push(duration);
+    state.totalsByStep.set(step, (state.totalsByStep.get(step) ?? 0) + 1);
+    const slaDays = configMap.get(step)?.sla_days ?? 0;
+    if (slaDays > 0 && duration <= slaDays) {
+      state.onTimeByStep.set(step, (state.onTimeByStep.get(step) ?? 0) + 1);
+    }
+    lastEventTime = createdAt;
+  }
+}
+
+async function aggregateStepDurations(
+  timelineByRequest: Map<number, any[]>,
+  holidays: Set<string>,
+  configMap: Map<number, SLAConfig>,
+): Promise<StepAggregationState> {
+  const state: StepAggregationState = {
+    durationsByStep: new Map<number, number[]>(),
+    totalsByStep: new Map<number, number>(),
+    onTimeByStep: new Map<number, number>(),
+    stepMissingEnter: 0,
+    stepNegativeDuration: 0,
+  };
+
+  for (const rows of timelineByRequest.values()) {
+    await processApprovalTimelineRows(rows, holidays, configMap, state);
+  }
+
+  return state;
+}
+
 async function buildStepStats(
   from: Date,
   to: Date,
@@ -245,61 +320,28 @@ async function buildStepStats(
   const configMap = new Map(configs.map((c) => [c.step_no, c]));
   const holidays = await SLARepository.findHolidaysInRange(from, to);
 
-  const durationsByStep = new Map<number, number[]>();
-  const totalsByStep = new Map<number, number>();
-  const onTimeByStep = new Map<number, number>();
-  let stepMissingEnter = 0;
-  let stepNegativeDuration = 0;
-
   const timelineByRequest = new Map<number, any[]>();
   approvals.forEach((row) => {
     const requestId = Number(row.request_id);
-    if (!timelineByRequest.has(requestId)) timelineByRequest.set(requestId, []);
-    timelineByRequest.get(requestId)!.push(row);
+    let timeline = timelineByRequest.get(requestId);
+    if (!timeline) {
+      timeline = [];
+      timelineByRequest.set(requestId, timeline);
+    }
+    timeline.push(row);
   });
 
-  for (const rows of timelineByRequest.values()) {
-    let lastEventTime: Date | null = null;
-    for (const row of rows) {
-      const action = String(row.action);
-      const step = Number(row.step_no);
-      const createdAt = new Date(row.created_at);
-      if (action === "SUBMIT") {
-        lastEventTime = createdAt;
-        continue;
-      }
-      if (!["APPROVE", "REJECT", "RETURN", "CANCEL"].includes(action)) continue;
-      if (!lastEventTime) {
-        stepMissingEnter += 1;
-        lastEventTime = createdAt;
-        continue;
-      }
-      if (createdAt < lastEventTime) {
-        stepNegativeDuration += 1;
-        lastEventTime = createdAt;
-        continue;
-      }
-      const duration = await calculateBusinessDaysFast(lastEventTime, createdAt, holidays);
-      if (!durationsByStep.has(step)) durationsByStep.set(step, []);
-      durationsByStep.get(step)!.push(duration);
-      totalsByStep.set(step, (totalsByStep.get(step) ?? 0) + 1);
-      const slaDays = configMap.get(step)?.sla_days ?? 0;
-      if (slaDays > 0 && duration <= slaDays) {
-        onTimeByStep.set(step, (onTimeByStep.get(step) ?? 0) + 1);
-      }
-      lastEventTime = createdAt;
-    }
-  }
+  const state = await aggregateStepDurations(timelineByRequest, holidays, configMap);
 
   const stepRows: SLAKpiByStepRow[] = Array.from(configMap.values())
     .sort((a, b) => a.step_no - b.step_no)
     .map((config) => {
       const step = config.step_no;
-      const list = [...(durationsByStep.get(step) ?? [])].sort((a, b) => a - b);
-      const total = totalsByStep.get(step) ?? 0;
+      const list = [...(state.durationsByStep.get(step) ?? [])].sort((a, b) => a - b);
+      const total = state.totalsByStep.get(step) ?? 0;
       const median = total > 0 ? percentile(list, 0.5) : 0;
       const p90 = total > 0 ? percentile(list, 0.9) : 0;
-      const onTime = onTimeByStep.get(step) ?? 0;
+      const onTime = state.onTimeByStep.get(step) ?? 0;
       const onTimeRate = total > 0 ? Math.round((onTime / total) * 100) : 0;
       return {
         step,
@@ -314,8 +356,8 @@ async function buildStepStats(
   return {
     stepRows,
     quality: {
-      step_missing_enter: stepMissingEnter,
-      step_negative_duration: stepNegativeDuration,
+      step_missing_enter: state.stepMissingEnter,
+      step_negative_duration: state.stepNegativeDuration,
     },
   };
 }
@@ -533,6 +575,69 @@ export async function getSLAKpiErrorOverview(params?: {
 
 // ─── SLA Reminders ────────────────────────────────────────────────────────────
 
+const shouldSendReminder = (req: RequestSLAInfo): boolean => {
+  return req.is_overdue || req.is_approaching_sla;
+};
+
+const buildReminderMessage = (
+  req: RequestSLAInfo,
+): { type: "OVERDUE" | "APPROACHING"; title: string; message: string } => {
+  if (req.is_overdue) {
+    return {
+      type: "OVERDUE",
+      title: "⚠️ คำขอเกิน SLA",
+      message: `คำขอเลขที่ ${req.request_no} เกินกำหนด ${req.days_overdue} วันทำการ`,
+    };
+  }
+  return {
+    type: "APPROACHING",
+    title: "⏰ คำขอใกล้ถึง SLA",
+    message: `คำขอเลขที่ ${req.request_no} เหลืออีก ${req.days_until_sla} วันทำการ`,
+  };
+};
+
+async function notifyApproverWithReminder(
+  req: RequestSLAInfo,
+  userId: number,
+  reminderType: "OVERDUE" | "APPROACHING",
+  title: string,
+  message: string,
+): Promise<boolean> {
+  const alreadySent = await SLARepository.wasReminderSentToday(
+    req.request_id,
+    req.current_step,
+    reminderType,
+  );
+  if (alreadySent) return false;
+
+  await NotificationService.notifyUser(userId, title, message, "#", "SLA_REMINDER");
+  await SLARepository.logReminderSent(req.request_id, req.current_step, userId, reminderType);
+  return true;
+}
+
+async function notifyAllApproversForRequest(
+  req: RequestSLAInfo,
+  payload: { type: "OVERDUE" | "APPROACHING"; title: string; message: string },
+  result: SLAReminderResult,
+): Promise<void> {
+  for (const userId of req.approver_ids) {
+    try {
+      const sent = await notifyApproverWithReminder(
+        req,
+        userId,
+        payload.type,
+        payload.title,
+        payload.message,
+      );
+      if (!sent) continue;
+      if (payload.type === "OVERDUE") result.overdue++;
+      else result.approaching++;
+    } catch (err: any) {
+      result.errors.push(`Failed to notify user ${userId}: ${err.message}`);
+    }
+  }
+}
+
 export async function sendSLAReminders(): Promise<SLAReminderResult> {
   const result: SLAReminderResult = { approaching: 0, overdue: 0, errors: [] };
 
@@ -540,54 +645,9 @@ export async function sendSLAReminders(): Promise<SLAReminderResult> {
     const requests = await getPendingRequestsWithSLA();
 
     for (const req of requests) {
-      const reminderType = req.is_overdue ? "OVERDUE" : "APPROACHING";
-
-      if (!req.is_overdue && !req.is_approaching_sla) {
-        continue;
-      }
-
-      for (const userId of req.approver_ids) {
-        const alreadySent = await SLARepository.wasReminderSentToday(
-          req.request_id,
-          req.current_step,
-          reminderType,
-        );
-
-        if (alreadySent) continue;
-
-        try {
-          const title = req.is_overdue
-            ? `⚠️ คำขอเกิน SLA`
-            : `⏰ คำขอใกล้ถึง SLA`;
-
-          const message = req.is_overdue
-            ? `คำขอเลขที่ ${req.request_no} เกินกำหนด ${req.days_overdue} วันทำการ`
-            : `คำขอเลขที่ ${req.request_no} เหลืออีก ${req.days_until_sla} วันทำการ`;
-
-          await NotificationService.notifyUser(
-            userId,
-            title,
-            message,
-            "#",
-            "SLA_REMINDER",
-          );
-
-          await SLARepository.logReminderSent(
-            req.request_id,
-            req.current_step,
-            userId,
-            reminderType,
-          );
-
-          if (req.is_overdue) {
-            result.overdue++;
-          } else {
-            result.approaching++;
-          }
-        } catch (err: any) {
-          result.errors.push(`Failed to notify user ${userId}: ${err.message}`);
-        }
-      }
+      if (!shouldSendReminder(req)) continue;
+      const payload = buildReminderMessage(req);
+      await notifyAllApproversForRequest(req, payload, result);
     }
   } catch (error: any) {
     result.errors.push(`SLA reminder error: ${error.message}`);

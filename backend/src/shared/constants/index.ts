@@ -24,8 +24,8 @@ export type RequestStatusType = typeof RequestStatus[keyof typeof RequestStatus]
 // ============================================================================
 
 export const ApprovalStep = {
-  HEAD_WARD: 1,
-  HEAD_DEPT: 2,
+  WARD_SCOPE: 1,
+  DEPT_SCOPE: 2,
   PTS_OFFICER: 3,
   HEAD_HR: 4,
   HEAD_FINANCE: 5,
@@ -56,8 +56,9 @@ export const FileType = {
 
 export const UserRole = {
   USER: "USER",
-  HEAD_WARD: "HEAD_WARD",
-  HEAD_DEPT: "HEAD_DEPT",
+  HEAD_SCOPE: "HEAD_SCOPE",
+  WARD_SCOPE: "WARD_SCOPE",
+  DEPT_SCOPE: "DEPT_SCOPE",
   PTS_OFFICER: "PTS_OFFICER",
   HEAD_HR: "HEAD_HR",
   HEAD_FINANCE: "HEAD_FINANCE",

@@ -1,7 +1,11 @@
+/**
+ * announcement module - route map
+ *
+ */
 import { Router } from "express";
-import { protect, restrictTo } from '@middlewares/authMiddleware.js';
-import { validate } from '@shared/validate.middleware.js';
-import { UserRole } from '@/types/auth.js';
+import { protect, restrictTo } from "@middlewares/authMiddleware.js";
+import { validate } from "@shared/validate.middleware.js";
+import { UserRole } from "@/types/auth.js";
 import {
   getActiveAnnouncements,
   getAllAnnouncements,
@@ -9,23 +13,18 @@ import {
   putAnnouncement,
   activateAnnouncement,
   deactivateAnnouncement,
-} from '@/modules/announcement/announcement.controller.js';
+} from "@/modules/announcement/announcement.controller.js";
 import {
   announcementIdSchema,
   createAnnouncementSchema,
   updateAnnouncementSchema,
-} from '@/modules/announcement/announcement.schema.js';
+} from "@/modules/announcement/announcement.schema.js";
 
 const router = Router();
 
 router.get("/active", protect, getActiveAnnouncements);
 
-router.get(
-  "/",
-  protect,
-  restrictTo(UserRole.ADMIN),
-  getAllAnnouncements,
-);
+router.get("/", protect, restrictTo(UserRole.ADMIN), getAllAnnouncements);
 
 router.post(
   "/",

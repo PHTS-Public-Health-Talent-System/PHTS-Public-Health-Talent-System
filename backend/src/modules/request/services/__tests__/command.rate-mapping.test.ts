@@ -1,7 +1,7 @@
 import { requestCommandService } from '@/modules/request/services/command.service.js';
-import { requestRepository } from '@/modules/request/repositories/request.repository.js';
+import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 import { getConnection } from '@config/database.js';
-import { RequestStatus } from '@/modules/request/request.types.js';
+import { RequestStatus } from '@/modules/request/contracts/request.types.js';
 
 jest.mock('@config/database.js', () => ({
   getConnection: jest.fn(),

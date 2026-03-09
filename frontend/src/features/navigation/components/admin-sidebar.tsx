@@ -4,8 +4,8 @@ import {
 } from "lucide-react"
 import { UnifiedSidebar, type SidebarConfig } from "./unified-sidebar"
 import { useAuth } from "@/components/providers/auth-provider"
-import { useNavigation } from "@/features/navigation/hooks"
-import { mapNavigationItems } from "@/features/navigation/navigation.mappers"
+import { useNavigation } from "@/features/navigation/core/hooks"
+import { mapNavigationItems } from "@/features/navigation/core/navigation.mappers"
 
 const resolveInitials = (firstName?: string | null, lastName?: string | null) => {
   const first = firstName?.trim()?.charAt(0) ?? ""

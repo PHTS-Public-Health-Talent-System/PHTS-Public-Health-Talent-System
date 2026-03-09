@@ -5,8 +5,8 @@ import { use } from "react"
 import { useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { PayrollDetailContent } from "@/features/payroll/components/PayrollDetailContent"
-import { usePayrollReviewProgress } from "@/features/payroll/usePayrollReviewProgress"
+import { PayrollDetailContent } from "@/features/payroll/components"
+import { usePayrollReviewProgress } from "@/features/payroll/hooks"
 import { usePeriods } from "@/features/payroll/hooks"
 import type { PayPeriod } from "@/features/payroll/api"
 import { Button } from "@/components/ui/button"
@@ -17,13 +17,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Users } from "lucide-react"
+import { CalendarDays, Users } from "lucide-react"
 
 export default function PTSOfficerPayrollDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
   const periodsQuery = usePeriods()
   const { reviewedCodes, setProfessionReviewed } = usePayrollReviewProgress(id)
+  const pageContainerClassName = "mx-auto w-full max-w-[1600px] px-4 md:px-6 lg:px-8"
 
   const periods = useMemo(() => {
     const rows = (periodsQuery.data ?? []) as PayPeriod[]
@@ -40,9 +41,9 @@ export default function PTSOfficerPayrollDetailPage({ params }: { params: Promis
   }, [periodsQuery.data])
 
   return (
-    <div className="space-y-4">
-      <div className="px-8 pt-8">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="space-y-6 pb-10">
+      <div className="pt-8">
+        <div className={`${pageContainerClassName} flex flex-col gap-3 md:flex-row md:items-center md:justify-between`}>
           <div className="w-full md:w-[320px]">
             <Select
               value={id}
@@ -62,12 +63,20 @@ export default function PTSOfficerPayrollDetailPage({ params }: { params: Promis
               </SelectContent>
             </Select>
           </div>
-          <Button asChild variant="outline" className="w-full md:w-auto">
-            <Link href="/pts-officer/allowance-list">
-              <Users className="mr-2 h-4 w-4" />
-              เข้าหน้ารายชื่อผู้มีสิทธิ
-            </Link>
-          </Button>
+          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+            <Button asChild variant="outline" className="w-full md:w-auto">
+              <Link href={`/pts-officer/payroll/${id}/leaves`}>
+                <CalendarDays className="mr-2 h-4 w-4" />
+                ดูวันลาตามงวดนี้
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full md:w-auto">
+              <Link href="/pts-officer/allowance-list">
+                <Users className="mr-2 h-4 w-4" />
+                เข้าหน้ารายชื่อผู้มีสิทธิ
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
 

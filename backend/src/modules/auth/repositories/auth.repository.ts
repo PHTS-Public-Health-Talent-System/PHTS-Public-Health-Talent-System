@@ -7,6 +7,11 @@
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
 import db from '@config/database.js';
 import { User, EmployeeProfile, LicenseProfile } from '@/modules/auth/entities/auth.entity.js';
+import {
+  DB_HEAD_SCOPE_ROLE_SQL_LIST,
+  DB_HEAD_SCOPE_ROLE_SQL_ORDER,
+  toHeadScopeCategoryList,
+} from '@/shared/utils/head-scope-category.js';
 
 export class AuthRepository {
   // ── User queries ────────────────────────────────────────────────────────────
@@ -148,6 +153,27 @@ export class AuthRepository {
     );
 
     return (rows[0] as LicenseProfile) ?? null;
+  }
+
+  static async findHeadScopeRolesByUser(
+    userId: number,
+    citizenId: string,
+    conn?: PoolConnection,
+  ): Promise<Array<'WARD_SCOPE' | 'DEPT_SCOPE'>> {
+    const executor = conn ?? db;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `SELECT DISTINCT role
+       FROM special_position_scope_map
+       WHERE is_active = 1
+         AND role IN (${DB_HEAD_SCOPE_ROLE_SQL_LIST})
+         AND (user_id = ? OR citizen_id = ?)
+       ORDER BY FIELD(role, ${DB_HEAD_SCOPE_ROLE_SQL_ORDER})`,
+      [userId, citizenId],
+    );
+    return rows
+      .map((row) => String(row.role))
+      .map((role) => toHeadScopeCategoryList([role])[0])
+      .filter((role): role is 'WARD_SCOPE' | 'DEPT_SCOPE' => Boolean(role));
   }
 
   // ── Password operations ─────────────────────────────────────────────────────

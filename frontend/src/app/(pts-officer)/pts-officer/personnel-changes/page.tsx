@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ThaiDateField } from '@/components/thai-date-field';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
@@ -29,7 +30,10 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -38,13 +42,14 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
+  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
   Search,
   Plus,
-  Eye,
   Calendar,
   UserX,
   ArrowRightLeft,
@@ -59,6 +64,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { PersonPicker } from '@/components/person-picker';
+import { TableRowViewAction } from '@/components/common';
 import {
   useCreatePersonnelMovement,
   useCreateRetirement,
@@ -69,9 +75,13 @@ import {
   useUpdatePersonnelMovement,
   useUpdateRetirement,
 } from '@/features/personnel-changes/hooks';
-import { useEligibilityList } from '@/features/request/hooks';
+import { useEligibilityList } from '@/features/request';
 import { resolveProfessionLabel } from '@/shared/constants/profession';
 import { formatThaiDate } from '@/shared/utils/thai-locale';
+import {
+  buildPersonnelChangeFiscalYearOptions,
+  getFiscalYearFromDate,
+} from '@/features/personnel-changes/utils';
 
 type ChangeType = 'retirement' | 'resign' | 'transfer';
 type ChangeStatus = 'pending' | 'completed';
@@ -81,6 +91,7 @@ interface PersonnelChange {
   id: string;
   sourceType: SourceType;
   sourceId: number;
+  isManualEntry?: boolean;
   personId: string;
   personName: string;
   personPosition: string;
@@ -88,6 +99,7 @@ interface PersonnelChange {
   profession: string;
   changeType: ChangeType;
   effectiveDate: string;
+  fiscalYear: number | null;
   reason?: string;
   transferTo?: string;
   status: ChangeStatus;
@@ -142,8 +154,10 @@ function toDateInputValue(value: string): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : '';
 }
 
-function compareDateOnly(dateStr: string, now: Date): number {
+function compareDateOnly(dateStr: string, now: Date): number | null {
+  if (!dateStr) return null;
   const target = new Date(dateStr);
+  if (Number.isNaN(target.getTime())) return null;
   const current = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dayTarget = new Date(target.getFullYear(), target.getMonth(), target.getDate());
   return dayTarget.getTime() - current.getTime();
@@ -186,6 +200,7 @@ export default function PersonnelChangesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [fiscalYearFilter, setFiscalYearFilter] = useState<number | 'all'>('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
@@ -248,11 +263,12 @@ export default function PersonnelChangesPage() {
         const profile = personnelByCitizenId.get(row.citizen_id);
         const retireDate = toDateInputValue(String(row.retire_date ?? ''));
         const dayDiff = compareDateOnly(retireDate, now);
-        const status: ChangeStatus = dayDiff > 0 ? 'pending' : 'completed';
+        const status: ChangeStatus = dayDiff === null || dayDiff > 0 ? 'pending' : 'completed';
         return {
           id: `RET-${row.retirement_id}`,
           sourceType: 'retirement' as const,
           sourceId: row.retirement_id,
+          isManualEntry: true,
           personId: row.citizen_id,
           personName: fullName,
           personPosition: row.position_name ?? profile?.position ?? '-',
@@ -261,6 +277,7 @@ export default function PersonnelChangesPage() {
             profile?.profession ?? resolveProfessionLabel(undefined, row.position_name ?? '-'),
           changeType: 'retirement' as const,
           effectiveDate: retireDate,
+          fiscalYear: getFiscalYearFromDate(retireDate),
           status,
           notifiedAt: row.created_at ? String(row.created_at).slice(0, 10) : retireDate,
           note: row.note ?? undefined,
@@ -273,12 +290,13 @@ export default function PersonnelChangesPage() {
       const profile = personnelByCitizenId.get(row.citizen_id);
       const effectiveDate = toDateInputValue(String(row.effective_date ?? ''));
       const dayDiff = compareDateOnly(effectiveDate, now);
-      const status: ChangeStatus = dayDiff > 0 ? 'pending' : 'completed';
+      const status: ChangeStatus = dayDiff === null || dayDiff > 0 ? 'pending' : 'completed';
       const changeType: ChangeType = row.movement_type === 'TRANSFER_OUT' ? 'transfer' : 'resign';
       return {
         id: `MOV-${row.movement_id}`,
         sourceType: 'movement' as const,
         sourceId: row.movement_id,
+        isManualEntry: Boolean(row.is_manual_entry ?? row.source_movement_id == null),
         personId: row.citizen_id,
         personName: fullName,
         personPosition: row.position_name ?? profile?.position ?? '-',
@@ -287,6 +305,7 @@ export default function PersonnelChangesPage() {
           profile?.profession ?? resolveProfessionLabel(undefined, row.position_name ?? '-'),
         changeType,
         effectiveDate,
+        fiscalYear: getFiscalYearFromDate(effectiveDate),
         reason: changeType === 'resign' ? (row.remark ?? undefined) : undefined,
         transferTo: changeType === 'transfer' ? (row.remark ?? undefined) : undefined,
         status,
@@ -301,7 +320,32 @@ export default function PersonnelChangesPage() {
     );
   }, [movementsQuery.data, personnelByCitizenId, retirementsQuery.data]);
 
-  const filteredChanges = personnelChanges.filter((change) => {
+  const currentFiscalYear = useMemo(() => {
+    const today = new Date();
+    const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
+      today.getDate(),
+    ).padStart(2, '0')}`;
+    return getFiscalYearFromDate(localDate);
+  }, []);
+
+  const fiscalYearOptions = useMemo(
+    () =>
+      buildPersonnelChangeFiscalYearOptions(
+        personnelChanges.map((change) => change.effectiveDate),
+        currentFiscalYear ?? undefined,
+      ),
+    [currentFiscalYear, personnelChanges],
+  );
+
+  const changesByFiscalYear = useMemo(
+    () =>
+      personnelChanges.filter(
+        (change) => fiscalYearFilter === 'all' || change.fiscalYear === fiscalYearFilter,
+      ),
+    [fiscalYearFilter, personnelChanges],
+  );
+
+  const filteredChanges = changesByFiscalYear.filter((change) => {
     const q = searchQuery.trim();
     const matchesSearch =
       !q || change.personName.includes(q) || change.personDepartment.includes(q);
@@ -310,24 +354,28 @@ export default function PersonnelChangesPage() {
     return matchesSearch && matchesType && matchesStatus;
   });
 
-  const pendingCount = personnelChanges.filter((c) => c.status === 'pending').length;
-  const retirementCount = personnelChanges.filter((c) => c.changeType === 'retirement').length;
-  const resignCount = personnelChanges.filter((c) => c.changeType === 'resign').length;
-  const transferCount = personnelChanges.filter((c) => c.changeType === 'transfer').length;
+  const pendingCount = changesByFiscalYear.filter((c) => c.status === 'pending').length;
+  const retirementCount = changesByFiscalYear.filter((c) => c.changeType === 'retirement').length;
+  const resignCount = changesByFiscalYear.filter((c) => c.changeType === 'resign').length;
+  const transferCount = changesByFiscalYear.filter((c) => c.changeType === 'transfer').length;
 
   const retirementForecast = useMemo(() => {
     const grouped = new Map<number, string[]>();
-    personnelChanges
+    changesByFiscalYear
       .filter((c) => c.changeType === 'retirement')
       .forEach((c) => {
-        const year = new Date(c.effectiveDate).getFullYear() + 543;
+        const year = c.fiscalYear;
+        if (!year) return;
         if (!grouped.has(year)) grouped.set(year, []);
         grouped.get(year)!.push(c.personName);
       });
     return Array.from(grouped.entries())
       .map(([year, names]) => ({ year, count: names.length, names: names.slice(0, 12) }))
       .sort((a, b) => a.year - b.year);
-  }, [personnelChanges]);
+  }, [changesByFiscalYear]);
+
+  const fiscalYearFilterLabel =
+    fiscalYearFilter === 'all' ? 'ทุกปีงบประมาณ' : `ปี ${fiscalYearFilter}`;
 
   // ... (Handlers remain same: handleAddChange, handleEditChange, handleDeleteChange)
   const handleAddChange = async (newChange: Partial<PersonnelChange>) => {
@@ -362,6 +410,11 @@ export default function PersonnelChangesPage() {
   };
 
   const handleEditChange = async (updatedChange: PersonnelChange) => {
+    if (updatedChange.sourceType === 'movement' && !updatedChange.isManualEntry) {
+      toast.error('รายการที่มาจากการซิงก์ไม่สามารถแก้ไขจากหน้านี้ได้');
+      return;
+    }
+
     try {
       if (updatedChange.sourceType === 'retirement') {
         await updateRetirement.mutateAsync({
@@ -398,6 +451,10 @@ export default function PersonnelChangesPage() {
 
   const handleDeleteChange = async () => {
     if (!selectedChange) return;
+    if (selectedChange.sourceType === 'movement' && !selectedChange.isManualEntry) {
+      toast.error('รายการที่มาจากการซิงก์ไม่สามารถลบจากหน้านี้ได้');
+      return;
+    }
 
     try {
       if (selectedChange.sourceType === 'retirement') {
@@ -469,7 +526,7 @@ export default function PersonnelChangesPage() {
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <TabsList className="bg-secondary/50">
             <TabsTrigger value="all" className="gap-2">
               <History className="h-4 w-4" /> ทั้งหมด
@@ -481,6 +538,32 @@ export default function PersonnelChangesPage() {
               <Calendar className="h-4 w-4" /> คาดการณ์
             </TabsTrigger>
           </TabsList>
+          <Select
+            value={String(fiscalYearFilter)}
+            onValueChange={(value) => setFiscalYearFilter(value === 'all' ? 'all' : Number(value))}
+          >
+            <SelectTrigger className="w-full bg-background sm:w-[180px]">
+              <div className="min-w-0 truncate text-left">
+                <span className="mr-1 text-muted-foreground">ปีงบ:</span>
+                <span className="font-medium text-foreground">{fiscalYearFilterLabel}</span>
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectLabel className="text-[11px] text-muted-foreground">ช่วงการแสดงผล</SelectLabel>
+                <SelectItem value="all">ทุกปีงบประมาณ</SelectItem>
+              </SelectGroup>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel className="text-[11px] text-muted-foreground">เลือกปีงบประมาณ</SelectLabel>
+                {fiscalYearOptions.map((year) => (
+                  <SelectItem key={year} value={String(year)}>
+                    ปี {year}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
 
         <TabsContent value="all" className="space-y-4">
@@ -557,12 +640,12 @@ export default function PersonnelChangesPage() {
             <CardHeader className="py-4 px-6 border-b bg-muted/10">
               <CardTitle className="text-lg flex items-center gap-2">
                 <CalendarClock className="h-5 w-5 text-muted-foreground" />
-                รายการเกษียณอายุราชการ
+                รายการเกษียณอายุราชการ {fiscalYearFilter !== 'all' ? `(${fiscalYearFilterLabel})` : ''}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <ChangesTable
-                changes={personnelChanges.filter((c) => c.changeType === 'retirement')}
+                changes={changesByFiscalYear.filter((c) => c.changeType === 'retirement')}
                 onViewDetail={(change) => {
                   setSelectedChange(change);
                   setShowDetailDialog(true);
@@ -586,7 +669,7 @@ export default function PersonnelChangesPage() {
             <CardHeader className="py-4 px-6 border-b bg-muted/10">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Calendar className="h-5 w-5 text-muted-foreground" />
-                คาดการณ์การเกษียณอายุราชการ
+                คาดการณ์การเกษียณอายุราชการ {fiscalYearFilter !== 'all' ? `(${fiscalYearFilterLabel})` : ''}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6">
@@ -683,15 +766,15 @@ export default function PersonnelChangesPage() {
       <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
         <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <DialogTitle className="text-destructive flex items-center gap-2">
+            <AlertDialogTitle className="text-destructive flex items-center gap-2">
               <Trash2 className="h-5 w-5" /> ยืนยันการลบรายการ
-            </DialogTitle>
-            <DialogDescription>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
               คุณต้องการลบรายการของ{' '}
               <span className="font-semibold text-foreground">{selectedChange?.personName}</span>{' '}
               ใช่หรือไม่? <br />
               การดำเนินการนี้ไม่สามารถย้อนกลับได้
-            </DialogDescription>
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
@@ -796,19 +879,18 @@ function ChangesTable({
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-primary"
-                      onClick={() => onViewDetail(change)}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
+                    <TableRowViewAction onClick={() => onViewDetail(change)} />
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                      disabled={change.sourceType === 'movement' && !change.isManualEntry}
                       onClick={() => onEdit(change)}
+                      title={
+                        change.sourceType === 'movement' && !change.isManualEntry
+                          ? 'รายการจากการซิงก์แก้ไขจากหน้านี้ไม่ได้'
+                          : 'แก้ไขรายการ'
+                      }
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -816,7 +898,13 @@ function ChangesTable({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      disabled={change.sourceType === 'movement' && !change.isManualEntry}
                       onClick={() => onDelete(change)}
+                      title={
+                        change.sourceType === 'movement' && !change.isManualEntry
+                          ? 'รายการจากการซิงก์ลบจากหน้านี้ไม่ได้'
+                          : 'ลบรายการ'
+                      }
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -992,11 +1080,7 @@ function AddChangeForm({
           <Label>
             วันที่มีผล <span className="text-destructive">*</span>
           </Label>
-          <Input
-            type="date"
-            value={effectiveDate}
-            onChange={(e) => setEffectiveDate(e.target.value)}
-          />
+          <ThaiDateField value={effectiveDate} onChange={setEffectiveDate} />
         </div>
       </div>
 
@@ -1104,11 +1188,7 @@ function EditChangeForm({
         </div>
         <div className="space-y-2">
           <Label>วันที่มีผล</Label>
-          <Input
-            type="date"
-            value={effectiveDate}
-            onChange={(e) => setEffectiveDate(e.target.value)}
-          />
+          <ThaiDateField value={effectiveDate} onChange={setEffectiveDate} />
         </div>
       </div>
 

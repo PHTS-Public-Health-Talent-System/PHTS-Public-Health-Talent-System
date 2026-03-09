@@ -1,4 +1,4 @@
-import { DirectorSidebar } from "@/features/navigation/components/director-sidebar"
+import { DirectorSidebar } from "@/features/navigation/components"
 
 export default function DirectorLayout({
   children,

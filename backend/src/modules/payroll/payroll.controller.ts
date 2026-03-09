@@ -1,13 +1,18 @@
+/**
+ * payroll module - request orchestration
+ *
+ */
 import { Request, Response } from "express";
-import { PayrollService } from '@/modules/payroll/payroll.service.js';
-import { emitAuditEventWithRequest } from '@/modules/audit/services/audit.service.js';
-import { AuditEventType } from '@/modules/audit/entities/audit.entity.js';
-import { ApiResponse } from '@/types/auth.js';
+import { LeaveManagementPeriodQuery } from "@/modules/leave-management/repositories/leave-management.repository.js";
+import { PayrollService } from "@/modules/payroll/services/facade/payroll.service.js";
+import { emitAuditEventWithRequest } from "@/modules/audit/services/audit.service.js";
+import { AuditEventType } from "@/modules/audit/entities/audit.entity.js";
+import { ApiResponse } from "@/types/auth.js";
 import type {
   CreatePeriodDto,
   CalculatePeriodDto,
-} from '@/modules/payroll/dto/index.js';
-import { buildPeriodReport } from '@/modules/payroll/report/payroll-report.service.js';
+} from "@/modules/payroll/dto/index.js";
+import { buildPeriodReport } from "@/modules/payroll/report/payroll-report.service.js";
 
 const getCurrentRole = (req: Request): string | null => {
   return ((req.user as any)?.role as string | undefined) ?? null;
@@ -23,7 +28,10 @@ export const getPeriodStatus = async (req: Request, res: Response) => {
 
     const yearNum = Number(year);
     const monthNum = Number(month);
-    const existing = await PayrollService.getPeriodByMonthYear(yearNum, monthNum);
+    const existing = await PayrollService.getPeriodByMonthYear(
+      yearNum,
+      monthNum,
+    );
     if (!existing) {
       res.status(404).json({ message: "Period not found" });
       return;
@@ -49,7 +57,10 @@ export const getPeriodDetail = async (
 ) => {
   try {
     const { periodId } = req.params;
-    const detail = await PayrollService.getPeriodDetail(Number(periodId), getCurrentRole(req));
+    const detail = await PayrollService.getPeriodDetail(
+      Number(periodId),
+      getCurrentRole(req),
+    );
     res.json({ success: true, data: detail });
   } catch (error: any) {
     const message = error.message || "เกิดข้อผิดพลาดในการโหลดงวด";
@@ -58,7 +69,12 @@ export const getPeriodDetail = async (
       return;
     }
     if (message === "Forbidden period access") {
-      res.status(403).json({ success: false, error: "You do not have permission to view this period" });
+      res
+        .status(403)
+        .json({
+          success: false,
+          error: "You do not have permission to view this period",
+        });
       return;
     }
     res.status(500).json({ success: false, error: message });
@@ -135,7 +151,11 @@ export const createPeriod = async (
     const monthNum = Number(month);
 
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id ?? null;
-    const period = await PayrollService.getOrCreatePeriod(yearNum, monthNum, actorId);
+    const period = await PayrollService.getOrCreatePeriod(
+      yearNum,
+      monthNum,
+      actorId,
+    );
 
     res.status(201).json({
       success: true,
@@ -158,7 +178,10 @@ export const getPeriodPayouts = async (req: Request, res: Response) => {
       res.status(400).json({ message: "periodId is required" });
       return;
     }
-    await PayrollService.ensurePeriodVisibleForRole(Number(periodId), getCurrentRole(req));
+    await PayrollService.ensurePeriodVisibleForRole(
+      Number(periodId),
+      getCurrentRole(req),
+    );
     const payouts = await PayrollService.getPeriodPayouts(Number(periodId));
     res.json({ success: true, data: payouts });
   } catch (error: any) {
@@ -167,33 +190,128 @@ export const getPeriodPayouts = async (req: Request, res: Response) => {
       return;
     }
     if (error?.message === "Forbidden period access") {
-      res.status(403).json({ success: false, error: "You do not have permission to view this period" });
+      res
+        .status(403)
+        .json({
+          success: false,
+          error: "You do not have permission to view this period",
+        });
       return;
     }
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-export const getPayoutDetail = async (req: Request, res: Response<ApiResponse>) => {
+export const getPeriodLeaves = async (req: Request, res: Response) => {
+  try {
+    const { periodId } = req.params;
+    if (!periodId) {
+      res.status(400).json({ success: false, error: "periodId is required" });
+      return;
+    }
+    await PayrollService.ensurePeriodVisibleForRole(
+      Number(periodId),
+      getCurrentRole(req),
+    );
+    const params = req.query as {
+      leave_type?: LeaveManagementPeriodQuery["leave_type"];
+      profession_code?: string;
+      pending_report?: boolean;
+      search?: string;
+      limit?: number;
+      offset?: number;
+      sort_by?: "start_date" | "name";
+      sort_dir?: "asc" | "desc";
+    };
+    const result = await PayrollService.getPeriodLeaves(Number(periodId), params);
+    res.json({ success: true, data: result.items, meta: result });
+  } catch (error: any) {
+    if (error?.message === "Period not found") {
+      res.status(404).json({ success: false, error: "Period not found" });
+      return;
+    }
+    if (error?.message === "Forbidden period access") {
+      res.status(403).json({
+        success: false,
+        error: "You do not have permission to view this period",
+      });
+      return;
+    }
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getPeriodLeaveProfessionSummary = async (req: Request, res: Response) => {
+  try {
+    const { periodId } = req.params;
+    if (!periodId) {
+      res.status(400).json({ success: false, error: "periodId is required" });
+      return;
+    }
+    await PayrollService.ensurePeriodVisibleForRole(
+      Number(periodId),
+      getCurrentRole(req),
+    );
+    const params = req.query as {
+      leave_type?: LeaveManagementPeriodQuery["leave_type"];
+      pending_report?: boolean;
+      search?: string;
+    };
+    const rows = await PayrollService.getPeriodLeaveProfessionSummary(Number(periodId), params);
+    res.json({ success: true, data: rows });
+  } catch (error: any) {
+    if (error?.message === "Period not found") {
+      res.status(404).json({ success: false, error: "Period not found" });
+      return;
+    }
+    if (error?.message === "Forbidden period access") {
+      res.status(403).json({
+        success: false,
+        error: "You do not have permission to view this period",
+      });
+      return;
+    }
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getPayoutDetail = async (
+  req: Request,
+  res: Response<ApiResponse>,
+) => {
   try {
     const { payoutId } = req.params as { payoutId?: string };
     if (!payoutId) {
       res.status(400).json({ success: false, error: "payoutId is required" });
       return;
     }
-    const data = await PayrollService.getPayoutDetail(Number(payoutId));
+    const data = await PayrollService.getPayoutDetail(
+      Number(payoutId),
+      getCurrentRole(req),
+    );
     res.json({ success: true, data });
   } catch (error: any) {
-    const message = error?.message || "เกิดข้อผิดพลาดในการโหลดรายละเอียดรายการจ่าย";
+    const message =
+      error?.message || "เกิดข้อผิดพลาดในการโหลดรายละเอียดรายการจ่าย";
     if (message === "Payout not found") {
       res.status(404).json({ success: false, error: message });
+      return;
+    }
+    if (message === "Forbidden period access") {
+      res.status(403).json({
+        success: false,
+        error: "You do not have permission to view this period",
+      });
       return;
     }
     res.status(500).json({ success: false, error: message });
   }
 };
 
-export const updatePayout = async (req: Request, res: Response<ApiResponse>) => {
+export const updatePayout = async (
+  req: Request,
+  res: Response<ApiResponse>,
+) => {
   try {
     const { payoutId } = req.params as { payoutId?: string };
     if (!payoutId) {
@@ -201,7 +319,11 @@ export const updatePayout = async (req: Request, res: Response<ApiResponse>) => 
       return;
     }
 
-    const actorId = (req as any)?.user?.id ?? (req as any)?.user?.userId ?? null;
+    const reqWithUser = req as Request & {
+      user?: { id?: number | string; userId?: number | string };
+    };
+    const actorId =
+      reqWithUser.user?.id ?? reqWithUser.user?.userId ?? null;
 
     const payload = req.body as {
       eligible_days?: number;
@@ -249,7 +371,10 @@ export const getPeriodSummaryByProfession = async (
       return;
     }
 
-    await PayrollService.ensurePeriodVisibleForRole(Number(periodId), getCurrentRole(req));
+    await PayrollService.ensurePeriodVisibleForRole(
+      Number(periodId),
+      getCurrentRole(req),
+    );
     const summary = await PayrollService.getPeriodSummaryByProfession(
       Number(periodId),
     );
@@ -261,7 +386,12 @@ export const getPeriodSummaryByProfession = async (
       return;
     }
     if (message === "Forbidden period access") {
-      res.status(403).json({ success: false, error: "You do not have permission to view this period" });
+      res
+        .status(403)
+        .json({
+          success: false,
+          error: "You do not have permission to view this period",
+        });
       return;
     }
     if (message === "Period not calculated") {
@@ -297,7 +427,8 @@ export const calculatePayroll = async (req: Request, res: Response) => {
       );
       res.json({ success: true, data });
     } else {
-      const actorId = (req.user as any)?.userId ?? (req.user as any)?.id ?? null;
+      const actorId =
+        (req.user as any)?.userId ?? (req.user as any)?.id ?? null;
       const period = await PayrollService.getOrCreatePeriod(
         Number(year),
         Number(month),
@@ -527,6 +658,7 @@ export const searchPayouts = async (req: Request, res: Response) => {
       q,
       periodYear,
       periodMonth,
+      role: getCurrentRole(req),
     });
     res.json({ success: true, data: rows });
   } catch (error: any) {
@@ -537,7 +669,10 @@ export const searchPayouts = async (req: Request, res: Response) => {
 export const getPeriodReport = async (req: Request, res: Response) => {
   try {
     const { periodId } = req.params;
-    await PayrollService.ensurePeriodVisibleForRole(Number(periodId), getCurrentRole(req));
+    await PayrollService.ensurePeriodVisibleForRole(
+      Number(periodId),
+      getCurrentRole(req),
+    );
     const buffer = await buildPeriodReport(Number(periodId));
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
@@ -552,22 +687,35 @@ export const getPeriodReport = async (req: Request, res: Response) => {
       return;
     }
     if (message === "Forbidden period access") {
-      res.status(403).json({ success: false, error: "You do not have permission to view this period" });
+      res
+        .status(403)
+        .json({
+          success: false,
+          error: "You do not have permission to view this period",
+        });
       return;
     }
     if (
+      message === "SNAPSHOT_NOT_READY" ||
       message === "Report is available only for closed and frozen periods" ||
       message === "Report requires frozen snapshot" ||
       message === "Snapshot not found for frozen period"
     ) {
-      res.status(409).json({ success: false, error: message });
+      res.status(409).json({
+        success: false,
+        error: "Snapshot is not ready for this period",
+        data: { code: "SNAPSHOT_NOT_READY" },
+      });
       return;
     }
     res.status(500).json({ success: false, error: message });
   }
 };
 
-export const deletePeriod = async (req: Request, res: Response<ApiResponse>) => {
+export const deletePeriod = async (
+  req: Request,
+  res: Response<ApiResponse>,
+) => {
   try {
     const { periodId } = req.params;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
@@ -576,7 +724,10 @@ export const deletePeriod = async (req: Request, res: Response<ApiResponse>) => 
       return;
     }
 
-    const data = await PayrollService.hardDeletePeriod(Number(periodId), Number(actorId));
+    const data = await PayrollService.hardDeletePeriod(
+      Number(periodId),
+      Number(actorId),
+    );
     res.json({ success: true, data });
   } catch (error: any) {
     const message = error?.message || "เกิดข้อผิดพลาดในการลบรอบ";

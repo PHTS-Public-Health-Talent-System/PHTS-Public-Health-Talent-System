@@ -1,7 +1,7 @@
 /**
  * Access Review Module - Entity Definitions
  *
- * TypeScript interfaces for quarterly access review
+ * TypeScript interfaces for post-sync access review
  */
 
 // ─── Review cycle status ──────────────────────────────────────────────────────
@@ -30,6 +30,10 @@ export interface ReviewCycle {
   status: ReviewCycleStatus;
   start_date: Date;
   due_date: Date;
+  opened_at?: Date | null;
+  expires_at?: Date | null;
+  sync_source?: 'SYNC' | null;
+  cycle_code?: string | null;
   completed_at: Date | null;
   completed_by: number | null;
   total_users: number;
@@ -55,9 +59,47 @@ export interface ReviewItem {
   auto_disabled: boolean;
 }
 
-// ─── Auto disable result ──────────────────────────────────────────────────────
+// ─── access_review_queue table ────────────────────────────────────────────────
 
-export interface AutoDisableResult {
-  disabled: number;
-  errors: string[];
+export enum AccessReviewQueueStatus {
+  OPEN = "OPEN",
+  IN_REVIEW = "IN_REVIEW",
+  RESOLVED = "RESOLVED",
+  DISMISSED = "DISMISSED",
 }
+
+export enum AccessReviewReasonCode {
+  NEW_USER = "NEW_USER",
+  ROLE_MISMATCH = "ROLE_MISMATCH",
+  PROFILE_CHANGED = "PROFILE_CHANGED",
+  INACTIVE_BUT_ACTIVE = "INACTIVE_BUT_ACTIVE",
+}
+
+export interface AccessReviewQueueItem {
+  queue_id: number;
+  user_id: number;
+  reason_code: AccessReviewReasonCode;
+  status: AccessReviewQueueStatus;
+  source_batch_id: number | null;
+  last_seen_batch_id: number | null;
+  first_detected_at: Date;
+  last_detected_at: Date;
+  opened_at: Date;
+  resolved_at: Date | null;
+  resolved_by: number | null;
+  payload_json: Record<string, unknown> | null;
+  note: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface AccessReviewQueueEvent {
+  event_id: number;
+  queue_id: number;
+  event_type: string;
+  batch_id: number | null;
+  actor_id: number | null;
+  event_payload: Record<string, unknown> | null;
+  created_at: Date;
+}
+

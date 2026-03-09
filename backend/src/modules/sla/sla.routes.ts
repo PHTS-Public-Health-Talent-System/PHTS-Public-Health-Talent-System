@@ -24,7 +24,14 @@ router.use(protect);
 // Get SLA configurations (PTS_OFFICER, ADMIN)
 router.get(
   "/config",
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN, UserRole.HEAD_HR, UserRole.DIRECTOR),
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_SCOPE,
+    UserRole.ADMIN,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+  ),
   slaController.getSLAConfigs,
 );
 
@@ -41,7 +48,9 @@ router.get(
   "/report",
   restrictTo(
     UserRole.PTS_OFFICER,
+    UserRole.HEAD_SCOPE,
     UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
@@ -52,7 +61,9 @@ router.get(
   "/kpi/overview",
   restrictTo(
     UserRole.PTS_OFFICER,
+    UserRole.HEAD_SCOPE,
     UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
@@ -63,7 +74,9 @@ router.get(
   "/kpi/by-step",
   restrictTo(
     UserRole.PTS_OFFICER,
+    UserRole.HEAD_SCOPE,
     UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
@@ -74,7 +87,9 @@ router.get(
   "/kpi/backlog-aging",
   restrictTo(
     UserRole.PTS_OFFICER,
+    UserRole.HEAD_SCOPE,
     UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
@@ -85,7 +100,9 @@ router.get(
   "/kpi/data-quality",
   restrictTo(
     UserRole.PTS_OFFICER,
+    UserRole.HEAD_SCOPE,
     UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
@@ -96,7 +113,9 @@ router.get(
   "/kpi/error",
   restrictTo(
     UserRole.PTS_OFFICER,
+    UserRole.HEAD_SCOPE,
     UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
@@ -106,7 +125,14 @@ router.get(
 // Get pending requests with SLA info (PTS_OFFICER, ADMIN)
 router.get(
   "/pending",
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN, UserRole.HEAD_HR, UserRole.DIRECTOR),
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_SCOPE,
+    UserRole.ADMIN,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+  ),
   slaController.getPendingRequestsWithSLA,
 );
 
@@ -120,7 +146,7 @@ router.post(
 // Calculate business days utility
 router.get(
   "/calculate-days",
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  restrictTo(UserRole.PTS_OFFICER, UserRole.HEAD_SCOPE, UserRole.ADMIN),
   validate(calculateBusinessDaysSchema),
   slaController.calculateBusinessDays,
 );

@@ -17,8 +17,8 @@ export class AppError extends Error {
 
   constructor(
     message: string,
-    statusCode: number = 500,
-    code: string = "INTERNAL_ERROR",
+    statusCode = 500,
+    code = "INTERNAL_ERROR",
     details?: Record<string, unknown>,
   ) {
     super(message);
@@ -53,7 +53,7 @@ export class AppError extends Error {
  */
 export class ValidationError extends AppError {
   constructor(
-    message: string = "ข้อมูลไม่ถูกต้อง",
+    message = "ข้อมูลไม่ถูกต้อง",
     details?: Record<string, unknown>,
   ) {
     super(message, 400, "VALIDATION_ERROR", details);
@@ -64,7 +64,7 @@ export class ValidationError extends AppError {
  * 401 Unauthorized - Not authenticated
  */
 export class AuthenticationError extends AppError {
-  constructor(message: string = "กรุณาเข้าสู่ระบบ") {
+  constructor(message = "กรุณาเข้าสู่ระบบ") {
     super(message, 401, "AUTHENTICATION_ERROR");
   }
 }
@@ -73,7 +73,7 @@ export class AuthenticationError extends AppError {
  * 403 Forbidden - Not authorized
  */
 export class AuthorizationError extends AppError {
-  constructor(message: string = "ไม่มีสิทธิ์ดำเนินการนี้") {
+  constructor(message = "ไม่มีสิทธิ์ดำเนินการนี้") {
     super(message, 403, "AUTHORIZATION_ERROR");
   }
 }
@@ -82,11 +82,12 @@ export class AuthorizationError extends AppError {
  * 404 Not Found - Resource not found
  */
 export class NotFoundError extends AppError {
-  constructor(resource: string = "ข้อมูล", identifier?: string | number) {
+  constructor(resource = "ข้อมูล", identifier?: string | number) {
+    const normalizedResource = resource.replace(/^ไม่พบ\s*/, "").trim() || "ข้อมูล";
     const message = identifier
-      ? `ไม่พบ${resource} (${identifier})`
-      : `ไม่พบ${resource}`;
-    super(message, 404, "NOT_FOUND", { resource, identifier });
+      ? `ไม่พบ${normalizedResource} (${identifier})`
+      : `ไม่พบ${normalizedResource}`;
+    super(message, 404, "NOT_FOUND", { resource: normalizedResource, identifier });
   }
 }
 
@@ -94,7 +95,7 @@ export class NotFoundError extends AppError {
  * 409 Conflict - Resource already exists or state conflict
  */
 export class ConflictError extends AppError {
-  constructor(message: string = "ข้อมูลซ้ำซ้อนหรือสถานะไม่ถูกต้อง") {
+  constructor(message = "ข้อมูลซ้ำซ้อนหรือสถานะไม่ถูกต้อง") {
     super(message, 409, "CONFLICT_ERROR");
   }
 }
@@ -117,7 +118,7 @@ export class BusinessError extends AppError {
  */
 export class DatabaseError extends AppError {
   constructor(
-    message: string = "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล",
+    message = "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล",
     originalError?: Error,
   ) {
     super(message, 500, "DATABASE_ERROR", {
@@ -130,7 +131,7 @@ export class DatabaseError extends AppError {
  * 503 Service Unavailable - External service error
  */
 export class ServiceUnavailableError extends AppError {
-  constructor(service: string = "ระบบ") {
+  constructor(service = "ระบบ") {
     super(`${service}ไม่พร้อมใช้งานชั่วคราว`, 503, "SERVICE_UNAVAILABLE");
   }
 }

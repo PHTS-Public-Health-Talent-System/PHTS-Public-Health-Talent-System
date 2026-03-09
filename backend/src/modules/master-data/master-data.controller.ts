@@ -1,23 +1,32 @@
+/**
+ * master-data module - request orchestration
+ *
+ */
 import { Request, Response } from "express";
-import * as masterDataService from '@/modules/master-data/services/master-data.service.js';
-import { requestRepository } from '@/modules/request/repositories/request.repository.js';
-import { UserRole } from '@/types/auth.js';
-import { AuthorizationError, AuthenticationError } from '@shared/utils/errors.js';
-import { resolveProfessionCode } from '@shared/utils/profession.js';
+import * as holidayService from "@/modules/master-data/services/holiday.service.js";
+import * as rateService from "@/modules/master-data/services/rate.service.js";
+import { requestRepository } from "@/modules/request/data/repositories/request.repository.js";
+import { UserRole } from "@/types/auth.js";
+import {
+  AuthorizationError,
+  AuthenticationError,
+  ConflictError,
+} from "@shared/utils/errors.js";
+import { resolveProfessionCode } from "@shared/utils/profession.js";
 import {
   CreateHolidayDTO,
   GetHolidaysQuery,
   UpdateHolidayDTO,
   CreateRateDTO,
   UpdateRateBody,
-} from '@/modules/master-data/master-data.schema.js';
+} from "@/modules/master-data/master-data.schema.js";
 
 // Holidays
 export const getHolidays = async (req: Request, res: Response) => {
   try {
     const { year } = req.query as unknown as GetHolidaysQuery;
     // Year is already transformed to number by Zod if present
-    const holidays = await masterDataService.getHolidays(year?.toString());
+    const holidays = await holidayService.getHolidays(year?.toString());
     res.json({ success: true, data: holidays });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -28,7 +37,7 @@ export const addHoliday = async (req: Request, res: Response) => {
   try {
     const { date, name, type } = req.body as CreateHolidayDTO;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
-    await masterDataService.addHoliday(date, name, type, actorId);
+    await holidayService.addHoliday(date, name, type, actorId);
     res.json({ success: true, message: "Holiday saved successfully" });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -40,7 +49,13 @@ export const updateHoliday = async (req: Request, res: Response) => {
     const { date: originalDate } = req.params;
     const { date, name, type } = req.body as UpdateHolidayDTO;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
-    await masterDataService.updateHoliday(originalDate, date, name, type, actorId);
+    await holidayService.updateHoliday(
+      originalDate,
+      date,
+      name,
+      type,
+      actorId,
+    );
     res.json({ success: true, message: "Holiday updated successfully" });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -51,7 +66,7 @@ export const deleteHoliday = async (req: Request, res: Response) => {
   try {
     const { date } = req.params;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
-    await masterDataService.deleteHoliday(date, actorId);
+    await holidayService.deleteHoliday(date, actorId);
     res.json({ success: true, message: "Holiday deleted successfully" });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -61,7 +76,7 @@ export const deleteHoliday = async (req: Request, res: Response) => {
 // Master Rates
 export const getMasterRates = async (_req: Request, res: Response) => {
   try {
-    const rates = await masterDataService.getMasterRates();
+    const rates = await rateService.getMasterRates();
     res.json({ success: true, data: rates });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -74,31 +89,52 @@ export const updateMasterRate = async (req: Request, res: Response) => {
     const body = req.body as UpdateRateBody;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
 
-    const existing = await masterDataService.getMasterRateById(Number(rateId));
+    const existing = await rateService.getMasterRateById(Number(rateId));
     if (!existing) {
       res.status(404).json({ success: false, error: "Rate not found" });
       return;
     }
 
+    const existingRate = existing as Record<string, unknown>;
+    const hasItemNo = Object.hasOwn(body, "item_no");
+    const hasSubItemNo = Object.hasOwn(body, "sub_item_no");
+
+    let itemNo: string | null;
+    if (hasItemNo) {
+      itemNo = body.item_no ?? null;
+    } else if (existingRate.item_no != null) {
+      itemNo = String(existingRate.item_no);
+    } else {
+      itemNo = null;
+    }
+
+    let subItemNo: string | null;
+    if (hasSubItemNo) {
+      subItemNo = body.sub_item_no ?? null;
+    } else if (existingRate.sub_item_no != null) {
+      subItemNo = String(existingRate.sub_item_no);
+    } else {
+      subItemNo = null;
+    }
+
     const merged = {
-      profession_code: body.profession_code ?? (existing as any).profession_code,
-      group_no: body.group_no ?? Number((existing as any).group_no),
-      item_no: Object.prototype.hasOwnProperty.call(body, "item_no")
-        ? (body.item_no ?? null)
-        : ((existing as any).item_no ?? null),
-      sub_item_no: Object.prototype.hasOwnProperty.call(body, "sub_item_no")
-        ? (body.sub_item_no ?? null)
-        : ((existing as any).sub_item_no ?? null),
-      amount: body.amount ?? Number((existing as any).amount),
-      condition_desc: body.condition_desc ?? (existing as any).condition_desc ?? "",
-      detailed_desc: body.detailed_desc ?? (existing as any).detailed_desc ?? "",
+      profession_code:
+        String(body.profession_code ?? existingRate.profession_code ?? ""),
+      group_no: body.group_no ?? Number(existingRate.group_no),
+      item_no: itemNo,
+      sub_item_no: subItemNo,
+      amount: body.amount ?? Number(existingRate.amount),
+      condition_desc:
+        String(body.condition_desc ?? existingRate.condition_desc ?? ""),
+      detailed_desc:
+        String(body.detailed_desc ?? existingRate.detailed_desc ?? ""),
       is_active:
         typeof body.is_active === "boolean"
           ? body.is_active
-          : Boolean((existing as any).is_active ?? true),
+          : Boolean(existingRate.is_active ?? true),
     };
 
-    await masterDataService.updateMasterRate(Number(rateId), merged, actorId);
+    await rateService.updateMasterRate(Number(rateId), merged, actorId);
     res.json({ success: true, message: "Rate updated successfully" });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -119,18 +155,22 @@ export const createMasterRate = async (req: Request, res: Response) => {
     } = req.body as CreateRateDTO;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
 
-    const rateId = await masterDataService.createMasterRate(
+    const rateId = await rateService.createMasterRate({
       profession_code,
       group_no,
-      item_no ?? null,
-      sub_item_no ?? null,
+      item_no: item_no ?? null,
+      sub_item_no: sub_item_no ?? null,
       amount,
       condition_desc,
       detailed_desc,
-      is_active ? 1 : 0,
+      is_active: is_active ? 1 : 0,
       actorId,
-    );
-    res.json({ success: true, data: { rateId }, message: "Rate created successfully" });
+    });
+    res.json({
+      success: true,
+      data: { rateId },
+      message: "Rate created successfully",
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -141,9 +181,13 @@ export const deleteMasterRate = async (req: Request, res: Response) => {
     const { rateId } = req.params;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
 
-    await masterDataService.deleteMasterRate(Number(rateId), actorId);
+    await rateService.deleteMasterRate(Number(rateId), actorId);
     res.json({ success: true, message: "Rate deleted successfully" });
   } catch (error: any) {
+    if (error instanceof ConflictError) {
+      res.status(409).json({ success: false, error: error.message });
+      return;
+    }
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -158,7 +202,7 @@ export const getRatesByProfession = async (req: Request, res: Response) => {
         throw new AuthorizationError("ไม่มีสิทธิ์เข้าถึงอัตราของวิชาชีพนี้");
       }
     }
-    const rates = await masterDataService.getRatesByProfession(professionCode);
+    const rates = await rateService.getRatesByProfession(professionCode);
     res.json({ success: true, data: rates });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -169,7 +213,7 @@ export const getRatesByProfession = async (req: Request, res: Response) => {
 export const getProfessions = async (req: Request, res: Response) => {
   try {
     if (!req.user) throw new AuthenticationError("Unauthorized access");
-    const professions = await masterDataService.getProfessions();
+    const professions = await rateService.getProfessions();
     if (req.user.role === UserRole.PTS_OFFICER) {
       res.json({ success: true, data: professions });
       return;
@@ -185,7 +229,7 @@ export const getProfessions = async (req: Request, res: Response) => {
 export const getRateHierarchy = async (req: Request, res: Response) => {
   try {
     if (!req.user) throw new AuthenticationError("Unauthorized access");
-    const data = await masterDataService.getRateHierarchy();
+    const data = await rateService.getRateHierarchy();
     if (
       req.user.role === UserRole.PTS_OFFICER ||
       req.user.role === UserRole.HEAD_HR ||
@@ -208,7 +252,9 @@ export const getRateHierarchy = async (req: Request, res: Response) => {
 
 const getUserProfessionCode = async (req: Request): Promise<string | null> => {
   if (!req.user?.citizenId) return null;
-  const profile = await requestRepository.findEmployeeProfile(req.user.citizenId);
+  const profile = await requestRepository.findEmployeeProfile(
+    req.user.citizenId,
+  );
   if (!profile) return null;
   return resolveProfessionCode(profile.position_name || "");
 };

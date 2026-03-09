@@ -15,11 +15,11 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useHeadHrDashboard } from '@/features/dashboard/hooks';
+import { useApproverDashboard } from '@/features/dashboard/hooks';
 import type {
-  HeadHrPendingPayroll,
-  HeadHrPendingRequest,
-  HeadHrDashboardStats,
+  ApproverPendingPayroll,
+  ApproverPendingRequest,
+  ApproverDashboardStats,
 } from '@/features/dashboard/api';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatThaiNumber } from '@/shared/utils/thai-locale';
@@ -58,11 +58,11 @@ const StatCard = ({ title, value, subtext, icon: Icon, colorClass, bgClass, href
 );
 
 export default function HeadFinanceDashboardPage() {
-  const { data: dashboard, isLoading } = useHeadHrDashboard();
+  const { data: dashboard, isLoading } = useApproverDashboard();
 
-  const pendingRequests: HeadHrPendingRequest[] = dashboard?.pending_requests ?? [];
-  const pendingPayrolls: HeadHrPendingPayroll[] = dashboard?.pending_payrolls ?? [];
-  const statsData: HeadHrDashboardStats = dashboard?.stats ?? {
+  const pendingRequests: ApproverPendingRequest[] = dashboard?.pending_requests ?? [];
+  const pendingPayrolls: ApproverPendingPayroll[] = dashboard?.pending_payrolls ?? [];
+  const statsData: ApproverDashboardStats = dashboard?.stats ?? {
     pending_requests: 0,
     pending_payrolls: 0,
     approved_month: 0,
@@ -86,8 +86,8 @@ export default function HeadFinanceDashboardPage() {
     <div className="p-8 space-y-8 pb-20">
       {/* Header */}
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">แดชบอร์ด (หัวหน้าการเงิน)</h1>
-        <p className="text-muted-foreground">ภาพรวมคำขอและรอบจ่ายเงินที่รอการอนุมัติ</p>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">แดชบอร์ด</h1>
+        <p className="text-muted-foreground">ภาพรวมคำขอและรอบจ่ายเงินที่รอการพิจารณาในขั้นการเงิน</p>
       </div>
 
       {/* Stats Cards */}

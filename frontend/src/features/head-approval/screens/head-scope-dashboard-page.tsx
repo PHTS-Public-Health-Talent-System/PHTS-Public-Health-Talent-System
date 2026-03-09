@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useMyRequests, useMyScopes, usePendingApprovals } from '@/features/request/hooks';
+import { useMyRequests, useMyScopes, usePendingApprovals } from '@/features/request/core/hooks';
 import type { RequestWithDetails } from '@/types/request.types';
 import { toRequestDisplayId } from '@/shared/utils/public-id';
 import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
@@ -86,7 +86,7 @@ export function HeadScopeDashboardPage({ basePath, roleTitle }: HeadScopeDashboa
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">แดชบอร์ด</h1>
           <p className="text-muted-foreground mt-1">
-            ภาพรวมงานอนุมัติคำขอในระดับ{roleTitle}
+            ภาพรวมงานอนุมัติคำขอสำหรับ{roleTitle}
           </p>
         </div>
       </div>
@@ -122,7 +122,7 @@ export function HeadScopeDashboardPage({ basePath, roleTitle }: HeadScopeDashboa
         <Card className="border-border shadow-sm">
           <CardContent className="p-6 flex items-center justify-between">
             <div>
-              <p className="text-sm text-muted-foreground">จำนวน Scope ที่รับผิดชอบ</p>
+              <p className="text-sm text-muted-foreground">จำนวนขอบเขตการดูแลที่รับผิดชอบ</p>
               <p className="text-3xl font-bold mt-1">{formatThaiNumber(stats.scopeCount)}</p>
             </div>
             <Layers className="h-6 w-6 text-violet-600" />

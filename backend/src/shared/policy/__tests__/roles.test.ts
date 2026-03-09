@@ -3,8 +3,7 @@ import { APPROVER_ROLES, isApproverRole, isAdminRole } from '@shared/policy/role
 
 describe("roles policy", () => {
   test("approver roles contain expected roles", () => {
-    expect(APPROVER_ROLES).toContain(UserRole.HEAD_WARD);
-    expect(APPROVER_ROLES).toContain(UserRole.HEAD_DEPT);
+    expect(APPROVER_ROLES).toContain(UserRole.HEAD_SCOPE);
     expect(APPROVER_ROLES).toContain(UserRole.PTS_OFFICER);
     expect(APPROVER_ROLES).toContain(UserRole.HEAD_HR);
     expect(APPROVER_ROLES).toContain(UserRole.HEAD_FINANCE);

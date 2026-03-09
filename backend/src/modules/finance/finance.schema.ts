@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PaymentStatus } from '@/modules/finance/services/finance.service.js';
+import { PaymentStatus } from '@/modules/finance/entities/finance.entity.js';
 
 // GET /finance/summary?year=&month=
 export const getSummarySchema = z.object({
@@ -39,6 +39,14 @@ export const getPayoutsByPeriodSchema = z.object({
   query: z.object({
     status: z.nativeEnum(PaymentStatus).optional(),
     search: z.string().optional(),
+    professionCode: z
+      .string()
+      .trim()
+      .min(1)
+      .max(50)
+      .regex(/^[A-Z_]+$/, "professionCode ต้องเป็นตัวอักษรอังกฤษพิมพ์ใหญ่")
+      .optional(),
+    groupNo: z.string().regex(/^\d+$/, "groupNo ต้องเป็นตัวเลข").optional(),
   }),
 });
 

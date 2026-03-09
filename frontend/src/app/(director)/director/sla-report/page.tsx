@@ -1,19 +1,25 @@
-'use client';
+"use client";
 
-import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -21,7 +27,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from "@/components/ui/table";
 import {
   AlertTriangle,
   ArrowRight,
@@ -35,7 +41,7 @@ import {
   Activity,
   FileBarChart,
   type LucideIcon,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   usePendingWithSla,
   useSlaConfigs,
@@ -44,8 +50,9 @@ import {
   useSlaKpiDataQuality,
   useSlaKpiError,
   useSlaKpiOverview,
-} from '@/features/sla/hooks';
-import { formatThaiNumber } from '@/shared/utils/thai-locale';
+} from "@/features/sla/hooks";
+import { formatThaiNumber } from "@/shared/utils/thai-locale";
+import { SlaReportMethodologyNote } from "@/features/sla/components/sla-report-methodology-note";
 
 // --- Types ---
 
@@ -109,36 +116,45 @@ type KpiDataQuality = {
 // --- Constants & Helpers ---
 
 const stepLabels: Record<number, string> = {
-  1: 'หัวหน้าตึก/หัวหน้างาน',
-  2: 'หัวหน้ากลุ่มงาน',
-  3: 'เจ้าหน้าที่ พ.ต.ส.',
-  4: 'หัวหน้ากลุ่มงานทรัพยากรบุคคล',
-  5: 'หัวหน้าการเงิน',
-  6: 'ผู้อำนวยการ',
+  1: "หัวหน้าตึก/หัวหน้างาน",
+  2: "หัวหน้ากลุ่มงาน",
+  3: "เจ้าหน้าที่ พ.ต.ส.",
+  4: "หัวหน้ากลุ่มงานทรัพยากรบุคคล",
+  5: "หัวหน้าการเงิน",
+  6: "ผู้อำนวยการ",
 };
 
 function gradeBadge(percentage: number) {
   if (percentage >= 95)
     return {
-      label: 'A+ ยอดเยี่ยม',
-      className: 'text-emerald-700 border-emerald-200 bg-emerald-50',
+      label: "A+ ยอดเยี่ยม",
+      className: "text-emerald-700 border-emerald-200 bg-emerald-50",
     };
   if (percentage >= 85)
-    return { label: 'A ดีมาก', className: 'text-blue-700 border-blue-200 bg-blue-50' };
+    return {
+      label: "A ดีมาก",
+      className: "text-blue-700 border-blue-200 bg-blue-50",
+    };
   if (percentage >= 75)
-    return { label: 'B ดี', className: 'text-cyan-700 border-cyan-200 bg-cyan-50' };
+    return {
+      label: "B ดี",
+      className: "text-cyan-700 border-cyan-200 bg-cyan-50",
+    };
   if (percentage >= 60)
-    return { label: 'C พอใช้', className: 'text-amber-700 border-amber-200 bg-amber-50' };
+    return {
+      label: "C พอใช้",
+      className: "text-amber-700 border-amber-200 bg-amber-50",
+    };
   return {
-    label: 'F ต้องปรับปรุง',
-    className: 'text-destructive border-destructive/30 bg-destructive/10',
+    label: "F ต้องปรับปรุง",
+    className: "text-destructive border-destructive/30 bg-destructive/10",
   };
 }
 
 function statusTone(onTimeRate: number) {
-  if (onTimeRate >= 90) return 'text-emerald-600';
-  if (onTimeRate >= 75) return 'text-amber-600';
-  return 'text-destructive';
+  if (onTimeRate >= 90) return "text-emerald-600";
+  if (onTimeRate >= 75) return "text-amber-600";
+  return "text-destructive";
 }
 
 // Progress Card Component
@@ -147,7 +163,7 @@ function ProgressCard({
   value,
   description,
   icon: Icon,
-  toneClass = 'text-primary',
+  toneClass = "text-primary",
 }: {
   title: string;
   value: string;
@@ -167,7 +183,7 @@ function ProgressCard({
             <p className="mt-1 text-xs text-muted-foreground">{description}</p>
           </div>
           <div
-            className={`rounded-xl p-2.5 ${toneClass.replace('text-', 'bg-').replace('text-', 'bg-').split(' ')[0]}/10`}
+            className={`rounded-xl p-2.5 ${toneClass.replace("text-", "bg-").replace("text-", "bg-").split(" ")[0]}/10`}
           >
             <Icon className={`h-5 w-5 ${toneClass}`} />
           </div>
@@ -178,18 +194,18 @@ function ProgressCard({
 }
 
 export default function DirectorSlaReportPage() {
-  const [range, setRange] = useState('current');
+  const [range, setRange] = useState("current");
 
   const rangeDates = useMemo(() => {
     const now = new Date();
     let start = new Date(now.getFullYear(), now.getMonth(), 1);
-    if (range === 'last30') {
+    if (range === "last30") {
       start = new Date(now);
       start.setDate(start.getDate() - 30);
-    } else if (range === 'last90') {
+    } else if (range === "last90") {
       start = new Date(now);
       start.setDate(start.getDate() - 90);
-    } else if (range === 'year') {
+    } else if (range === "year") {
       start = new Date(now.getFullYear(), 0, 1);
     }
     const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -209,10 +225,15 @@ export default function DirectorSlaReportPage() {
     () => (pendingQuery.data ?? []) as PendingSlaItem[],
     [pendingQuery.data],
   );
-  const configs = useMemo(() => (configsQuery.data ?? []) as SlaConfig[], [configsQuery.data]);
+  const configs = useMemo(
+    () => (configsQuery.data ?? []) as SlaConfig[],
+    [configsQuery.data],
+  );
   const overview = (kpiOverviewQuery.data ?? {}) as KpiOverview;
   const byStepRows = useMemo(
-    () => ((kpiByStepQuery.data as { rows?: unknown } | undefined)?.rows ?? []) as StepKpiRow[],
+    () =>
+      ((kpiByStepQuery.data as { rows?: unknown } | undefined)?.rows ??
+        []) as StepKpiRow[],
     [kpiByStepQuery.data],
   );
   const backlogAging = (kpiBacklogAgingQuery.data ?? {}) as BacklogAging;
@@ -238,7 +259,8 @@ export default function DirectorSlaReportPage() {
         .filter((item) => item.is_overdue || item.is_approaching_sla)
         .sort(
           (a, b) =>
-            b.days_overdue - a.days_overdue || b.business_days_elapsed - a.business_days_elapsed,
+            b.days_overdue - a.days_overdue ||
+            b.business_days_elapsed - a.business_days_elapsed,
         )
         .slice(0, 8),
     [directorQueue],
@@ -273,10 +295,14 @@ export default function DirectorSlaReportPage() {
   const onTimeRate = Number(overview.on_time_completion_rate ?? 0);
   const grade = gradeBadge(onTimeRate);
   const overdueBacklog = Number(
-    overview.overdue_backlog_count ?? pendingItems.filter((item) => item.is_overdue).length,
+    overview.overdue_backlog_count ??
+      pendingItems.filter((item) => item.is_overdue).length,
   );
   const backlogBuckets = backlogAging.buckets ?? [];
-  const backlogTotal = backlogBuckets.reduce((sum, item) => sum + Number(item.count ?? 0), 0);
+  const backlogTotal = backlogBuckets.reduce(
+    (sum, item) => sum + Number(item.count ?? 0),
+    0,
+  );
 
   const isLoading =
     pendingQuery.isLoading ||
@@ -313,7 +339,9 @@ export default function DirectorSlaReportPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">แดชบอร์ดผู้บริหาร</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            แดชบอร์ดผู้บริหาร
+          </h1>
           <p className="mt-1 text-muted-foreground">
             ภาพรวมประสิทธิภาพระบบอนุมัติ พ.ต.ส. และความเสี่ยงที่ต้องจับตามอง
           </p>
@@ -331,6 +359,8 @@ export default function DirectorSlaReportPage() {
         </Select>
       </div>
 
+      <SlaReportMethodologyNote />
+
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {/* Overall Score Card */}
@@ -344,12 +374,19 @@ export default function DirectorSlaReportPage() {
                 <Activity className="h-4 w-4 text-muted-foreground" />
               </div>
               <div className="flex items-end gap-3 mt-1">
-                <span className="text-4xl font-bold text-foreground">{onTimeRate.toFixed(0)}%</span>
-                <span className="text-sm text-muted-foreground mb-1.5">ตรงเวลา</span>
+                <span className="text-4xl font-bold text-foreground">
+                  {onTimeRate.toFixed(0)}%
+                </span>
+                <span className="text-sm text-muted-foreground mb-1.5">
+                  ตรงเวลา
+                </span>
               </div>
             </div>
             <div>
-              <Progress value={onTimeRate} className="h-1.5 bg-secondary mb-3" />
+              <Progress
+                value={onTimeRate}
+                className="h-1.5 bg-secondary mb-3"
+              />
               <Badge
                 variant="outline"
                 className={`font-normal w-full justify-center ${grade.className}`}
@@ -417,7 +454,9 @@ export default function DirectorSlaReportPage() {
             {directorCritical.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-muted-foreground p-8">
                 <CheckCircle2 className="h-12 w-12 text-emerald-500/20 mb-4" />
-                <p className="font-medium text-foreground">ไม่มีรายการเร่งด่วน</p>
+                <p className="font-medium text-foreground">
+                  ไม่มีรายการเร่งด่วน
+                </p>
                 <p className="text-sm">งานทั้งหมดอยู่ในสถานะปกติ</p>
               </div>
             ) : (
@@ -428,17 +467,27 @@ export default function DirectorSlaReportPage() {
                     <TableHead>ผู้ยื่นคำขอ</TableHead>
                     <TableHead className="text-center">รอมาแล้ว</TableHead>
                     <TableHead className="text-center">สถานะ</TableHead>
-                    <TableHead className="text-right w-[100px]">จัดการ</TableHead>
+                    <TableHead className="text-right w-[100px]">
+                      จัดการ
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {directorCritical.map((item) => {
                     const fullName =
-                      `${item.first_name ?? ''} ${item.last_name ?? ''}`.trim() || '-';
+                      `${item.first_name ?? ""} ${item.last_name ?? ""}`.trim() ||
+                      "-";
                     return (
-                      <TableRow key={item.request_id} className="hover:bg-muted/20">
-                        <TableCell className="font-mono text-xs">{item.request_no}</TableCell>
-                        <TableCell className="font-medium text-sm">{fullName}</TableCell>
+                      <TableRow
+                        key={item.request_id}
+                        className="hover:bg-muted/20"
+                      >
+                        <TableCell className="font-mono text-xs">
+                          {item.request_no}
+                        </TableCell>
+                        <TableCell className="font-medium text-sm">
+                          {fullName}
+                        </TableCell>
                         <TableCell className="text-center text-xs text-muted-foreground">
                           {item.business_days_elapsed}/{item.sla_days} วันทำการ
                         </TableCell>
@@ -460,8 +509,15 @@ export default function DirectorSlaReportPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                            <Link href={`/director/requests/${item.request_id}`}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            asChild
+                          >
+                            <Link
+                              href={`/director/requests/${item.request_id}`}
+                            >
                               <ArrowRight className="h-4 w-4" />
                             </Link>
                           </Button>
@@ -487,18 +543,27 @@ export default function DirectorSlaReportPage() {
             {/* Backlog Aging */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-medium text-foreground">อายุงานค้าง</p>
-                <span className="text-xs text-muted-foreground">{backlogTotal} รายการ</span>
+                <p className="text-sm font-medium text-foreground">
+                  อายุงานค้าง
+                </p>
+                <span className="text-xs text-muted-foreground">
+                  {backlogTotal} รายการ
+                </span>
               </div>
               <div className="space-y-3">
                 {backlogBuckets.map((bucket) => {
                   const count = Number(bucket.count ?? 0);
-                  const ratio = backlogTotal > 0 ? (count / backlogTotal) * 100 : 0;
+                  const ratio =
+                    backlogTotal > 0 ? (count / backlogTotal) * 100 : 0;
                   return (
                     <div key={bucket.bucket}>
                       <div className="flex justify-between text-xs mb-1.5">
-                        <span className="text-muted-foreground">{bucket.bucket} วัน</span>
-                        <span className="font-medium text-foreground">{count}</span>
+                        <span className="text-muted-foreground">
+                          {bucket.bucket} วัน
+                        </span>
+                        <span className="font-medium text-foreground">
+                          {count}
+                        </span>
                       </div>
                       <Progress value={ratio} className="h-1.5" />
                     </div>
@@ -517,9 +582,11 @@ export default function DirectorSlaReportPage() {
               </p>
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="rounded-lg border bg-background p-2.5">
-                  <p className="text-muted-foreground mb-1">งานที่ขาดการดำเนินการ</p>
+                  <p className="text-muted-foreground mb-1">
+                    งานที่ขาดการดำเนินการ
+                  </p>
                   <p
-                    className={`text-lg font-bold ${dataQuality.closed_without_actions ? 'text-destructive' : 'text-foreground'}`}
+                    className={`text-lg font-bold ${dataQuality.closed_without_actions ? "text-destructive" : "text-foreground"}`}
                   >
                     {Number(dataQuality.closed_without_actions ?? 0)}
                   </p>
@@ -527,7 +594,7 @@ export default function DirectorSlaReportPage() {
                 <div className="rounded-lg border bg-background p-2.5">
                   <p className="text-muted-foreground mb-1">ระยะเวลาติดลบ</p>
                   <p
-                    className={`text-lg font-bold ${dataQuality.step_negative_duration ? 'text-destructive' : 'text-foreground'}`}
+                    className={`text-lg font-bold ${dataQuality.step_negative_duration ? "text-destructive" : "text-foreground"}`}
                   >
                     {Number(dataQuality.step_negative_duration ?? 0)}
                   </p>
@@ -551,7 +618,8 @@ export default function DirectorSlaReportPage() {
                 ประสิทธิภาพรายขั้นตอน
               </CardTitle>
               <CardDescription className="mt-1">
-                วิเคราะห์ระยะเวลาดำเนินการจริงเทียบกับเป้าหมายกำหนดเวลา ในแต่ละขั้นตอน
+                วิเคราะห์ระยะเวลาดำเนินการจริงเทียบกับเป้าหมายกำหนดเวลา
+                ในแต่ละขั้นตอน
               </CardDescription>
             </div>
           </div>
@@ -592,12 +660,18 @@ export default function DirectorSlaReportPage() {
                         {row.step}
                       </div>
                     </TableCell>
-                    <TableCell className="font-medium text-sm">{row.label}</TableCell>
-                    <TableCell className="text-center text-sm">{row.targetDays}</TableCell>
+                    <TableCell className="font-medium text-sm">
+                      {row.label}
+                    </TableCell>
+                    <TableCell className="text-center text-sm">
+                      {row.targetDays}
+                    </TableCell>
                     <TableCell className="text-center text-sm">
                       <span
                         className={
-                          row.medianDays > row.targetDays ? 'text-destructive font-medium' : ''
+                          row.medianDays > row.targetDays
+                            ? "text-destructive font-medium"
+                            : ""
                         }
                       >
                         {row.medianDays.toFixed(1)}
@@ -629,7 +703,9 @@ export default function DirectorSlaReportPage() {
                 ผลงานดีที่สุด
               </span>
               <span className="font-semibold text-emerald-600">
-                {bestStep ? `${bestStep.label} (${bestStep.onTimeRate.toFixed(0)}%)` : '-'}
+                {bestStep
+                  ? `${bestStep.label} (${bestStep.onTimeRate.toFixed(0)}%)`
+                  : "-"}
               </span>
             </div>
             <div className="flex items-center justify-between rounded-lg border bg-background p-3 shadow-sm">
@@ -637,7 +713,9 @@ export default function DirectorSlaReportPage() {
                 คอขวดกระบวนการ
               </span>
               <span className="font-semibold text-destructive">
-                {worstStep ? `${worstStep.label} (${worstStep.onTimeRate.toFixed(0)}%)` : '-'}
+                {worstStep
+                  ? `${worstStep.label} (${worstStep.onTimeRate.toFixed(0)}%)`
+                  : "-"}
               </span>
             </div>
           </div>

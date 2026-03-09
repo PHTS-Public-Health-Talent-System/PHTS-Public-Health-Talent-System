@@ -22,6 +22,8 @@ export interface PayoutWithDetails {
   citizen_id: string;
   employee_name: string;
   department: string;
+  profession_code: string | null;
+  group_no: number | null;
   pts_rate_snapshot: number;
   calculated_amount: number;
   retroactive_amount: number;
@@ -38,7 +40,7 @@ export interface FinanceSummary {
   period_month: number;
   period_year: number;
   period_status: string;
-  is_frozen: boolean | number;
+  snapshot_status: string;
   total_employees: number;
   total_amount: number;
   paid_amount: number;

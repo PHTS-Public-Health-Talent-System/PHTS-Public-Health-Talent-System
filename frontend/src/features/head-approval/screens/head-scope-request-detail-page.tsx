@@ -1,10 +1,11 @@
 'use client';
 
 import { use, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -21,20 +22,29 @@ import {
 } from 'lucide-react';
 import type { RequestWithDetails } from '@/types/request.types';
 import { toRequestDisplayId } from '@/shared/utils/public-id';
-import { useRequestDetail, useProcessAction } from '@/features/request/hooks';
+import { useMyScopes, useRequestDetail, useProcessAction } from '@/features/request/core/hooks';
 import { useRateHierarchy } from '@/features/master-data/hooks';
-import { RequestDetailPageShell } from '@/features/request/detail/components/RequestDetailPageShell';
-import { ApprovalTimelineCard } from '@/features/request/detail/components/ApprovalTimelineCard';
-import { SectionHeader, InfoItem } from '@/features/request/detail/requestDetail.ui';
+import { RequestDetailPageShell } from '@/features/request/detail/shell/RequestDetailPageShell';
+import { RequestTimelineCard } from '@/features/request/detail/timeline';
+import { SectionHeader, InfoItem } from '@/features/request/detail/utils';
 import { AttachmentPreviewDialog } from '@/components/common/attachment-preview-dialog';
-import { getAttachmentLabel } from '@/features/request/detail/requestDetail.attachmentsLabel';
-import { buildAttachmentUrl, isPreviewableFile } from '@/features/request/detail/requestDetail.attachments';
+import { AssignmentOrderSummaryCard, MemoSummaryCard } from '@/features/request/detail/cards';
+import { getAttachmentLabel } from '@/features/request/detail/utils';
+import { buildAttachmentUrl, isPreviewableFile } from '@/features/request/detail/utils';
+import { useAuth } from '@/components/providers/auth-provider';
 import {
+  findAssignmentOrderSummary,
+  findMemoSummary,
   isEmptyRateMapping,
   normalizeRateMapping,
   resolveRateMappingDisplay,
-} from '@/features/request/detail/requestDetail.rateMapping';
+} from '@/features/request/detail/utils';
 import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
+import {
+  buildAllowanceAttachmentOcrPolicy,
+  buildAllowanceAttachmentOcrResultMap,
+  buildAllowanceOcrDocuments,
+} from '@/app/(pts-officer)/pts-officer/allowance-list/attachments';
 
 const parseSubmission = (value: RequestWithDetails['submission_data']) => {
   if (!value) return {};
@@ -79,6 +89,36 @@ const WORK_ATTRIBUTE_LABELS: Record<string, string> = {
   service: 'ให้บริการ',
 };
 
+const HEAD_SCOPE_ROLE_LABELS = {
+  WARD_SCOPE: 'หัวหน้าตึก/หัวหน้างาน',
+  DEPT_SCOPE: 'หัวหน้ากลุ่มงาน',
+} as const;
+
+type HeadScopeRoleKey = keyof typeof HEAD_SCOPE_ROLE_LABELS;
+
+function normalizeForMatch(value: string | null | undefined): string {
+  return (value ?? '')
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[().,/_-]/g, '');
+}
+
+function scopeTextMatches(scopeText: string | null | undefined, target: string | null | undefined): boolean {
+  const normalizedScope = normalizeForMatch(scopeText);
+  const normalizedTarget = normalizeForMatch(target);
+  if (!normalizedScope || !normalizedTarget) return false;
+  if (normalizedScope === normalizedTarget) return true;
+
+  // Fallback for slightly different naming variants (spacing/punctuation/prefixes)
+  if (normalizedScope.length >= 6 && normalizedTarget.length >= 6) {
+    return normalizedScope.includes(normalizedTarget) || normalizedTarget.includes(normalizedScope);
+  }
+
+  return false;
+}
+
 type HeadScopeRequestDetailPageProps = {
   params: Promise<{ id: string }>;
   basePath: string;
@@ -87,7 +127,11 @@ type HeadScopeRequestDetailPageProps = {
 export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeRequestDetailPageProps) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isHistoryView = searchParams.get('from') === 'history';
+  const { user } = useAuth();
   const { data: request, isLoading } = useRequestDetail(id);
+  const { data: myScopes } = useMyScopes();
   const { data: rateHierarchy } = useRateHierarchy();
   const processAction = useProcessAction();
 
@@ -125,6 +169,8 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
   const positionName = submissionPositionName ?? request?.requester?.position ?? '-';
   const department = submissionDepartment ?? request?.current_department ?? '-';
   const subDepartment = submissionSubDepartment ?? '-';
+  const requestDepartmentValue = submissionDepartment ?? request?.current_department ?? null;
+  const requestSubDepartmentValue = submissionSubDepartment ?? null;
   const displayId = request
     ? (request.request_no ?? toRequestDisplayId(request.request_id, request.created_at))
     : id;
@@ -143,7 +189,40 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
     ? formatThaiDate(request.effective_date, { month: 'long' })
     : null;
 
-  const attachments = request?.attachments ?? [];
+  const attachments = useMemo(() => request?.attachments ?? [], [request?.attachments]);
+  const ocrPrecheck = request?.ocr_precheck ?? null;
+  const visibleAttachmentFileNames = useMemo(
+    () => attachments.map((file) => file.file_name),
+    [attachments],
+  );
+  const requestOcrResultMap = useMemo(
+    () =>
+      buildAllowanceAttachmentOcrResultMap({
+        requestResults: ocrPrecheck?.results ?? [],
+        visibleFileNames: visibleAttachmentFileNames,
+      }),
+    [ocrPrecheck?.results, visibleAttachmentFileNames],
+  );
+  const ocrDocuments = useMemo(
+    () =>
+      buildAllowanceOcrDocuments({
+        requestResults: ocrPrecheck?.results ?? [],
+        visibleFileNames: visibleAttachmentFileNames,
+      }),
+    [ocrPrecheck?.results, visibleAttachmentFileNames],
+  );
+  const assignmentOrderSummary = useMemo(() => {
+    if (!requesterName || requesterName === '-' || ocrDocuments.length === 0) {
+      return null;
+    }
+    return findAssignmentOrderSummary(ocrDocuments, requesterName);
+  }, [ocrDocuments, requesterName]);
+  const memoSummary = useMemo(() => {
+    if (!requesterName || requesterName === '-' || ocrDocuments.length === 0) {
+      return null;
+    }
+    return findMemoSummary(ocrDocuments, requesterName);
+  }, [ocrDocuments, requesterName]);
   const personnelTypeLabel = request?.personnel_type
     ? PERSONNEL_TYPE_LABELS[request.personnel_type] || request.personnel_type
     : '-';
@@ -157,7 +236,67 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
         .map(([key]) => WORK_ATTRIBUTE_LABELS[key] || key)
     : [];
 
-  const canAct = request?.status === 'PENDING' && request?.current_step === 4;
+  const roleToStep: Record<string, number> = {
+    WARD_SCOPE: 1,
+    DEPT_SCOPE: 2,
+  };
+  const statusToHeadScopeRole: Record<string, HeadScopeRoleKey | undefined> = {
+    PENDING_WARD_SCOPE: 'WARD_SCOPE',
+    PENDING_DEPT_SCOPE: 'DEPT_SCOPE',
+  };
+  const stepToHeadScopeRole: Record<number, HeadScopeRoleKey | undefined> = {
+    1: 'WARD_SCOPE',
+    2: 'DEPT_SCOPE',
+  };
+  const activeHeadScopeRoles = (user?.head_scope_roles ?? []).filter(
+    (role): role is HeadScopeRoleKey => role === 'WARD_SCOPE' || role === 'DEPT_SCOPE',
+  );
+  const actingHeadScopeRole =
+    (request?.status ? statusToHeadScopeRole[String(request.status)] : undefined) ??
+    (request?.current_step ? stepToHeadScopeRole[request.current_step] : undefined);
+  const canResolveActingRole =
+    !!actingHeadScopeRole && activeHeadScopeRoles.includes(actingHeadScopeRole);
+  const matchedScopes = useMemo(() => {
+    if (!Array.isArray(myScopes) || !actingHeadScopeRole) return [];
+
+    const normalizedDept = normalizeForMatch(requestDepartmentValue);
+    const normalizedSubDept = normalizeForMatch(requestSubDepartmentValue);
+
+    return myScopes.filter((scope) => {
+      const matchesDept = scopeTextMatches(scope.label, normalizedDept) || scopeTextMatches(scope.value, normalizedDept);
+      const matchesSubDept = scopeTextMatches(scope.label, normalizedSubDept) || scopeTextMatches(scope.value, normalizedSubDept);
+
+      if (actingHeadScopeRole === 'WARD_SCOPE') {
+        if (scope.type === 'UNIT') {
+          return matchesSubDept;
+        }
+        if (scope.type === 'DEPT') {
+          return !normalizedSubDept && matchesDept;
+        }
+        return false;
+      }
+
+      if (scope.type === 'DEPT') {
+        return matchesDept;
+      }
+      if (scope.type === 'UNIT') {
+        return matchesSubDept;
+      }
+      return false;
+    });
+  }, [actingHeadScopeRole, myScopes, requestDepartmentValue, requestSubDepartmentValue]);
+
+  const currentUserSteps = user?.role === 'HEAD_SCOPE'
+    ? (user.head_scope_roles ?? []).map((role) => roleToStep[role]).filter((step): step is number => typeof step === 'number')
+    : (user?.role && roleToStep[user.role] ? [roleToStep[user.role]] : []);
+  const currentStepForApproval = request?.current_step ?? (actingHeadScopeRole ? roleToStep[actingHeadScopeRole] : -1);
+  const isPendingStatus = request?.status?.startsWith('PENDING');
+  const canAct =
+    !isHistoryView &&
+    isPendingStatus &&
+    currentUserSteps.includes(currentStepForApproval);
+  const backHref = isHistoryView ? `${basePath}/history` : `${basePath}/requests`;
+  const backLabel = isHistoryView ? 'ประวัติการอนุมัติ' : 'รายการรออนุมัติ';
 
   const handlePreview = (url: string, name: string) => {
     setPreviewUrl(url);
@@ -197,18 +336,18 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
   return (
     <RequestDetailPageShell
       state={isLoading ? 'loading' : request ? 'ready' : 'notFound'}
-      backHref={`${basePath}/requests`}
-      backLabel="รายการคำขอ"
+      backHref={backHref}
+      backLabel={backLabel}
       displayId={displayId}
       status={request?.status}
       currentStep={request?.current_step ?? null}
       createdAt={request?.created_at ?? null}
       headerActions={
-        request ? (
+        request && !isHistoryView ? (
           <>
             <Button
-              size="sm"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              size="action"
+              variant="success"
               disabled={!canAct || processAction.isPending}
               onClick={() => setActionType('approve')}
             >
@@ -217,7 +356,7 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
             </Button>
             <Button
               variant="outline"
-              size="sm"
+              size="action"
               disabled={!canAct || processAction.isPending}
               onClick={() => setActionType('return')}
             >
@@ -225,9 +364,8 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
               ส่งกลับแก้ไข
             </Button>
             <Button
-              variant="ghost"
-              size="sm"
-              className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+              variant="dangerGhost"
+              size="action"
               disabled={!canAct || processAction.isPending}
               onClick={() => setActionType('reject')}
             >
@@ -240,6 +378,41 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
       left={
         request ? (
           <>
+            {actingHeadScopeRole && (
+              <Card className="scroll-mt-20 shadow-sm transition-all duration-300 border-primary/30 bg-primary/5">
+                <CardContent className="p-6 space-y-3">
+                  <SectionHeader title="บริบทการอนุมัติ" icon={Building2} />
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">กำลังอนุมัติในฐานะ</span>
+                    <Badge variant="secondary" className="font-medium">
+                      {HEAD_SCOPE_ROLE_LABELS[actingHeadScopeRole]}
+                    </Badge>
+                    {!canResolveActingRole && (
+                      <span className="text-destructive text-xs">
+                        (บัญชีนี้ไม่ได้ถือบทบาทนี้อยู่)
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    ขอบเขตที่ตรงกับคำขอ:
+                  </div>
+                  {matchedScopes.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {matchedScopes.map((scope) => (
+                        <Badge key={`${scope.type}:${scope.value}`} variant="outline">
+                          {scope.type === 'DEPT' ? 'กลุ่มงาน' : 'หน่วยงาน'}: {scope.label}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      ไม่พบขอบเขตที่ตรงแบบตรงตัวกับข้อมูลคำขอนี้
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             <Card className="scroll-mt-20 shadow-sm transition-all duration-300 border-border/60">
               <CardContent className="p-6">
                 <SectionHeader title="ข้อมูลผู้ยื่นคำขอ" icon={User} />
@@ -301,7 +474,7 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
                       <div className="sm:col-span-2 mt-2 pt-4 border-t border-border/50 flex justify-between items-center">
                         <span className="text-sm font-medium">อัตราเงินตามสิทธิ</span>
                         <span className="text-lg font-bold text-primary">
-                          {rateAmount !== null && rateAmount !== undefined
+                          {rateAmount !== null
                             ? formatThaiNumber(Number(rateAmount))
                             : '-'}
                           <span className="text-sm font-normal text-muted-foreground ml-1">
@@ -318,16 +491,33 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
             <Card className="scroll-mt-20 shadow-sm transition-all duration-300 border-border/60">
               <CardContent className="p-6">
                 <SectionHeader title={`ไฟล์แนบ (${attachments.length})`} icon={FileText} />
+                {memoSummary ? <MemoSummaryCard summary={memoSummary} /> : null}
+                {assignmentOrderSummary ? (
+                  <div className="mt-4">
+                    <AssignmentOrderSummaryCard summary={assignmentOrderSummary} />
+                  </div>
+                ) : null}
                 {attachments.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
                     <FileText className="h-8 w-8 mb-2 opacity-20" />
                     <p className="text-sm">ไม่มีไฟล์เอกสารแนบ</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                     {attachments.map((file) => {
                       const fileUrl = buildAttachmentUrl(file.file_path);
                       const previewable = isPreviewableFile(file.file_name);
+                      const ocrResult = requestOcrResultMap.get(file.file_name) ?? null;
+                      const {
+                        documentLabel: ocrDocumentLabel,
+                        notice: ocrNotice,
+                      } = buildAllowanceAttachmentOcrPolicy({
+                        fileName: file.file_name,
+                        result: ocrResult,
+                        personName: requesterName,
+                        suppressActions: true,
+                        clearableFileNames: new Set<string>(),
+                      });
                       return (
                         <div
                           key={file.attachment_id}
@@ -343,6 +533,18 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
                             <p className="text-xs text-muted-foreground mt-0.5">
                               {getAttachmentLabel(file.file_name, file.file_type)}
                             </p>
+                            {ocrDocumentLabel ? (
+                              <div className="mt-2">
+                                <Badge variant="outline" className="text-[11px]">
+                                  {ocrDocumentLabel}
+                                </Badge>
+                              </div>
+                            ) : null}
+                            {ocrNotice ? (
+                              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                                {ocrNotice}
+                              </p>
+                            ) : null}
                             <div className="flex items-center gap-2 mt-2 opacity-60 group-hover:opacity-100 transition-opacity">
                               {previewable && (
                                 <button
@@ -387,7 +589,7 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
               </CardContent>
             </Card>
 
-            <ApprovalTimelineCard request={request} />
+            <RequestTimelineCard request={request} />
           </>
         ) : null
       }
@@ -456,12 +658,12 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
                   <Button
                     onClick={handleAction}
                     disabled={processAction.isPending}
-                    className={
+                    variant={
                       actionType === 'approve'
-                        ? 'bg-emerald-600 hover:bg-emerald-700'
+                        ? 'success'
                         : actionType === 'return'
-                          ? 'bg-orange-500 hover:bg-orange-600 text-white'
-                          : 'bg-destructive hover:bg-destructive/90'
+                          ? 'warning'
+                          : 'destructive'
                     }
                   >
                     {actionType === 'approve' && 'อนุมัติ'}

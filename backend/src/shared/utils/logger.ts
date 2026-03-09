@@ -36,10 +36,10 @@ interface LogEntry {
 }
 
 class Logger {
-  private minLevel: LogLevel;
-  private module: string;
+  private readonly minLevel: LogLevel;
+  private readonly module: string;
 
-  constructor(module: string = "App") {
+  constructor(module = "App") {
     this.module = module;
     const envLevel = process.env.LOG_LEVEL || "info";
     this.minLevel = LogLevel[envLevel.toUpperCase() as keyof typeof LogLevel] ?? LogLevel.INFO;
@@ -164,8 +164,10 @@ class Logger {
     duration?: number,
     context?: LogContext,
   ): void {
+    const statusLabel = statusCode ? `→ ${statusCode}` : "";
+    const message = [method, path, statusLabel].filter(Boolean).join(" ");
     this.info(
-      `${method} ${path} ${statusCode ? `→ ${statusCode}` : ""}`,
+      message,
       {
         method,
         path,

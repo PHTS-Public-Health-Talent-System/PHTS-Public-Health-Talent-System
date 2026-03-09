@@ -16,14 +16,22 @@ import { actionSchema, verificationSchema } from '@/modules/request/dto/update-s
 import { verificationSnapshotSchema } from '@/modules/request/dto/verification-snapshot.dto.js';
 import {
   requestAdjustLeaveSchema,
+  requestEligibilityAttachmentParamSchema,
+  requestEligibilityAttachmentOcrSchema,
+  requestEligibilityOcrClearSchema,
+  requestAttachmentOcrSchema,
+  requestOcrClearSchema,
   requestApproveBatchSchema,
   requestEligibilityIdParamSchema,
   requestEligibilityQuerySchema,
   requestHistoryQuerySchema,
   requestIdOrNoParamSchema,
   requestIdParamSchema,
+  requestManualOcrSchema,
+  requestOcrHistoryQuerySchema,
   requestRateMappingSchema,
   requestReassignSchema,
+  requestEligibilityManageSchema,
 } from '@/modules/request/dto/request-params.dto.js';
 import { UserRole } from '@/types/auth.js';
 // Note: createRequestSchema is used inside controller manually for file upload handling, or added here if middleware used.
@@ -55,12 +63,59 @@ router.post(
 // Master rates and recommended rate
 router.get("/master-rates", requestController.getMasterRates);
 router.get("/prefill", requestController.getPrefill);
+router.get(
+  "/personnel-options",
+  restrictTo(UserRole.PTS_OFFICER),
+  requestController.searchPersonnelOptions,
+);
 
 
 router.post(
   "/:id/rate-mapping",
   validate(requestRateMappingSchema),
   requestController.updateRateMapping,
+);
+
+router.post(
+  "/:id/ocr-precheck/manual",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestManualOcrSchema),
+  requestController.persistManualOcrPrecheck,
+);
+
+router.post(
+  "/:id/attachments/ocr",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestAttachmentOcrSchema),
+  requestController.runRequestAttachmentsOcr,
+);
+
+router.post(
+  "/:id/ocr-precheck/clear",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestOcrClearSchema),
+  requestController.clearRequestAttachmentOcr,
+);
+
+router.post(
+  "/eligibility/:id/ocr-precheck/manual",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestManualOcrSchema),
+  requestController.persistEligibilityManualOcrPrecheck,
+);
+
+router.post(
+  "/eligibility/:eligibilityId/attachments/ocr",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityAttachmentOcrSchema),
+  requestController.runEligibilityAttachmentsOcr,
+);
+
+router.post(
+  "/eligibility/:eligibilityId/ocr-precheck/clear",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityOcrClearSchema),
+  requestController.clearEligibilityAttachmentOcr,
 );
 
 // Confirm attachments (license file)
@@ -89,13 +144,13 @@ router.get("/", requestController.getMyRequests);
 // Get user's available scopes (for multi-scope dropdown)
 router.get(
   "/my-scopes",
-  restrictTo(UserRole.HEAD_WARD, UserRole.HEAD_DEPT),
+  restrictTo(UserRole.HEAD_SCOPE),
   requestController.getMyScopes,
 );
 
 router.get(
   "/my-scopes/members",
-  restrictTo(UserRole.HEAD_WARD, UserRole.HEAD_DEPT),
+  restrictTo(UserRole.HEAD_SCOPE),
   requestController.getMyScopeMembers,
 );
 
@@ -104,8 +159,7 @@ router.get(
 router.get(
   "/pending",
   restrictTo(
-    UserRole.HEAD_WARD,
-    UserRole.HEAD_DEPT,
+    UserRole.HEAD_SCOPE,
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.DIRECTOR,
@@ -128,6 +182,25 @@ router.get(
   requestController.getEligibilitySummary,
 );
 
+router.post(
+  "/eligibility/:eligibilityId/attachments",
+  restrictTo(UserRole.PTS_OFFICER),
+  requestUpload.fields([
+    { name: "files", maxCount: 10 },
+    { name: "files[]", maxCount: 10 },
+    { name: "license_file", maxCount: 1 },
+  ]),
+  validate(requestEligibilityIdParamSchema),
+  requestController.uploadEligibilityAttachments,
+);
+
+router.delete(
+  "/eligibility/:eligibilityId/attachments/:attachmentId",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityAttachmentParamSchema),
+  requestController.removeEligibilityAttachment,
+);
+
 router.get(
   "/eligibility/export",
   restrictTo(UserRole.PTS_OFFICER),
@@ -142,13 +215,33 @@ router.get(
   requestController.getEligibilityById,
 );
 
+router.post(
+  "/eligibility/:eligibilityId/set-primary",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityManageSchema),
+  requestController.setPrimaryEligibility,
+);
+
+router.post(
+  "/eligibility/:eligibilityId/deactivate",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityManageSchema),
+  requestController.deactivateEligibility,
+);
+
+router.post(
+  "/eligibility/:eligibilityId/reactivate",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityManageSchema),
+  requestController.reactivateEligibility,
+);
+
 
 // Get approval history for current approver
 router.get(
   "/history",
   restrictTo(
-    UserRole.HEAD_WARD,
-    UserRole.HEAD_DEPT,
+    UserRole.HEAD_SCOPE,
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
@@ -156,6 +249,13 @@ router.get(
   ),
   validate(requestHistoryQuerySchema),
   requestController.getHistory,
+);
+
+router.get(
+  "/ocr-prechecks",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestOcrHistoryQuerySchema),
+  requestController.getOcrPrecheckHistory,
 );
 
 // Get list of available PTS_OFFICER users for reassignment
@@ -209,8 +309,7 @@ router.post(
 router.post(
   "/:id/action",
   restrictTo(
-    UserRole.HEAD_WARD,
-    UserRole.HEAD_DEPT,
+    UserRole.HEAD_SCOPE,
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.DIRECTOR,
@@ -238,8 +337,7 @@ router.post(
 router.post(
   "/:id/approve",
   restrictTo(
-    UserRole.HEAD_WARD,
-    UserRole.HEAD_DEPT,
+    UserRole.HEAD_SCOPE,
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.DIRECTOR,
@@ -253,8 +351,7 @@ router.post(
 router.post(
   "/:id/reject",
   restrictTo(
-    UserRole.HEAD_WARD,
-    UserRole.HEAD_DEPT,
+    UserRole.HEAD_SCOPE,
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.DIRECTOR,
@@ -268,8 +365,7 @@ router.post(
 router.post(
   "/:id/return",
   restrictTo(
-    UserRole.HEAD_WARD,
-    UserRole.HEAD_DEPT,
+    UserRole.HEAD_SCOPE,
     UserRole.PTS_OFFICER,
     UserRole.HEAD_HR,
     UserRole.DIRECTOR,

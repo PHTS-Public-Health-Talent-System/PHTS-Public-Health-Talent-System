@@ -1,4 +1,4 @@
-import { UserSidebar } from "@/features/navigation/components/user-sidebar"
+import { UserSidebar } from "@/features/navigation/components"
 
 export const dynamic = 'force-dynamic'
 

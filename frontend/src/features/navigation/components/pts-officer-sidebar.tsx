@@ -1,8 +1,8 @@
 "use client"
 import { UnifiedSidebar, type SidebarConfig } from "./unified-sidebar"
 import { useAuth } from "@/components/providers/auth-provider"
-import { useNavigation } from "@/features/navigation/hooks"
-import { mapNavigationItems } from "@/features/navigation/navigation.mappers"
+import { useNavigation } from "@/features/navigation/core/hooks"
+import { mapNavigationItems } from "@/features/navigation/core/navigation.mappers"
 
 const baseConfig: Omit<SidebarConfig, "user"> = {
   role: "pts-officer",
@@ -33,10 +33,13 @@ export function PtsOfficerSidebar() {
     const nav = navigationQuery.data
     const badges = nav?.badges
 
+    const primaryNavigation = nav ? mapNavigationItems(nav.menu, badges) : []
+    const secondaryNavigation = nav ? mapNavigationItems(nav.secondaryMenu, badges) : []
+
     return {
       ...baseConfig,
-      navigation: nav ? mapNavigationItems(nav.menu, badges) : [],
-      secondaryNavigation: nav ? mapNavigationItems(nav.secondaryMenu, badges) : [],
+      navigation: primaryNavigation,
+      secondaryNavigation,
       secondaryLabel: nav?.secondaryLabel || baseConfig.secondaryLabel,
       notificationCount: badges?.notifications ?? 0,
       user: {

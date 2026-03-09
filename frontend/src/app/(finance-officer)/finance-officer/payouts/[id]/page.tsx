@@ -38,7 +38,6 @@ import {
 import {
   ArrowLeft,
   CheckCircle2,
-  Download,
   Search,
   Wallet,
   XCircle,
@@ -61,6 +60,7 @@ import {
   formatThaiMonthYear,
   toBuddhistYear,
 } from '@/shared/utils/thai-locale';
+import { resolveProfessionLabel } from '@/shared/constants/profession';
 
 type PaymentStatus = 'PENDING' | 'PAID' | 'CANCELLED';
 
@@ -72,6 +72,8 @@ type PayoutRow = {
   citizen_id: string;
   employee_name: string;
   department: string | null;
+  profession_code: string | null;
+  group_no: number | null;
   pts_rate_snapshot: number;
   calculated_amount: number;
   retroactive_amount: number;
@@ -101,18 +103,14 @@ const formatDateTime = (value?: string | null) => {
   return formatThaiDateTime(value);
 };
 
-const escapeCsv = (value: string | number) => {
-  const text = String(value ?? '');
-  if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
-  return text;
-};
-
 export default function PayoutPeriodDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const periodId = Number(id);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | PaymentStatus>('all');
+  const [professionFilter, setProfessionFilter] = useState<string>('all');
+  const [groupFilter, setGroupFilter] = useState<string>('all');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -121,11 +119,18 @@ export default function PayoutPeriodDetailPage({ params }: { params: Promise<{ i
   const [actionError, setActionError] = useState<string | null>(null);
 
   const summaryQuery = useFinanceSummary();
+  const payoutFilterOptionsQuery = usePayoutsByPeriod(periodId, {
+    status: statusFilter === 'all' ? undefined : statusFilter,
+    search: search.trim() || undefined,
+  });
   const payoutsQuery = usePayoutsByPeriod(
     periodId,
-    statusFilter === 'all'
-      ? { search: search.trim() || undefined }
-      : { status: statusFilter, search: search.trim() || undefined },
+    {
+      status: statusFilter === 'all' ? undefined : statusFilter,
+      search: search.trim() || undefined,
+      professionCode: professionFilter === 'all' ? undefined : professionFilter,
+      groupNo: groupFilter === 'all' ? undefined : groupFilter,
+    },
   );
   const markPaidMutation = useMarkPayoutAsPaid();
   const batchMarkPaidMutation = useBatchMarkAsPaid();
@@ -135,12 +140,43 @@ export default function PayoutPeriodDetailPage({ params }: { params: Promise<{ i
     if (!Array.isArray(payoutsQuery.data)) return [];
     return (payoutsQuery.data as PayoutRow[]).map((item) => ({
       ...item,
+      group_no:
+        item.group_no === null || item.group_no === undefined
+          ? null
+          : Number(item.group_no),
       pts_rate_snapshot: Number(item.pts_rate_snapshot ?? 0),
       calculated_amount: Number(item.calculated_amount ?? 0),
       retroactive_amount: Number(item.retroactive_amount ?? 0),
       total_payable: Number(item.total_payable ?? 0),
     }));
   }, [payoutsQuery.data]);
+
+  const optionRows = useMemo<PayoutRow[]>(() => {
+    if (!Array.isArray(payoutFilterOptionsQuery.data)) return [];
+    return payoutFilterOptionsQuery.data as PayoutRow[];
+  }, [payoutFilterOptionsQuery.data]);
+
+  const professionOptions = useMemo(() => {
+    const values = Array.from(
+      new Set(
+        optionRows
+          .map((row) => (row.profession_code || '').trim().toUpperCase())
+          .filter((value) => value.length > 0),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+    return values;
+  }, [optionRows]);
+
+  const groupOptions = useMemo(() => {
+    const groupValues = Array.from(
+      new Set(
+        optionRows
+          .map((row) => (row.group_no === null || row.group_no === undefined ? null : Number(row.group_no)))
+          .filter((value): value is number => Number.isFinite(value)),
+      ),
+    ).sort((a, b) => a - b);
+    return groupValues;
+  }, [optionRows]);
 
   const periodSummary = useMemo(() => {
     if (!Array.isArray(summaryQuery.data)) return null;
@@ -283,47 +319,6 @@ export default function PayoutPeriodDetailPage({ params }: { params: Promise<{ i
     }
   };
 
-  const handleExport = () => {
-    setActionError(null);
-    if (payouts.length === 0) {
-      setActionError('ไม่พบข้อมูลสำหรับส่งออก');
-      toast.error('ไม่พบข้อมูลสำหรับส่งออก');
-      return;
-    }
-    const headers = [
-      'Payout ID',
-      'Citizen ID',
-      'ชื่อผู้รับเงิน',
-      'หน่วยงาน',
-      'อัตรา',
-      'ยอดปรับย้อนหลัง',
-      'ยอดจ่ายสุทธิ',
-      'สถานะ',
-      'วันที่จ่าย',
-    ];
-    const rows = payouts.map((row) => [
-      row.payout_id,
-      row.citizen_id,
-      row.employee_name,
-      row.department || '-',
-      row.pts_rate_snapshot,
-      row.retroactive_amount,
-      row.total_payable,
-      row.payment_status,
-      row.paid_at || '',
-    ]);
-    const csv =
-      '\uFEFF' + [headers, ...rows].map((line) => line.map(escapeCsv).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `finance-payout-period-${periodId}.csv`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-    toast.success('ส่งออกรายการจ่ายเงินสำเร็จ');
-  };
-
   const isLoading = payoutsQuery.isLoading || summaryQuery.isLoading;
   const periodTitle = periodSummary
     ? `${toPeriodCode(periodSummary.period_month, periodSummary.period_year)} • ${formatThaiMonthYear(
@@ -358,12 +353,8 @@ export default function PayoutPeriodDetailPage({ params }: { params: Promise<{ i
             <p className="mt-1 text-muted-foreground">จัดการการจ่ายเงินรายบุคคลในรอบนี้</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleExport}>
-              <Download className="mr-2 h-4 w-4" />
-              ส่งออก CSV
-            </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              variant="success"
               onClick={() => setMarkPaidDialogOpen(true)}
               disabled={selectedIds.length === 0}
             >
@@ -451,6 +442,32 @@ export default function PayoutPeriodDetailPage({ params }: { params: Promise<{ i
                 <SelectItem value="CANCELLED">ยกเลิก</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={professionFilter} onValueChange={setProfessionFilter}>
+              <SelectTrigger className="w-[200px] bg-background border-input">
+                <SelectValue placeholder="วิชาชีพ" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">ทุกวิชาชีพ</SelectItem>
+                {professionOptions.map((code) => (
+                  <SelectItem key={code} value={code}>
+                    {resolveProfessionLabel(code, code)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={groupFilter} onValueChange={setGroupFilter}>
+              <SelectTrigger className="w-[140px] bg-background border-input">
+                <SelectValue placeholder="กลุ่ม" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">ทุกกลุ่ม</SelectItem>
+                {groupOptions.map((groupNo) => (
+                  <SelectItem key={groupNo} value={String(groupNo)}>
+                    กลุ่ม {groupNo}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -473,10 +490,10 @@ export default function PayoutPeriodDetailPage({ params }: { params: Promise<{ i
                 <TableHead>รหัสจ่ายเงิน</TableHead>
                 <TableHead>ผู้รับเงิน</TableHead>
                 <TableHead>หน่วยงาน</TableHead>
-                <TableHead className="text-right">อัตรา</TableHead>
-                <TableHead className="text-right">ย้อนหลัง</TableHead>
-                <TableHead className="text-right">ยอดจ่าย</TableHead>
-                <TableHead>สถานะ</TableHead>
+                <TableHead className="text-right">อัตราเงินเพิ่ม/เดือน (บาท)</TableHead>
+                <TableHead className="text-right">ตกเบิก (บาท)</TableHead>
+                <TableHead className="text-right">รวมจ่ายสุทธิ (บาท)</TableHead>
+                <TableHead>สถานะการจ่ายเงิน</TableHead>
                 <TableHead className="w-[120px]">ดำเนินการ</TableHead>
               </TableRow>
             </TableHeader>
@@ -572,7 +589,7 @@ export default function PayoutPeriodDetailPage({ params }: { params: Promise<{ i
               ยกเลิก
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
+              variant="success"
               onClick={handleBatchMarkPaid}
               disabled={batchMarkPaidMutation.isPending || selectedIds.length === 0}
             >

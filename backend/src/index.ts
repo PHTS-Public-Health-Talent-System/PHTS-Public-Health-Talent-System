@@ -8,6 +8,7 @@
 
 import express, { Application } from 'express';
 import crypto from 'node:crypto';
+import path from 'node:path';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -21,26 +22,39 @@ import requestRoutes from '@/modules/request/request.routes.js';
 import signatureRoutes from '@/modules/signature/signature.routes.js';
 import payrollRoutes from '@/modules/payroll/payroll.routes.js';
 import reportRoutes from '@/modules/report/report.routes.js';
-import systemRoutes from '@/modules/system/system.routes.js';
+import systemRoutes from '@/modules/system/admin/admin.routes.js';
 import masterDataRoutes from '@/modules/master-data/master-data.routes.js';
-import leaveRecordsRoutes from '@/modules/leave-records/leave-records.routes.js';
+import leaveManagementRoutes from '@/modules/leave-management/leave-management.routes.js';
 import notificationRoutes from '@/modules/notification/notification.routes.js';
 import financeRoutes from '@/modules/finance/finance.routes.js';
-// Phase 6: Compliance & Quality
 import auditRoutes from '@/modules/audit/audit.routes.js';
 import slaRoutes from '@/modules/sla/sla.routes.js';
 import accessReviewRoutes from '@/modules/access-review/access-review.routes.js';
 import snapshotRoutes from '@/modules/snapshot/snapshot.routes.js';
-import alertsRoutes from '@/modules/alerts/alerts.routes.js';
-import healthRoutes from '@/modules/health/health.routes.js';
+import personnelChangesRoutes from '@/modules/workforce-compliance/routes/personnel-changes.routes.js';
+import licenseComplianceRoutes from '@/modules/workforce-compliance/routes/license-compliance.routes.js';
+import healthRoutes from '@/modules/health/routes/health.routes.js';
 import announcementRoutes from '@/modules/announcement/announcement.routes.js';
 import supportRoutes from '@/modules/support/support.routes.js';
-import dashboardRoutes from '@/modules/dashboard/dashboard.routes.js';
-import navigationRoutes from '@/modules/navigation/navigation.routes.js';
+import dashboardRoutes from '@/modules/dashboard/routes/dashboard.routes.js';
+import navigationRoutes from '@/modules/navigation/routes/navigation.routes.js';
 import {
   startOcrPrecheckWorker,
   stopOcrPrecheckWorker,
-} from '@/modules/request/services/ocr-precheck.service.js';
+} from '@/modules/ocr/services/ocr-worker.service.js';
+import {
+  startSnapshotWorker,
+  stopSnapshotWorker,
+} from '@/modules/snapshot/services/snapshot-worker.service.js';
+import { startSyncWorker, stopSyncWorker } from '@/modules/sync/services/sync-worker.service.js';
+import {
+  startBackupWorker,
+  stopBackupWorker,
+} from '@/modules/backup/services/backup-worker.service.js';
+import {
+  startNotificationOutboxWorker,
+  stopNotificationOutboxWorker,
+} from '@/modules/notification/services/notification-outbox-worker.service.js';
 import { isMaintenanceModeEnabled } from '@/modules/system/services/maintenance.service.js';
 import { errorHandler, notFoundHandler } from '@middlewares/errorHandler.js';
 import { apiRateLimiter } from '@middlewares/rateLimiter.js';
@@ -162,14 +176,14 @@ app.use(initializePassport());
  * Static Files Middleware
  * Serve uploaded files from /uploads route with CORS headers
  */
-import path from 'path';
 app.use(
   '/uploads',
   tokenBlacklistMiddleware,
   protect,
   authorizeUploadAccess,
   (_req, res, next) => {
-    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+    // Allow authenticated upload assets to be rendered from frontend on another origin/port.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     next();
   },
   express.static(path.join(process.cwd(), 'uploads')),
@@ -228,15 +242,17 @@ app.use('/api/payroll', payrollRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/config', masterDataRoutes);
-app.use('/api/leave-records', leaveRecordsRoutes);
+app.use('/api/leave-management', leaveManagementRoutes);
+// Backward-compatible alias for legacy frontend clients.
+app.use('/api/leave-records', leaveManagementRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/finance', financeRoutes);
-// Phase 6: Compliance & Quality Routes
 app.use('/api/audit', auditRoutes);
 app.use('/api/sla', slaRoutes);
 app.use('/api/access-review', accessReviewRoutes);
 app.use('/api/snapshots', snapshotRoutes);
-app.use('/api/alerts', alertsRoutes);
+app.use('/api/personnel-changes', personnelChangesRoutes);
+app.use('/api/license-compliance', licenseComplianceRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/dashboard', dashboardRoutes);
@@ -262,6 +278,10 @@ async function gracefulShutdown(signal: string) {
 
   try {
     await stopOcrPrecheckWorker();
+    await stopSnapshotWorker();
+    await stopSyncWorker();
+    await stopBackupWorker();
+    await stopNotificationOutboxWorker();
     await closePool();
     console.log('Server shut down successfully');
     process.exit(0);
@@ -296,6 +316,10 @@ if (process.env.NODE_ENV !== 'test' && process.env.START_SERVER !== 'false') {
     console.log('[Server] Verifying database connection...');
     await testConnection();
     startOcrPrecheckWorker();
+    startSnapshotWorker();
+    startSyncWorker();
+    startBackupWorker();
+    startNotificationOutboxWorker();
 
     // Start Express server
     app.listen(PORT, () => {

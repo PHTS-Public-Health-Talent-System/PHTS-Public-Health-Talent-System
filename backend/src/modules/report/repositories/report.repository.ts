@@ -6,7 +6,7 @@
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
 import db, { getConnection, query } from '@config/database.js';
-import { MasterRateRow, PayPeriod } from '@/modules/report/entities/report.entity.js';
+import { MasterRateRow, PayPeriod, PersonProfileRow } from '@/modules/report/entities/report.entity.js';
 
 export class ReportRepository {
   // ── Period queries ─────────────────────────────────────────────────────────
@@ -93,6 +93,49 @@ export class ReportRepository {
         profession_code: row.profession_code ?? null,
       });
     }
+    return map;
+  }
+
+  static async getPersonProfileMap(
+    citizenIds: string[],
+  ): Promise<Map<string, PersonProfileRow>> {
+    if (!citizenIds.length) return new Map();
+
+    const placeholders = citizenIds.map(() => "?").join(", ");
+    const profileRows = await query<RowDataPacket[]>(
+      `SELECT citizen_id, title, first_name, last_name
+       FROM emp_profiles
+       WHERE citizen_id IN (${placeholders})`,
+      citizenIds,
+    );
+
+    const supportRows = await query<RowDataPacket[]>(
+      `SELECT citizen_id, title, first_name, last_name
+       FROM emp_support_staff
+       WHERE citizen_id IN (${placeholders})`,
+      citizenIds,
+    );
+
+    const map = new Map<string, PersonProfileRow>();
+
+    for (const row of supportRows as any[]) {
+      map.set(String(row.citizen_id), {
+        citizen_id: String(row.citizen_id),
+        title: row.title ?? null,
+        first_name: row.first_name ?? null,
+        last_name: row.last_name ?? null,
+      });
+    }
+
+    for (const row of profileRows as any[]) {
+      map.set(String(row.citizen_id), {
+        citizen_id: String(row.citizen_id),
+        title: row.title ?? null,
+        first_name: row.first_name ?? null,
+        last_name: row.last_name ?? null,
+      });
+    }
+
     return map;
   }
 

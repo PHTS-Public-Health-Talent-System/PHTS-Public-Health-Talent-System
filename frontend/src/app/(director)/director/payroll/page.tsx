@@ -26,7 +26,6 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Eye,
   Download,
   Users,
   Banknote,
@@ -34,7 +33,7 @@ import {
   AlertCircle,
   type LucideIcon,
 } from 'lucide-react';
-import Link from 'next/link';
+import { TableRowViewAction } from '@/components/common';
 import { toast } from 'sonner';
 import {
   useApproveByDirector,
@@ -174,7 +173,7 @@ export default function DirectorPayrollPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">รอบจ่ายเงิน</h1>
-          <p className="text-muted-foreground mt-1">ตรวจสอบและอนุมัติรอบจ่ายเงิน พ.ต.ส. ในฐานะผู้บริหาร</p>
+          <p className="text-muted-foreground mt-1">ตรวจสอบและอนุมัติรอบจ่ายเงิน พ.ต.ส. ขั้นสุดท้าย</p>
         </div>
         <div>
           <Button
@@ -283,11 +282,7 @@ export default function DirectorPayrollPage() {
                       <TableCell>{row.submittedDate}</TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-2">
-                          <Link href={`/director/payroll/${row.periodId}`}>
-                            <Button variant="outline" size="icon" className="h-8 w-8">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </Link>
+                          <TableRowViewAction href={`/director/payroll/${row.periodId}`} />
                           <Button
                             variant="outline"
                             size="icon"
@@ -379,11 +374,7 @@ export default function DirectorPayrollPage() {
                       <TableCell>{row.closedDate}</TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-2">
-                          <Link href={`/director/payroll/${row.periodId}`}>
-                            <Button variant="outline" size="icon" className="h-8 w-8">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </Link>
+                          <TableRowViewAction href={`/director/payroll/${row.periodId}`} />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -478,11 +469,7 @@ export default function DirectorPayrollPage() {
             <Button
               onClick={handleAction}
               disabled={approveByDirector.isPending || rejectPeriod.isPending}
-              className={
-                actionType === 'approve'
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                  : 'bg-destructive hover:bg-destructive/90 text-white'
-              }
+              variant={actionType === 'approve' ? 'success' : 'destructive'}
             >
               {actionType === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'}
             </Button>

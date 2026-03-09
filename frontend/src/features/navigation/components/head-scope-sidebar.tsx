@@ -2,11 +2,11 @@
 
 import { UnifiedSidebar, type SidebarConfig } from './unified-sidebar';
 import { useAuth } from '@/components/providers/auth-provider';
-import { useNavigation } from '@/features/navigation/hooks';
-import { mapNavigationItems } from '@/features/navigation/navigation.mappers';
+import { useNavigation } from '@/features/navigation/core/hooks';
+import { mapNavigationItems } from '@/features/navigation/core/navigation.mappers';
 
 type HeadScopeSidebarProps = {
-  role: 'head-ward' | 'head-dept';
+  role: 'head-scope';
   roleLabel: string;
   roleBgColor: SidebarConfig['roleBgColor'];
   defaultTitle: string;

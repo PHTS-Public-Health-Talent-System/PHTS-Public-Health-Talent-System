@@ -22,7 +22,7 @@ describe("request.policy", () => {
   });
 
   test("getRoleForStep returns expected role", () => {
-    expect(getRoleForStep(1)).toBe(UserRole.HEAD_WARD);
+    expect(getRoleForStep(1)).toBe(UserRole.WARD_SCOPE);
     expect(getRoleForStep(3)).toBe(UserRole.PTS_OFFICER);
     expect(getRoleForStep(6)).toBe(UserRole.DIRECTOR);
   });
@@ -34,8 +34,8 @@ describe("request.policy", () => {
   });
 
   test("canApproveAtStep only true for matching role + step", () => {
-    expect(canApproveAtStep(UserRole.HEAD_DEPT, 2)).toBe(true);
-    expect(canApproveAtStep(UserRole.HEAD_DEPT, 3)).toBe(false);
+    expect(canApproveAtStep(UserRole.DEPT_SCOPE, 2)).toBe(true);
+    expect(canApproveAtStep(UserRole.DEPT_SCOPE, 3)).toBe(false);
   });
 
   test("batch approve only allowed for director", () => {
@@ -50,9 +50,8 @@ describe("request.policy", () => {
     expect(canAdjustLeave(UserRole.HEAD_HR)).toBe(false);
   });
 
-  test("scope visibility only for head-ward/head-dept", () => {
-    expect(canViewScopes(UserRole.HEAD_WARD)).toBe(true);
-    expect(canViewScopes(UserRole.HEAD_DEPT)).toBe(true);
+  test("scope visibility only for head-scope", () => {
+    expect(canViewScopes(UserRole.HEAD_SCOPE)).toBe(true);
     expect(canViewScopes(UserRole.PTS_OFFICER)).toBe(false);
   });
 });

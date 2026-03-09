@@ -23,8 +23,15 @@ export enum PayResultItemType {
 }
 
 export enum SnapshotType {
+  PAYOUT = "PAYOUT",
   SUMMARY = "SUMMARY",
-  DETAIL = "DETAIL",
+}
+
+export enum SnapshotStatus {
+  PENDING = "PENDING",
+  PROCESSING = "PROCESSING",
+  READY = "READY",
+  FAILED = "FAILED",
 }
 
 // ─── pay_periods ─────────────────────────────────────────────────────────────
@@ -36,7 +43,6 @@ export interface PayPeriod {
   status: PeriodStatus;
   total_amount: number;
   total_headcount: number;
-  is_frozen: boolean;
   frozen_at: Date | null;
   frozen_by: number | null;
   closed_at: Date | null;
@@ -44,6 +50,11 @@ export interface PayPeriod {
   updated_at: Date;
   created_by?: number | null;
   created_by_name?: string | null;
+  // New flags (phase A). Keep optional for backward compatibility
+  // with environments that have not run migration yet.
+  is_locked?: boolean;
+  snapshot_status?: SnapshotStatus | null;
+  snapshot_ready_at?: Date | null;
 }
 
 // ─── pay_results ─────────────────────────────────────────────────────────────

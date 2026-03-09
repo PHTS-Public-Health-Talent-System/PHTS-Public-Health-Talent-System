@@ -3,10 +3,10 @@ export const dynamic = 'force-dynamic'
 
 import { use } from "react"
 import Link from "next/link"
-import { PayrollDetailContent } from "@/features/payroll/components/PayrollDetailContent"
-import { usePayrollReviewProgress } from "@/features/payroll/usePayrollReviewProgress"
+import { PayrollDetailContent } from "@/features/payroll/components"
+import { usePayrollReviewProgress } from "@/features/payroll/hooks"
 import { Button } from "@/components/ui/button"
-import { Users } from "lucide-react"
+import { CalendarDays, Users } from "lucide-react"
 
 type PageParams = Promise<{ id: string; code: string }>
 
@@ -23,12 +23,20 @@ export default function PTSOfficerPayrollProfessionPage({ params }: { params: Pa
             โปรดตรวจสอบความถูกต้องและยืนยันสถานะการตรวจ
           </p>
         </div>
-        <Button asChild variant="outline" size="sm" className="hidden md:flex">
-          <Link href={`/pts-officer/payroll/${id}`}>
-            <Users className="mr-2 h-4 w-4" />
-            กลับไปหน้าภาพรวมงวด
-          </Link>
-        </Button>
+        <div className="hidden gap-2 md:flex">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/pts-officer/payroll/${id}/leaves?profession=${encodeURIComponent(code)}`}>
+              <CalendarDays className="mr-2 h-4 w-4" />
+              ดูวันลาของวิชาชีพนี้
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/pts-officer/payroll/${id}`}>
+              <Users className="mr-2 h-4 w-4" />
+              กลับไปหน้าภาพรวมงวด
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <PayrollDetailContent

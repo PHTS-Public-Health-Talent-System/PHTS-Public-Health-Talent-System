@@ -12,11 +12,12 @@ export function loadEnv(): void {
   const defaultPath = path.join(root, ".env");
   const useTestEnv =
     process.env.NODE_ENV === "test" && fs.existsSync(testPath);
-  const envPath = useTestEnv
-    ? testPath
-    : fs.existsSync(localPath)
-      ? localPath
-      : defaultPath;
+  let envPath = defaultPath;
+  if (useTestEnv) {
+    envPath = testPath;
+  } else if (fs.existsSync(localPath)) {
+    envPath = localPath;
+  }
   dotenv.config({ path: envPath });
 
   const appTimezone = process.env.APP_TIMEZONE || "Asia/Bangkok";

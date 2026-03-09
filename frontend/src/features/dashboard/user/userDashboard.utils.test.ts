@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RequestWithDetails } from '@/types/request.types';
-import type { Announcement } from '@/features/announcement/api';
+import type { Announcement } from '@/features/announcement/shared';
 import {
   buildAnnouncements,
   buildGreeting,
@@ -17,7 +17,7 @@ describe('userDashboard.utils', () => {
   it('buildStats counts pending across all pending statuses', () => {
     const requests = [
       { request_id: 1, status: 'PENDING', current_step: 1 } as RequestWithDetails,
-      { request_id: 2, status: 'PENDING_HEAD_DEPT', current_step: 2 } as RequestWithDetails,
+      { request_id: 2, status: 'PENDING_DEPT_SCOPE', current_step: 2 } as RequestWithDetails,
       { request_id: 3, status: 'APPROVED', current_step: 6 } as RequestWithDetails,
     ];
     const stats = buildStats(requests, 4);

@@ -42,7 +42,6 @@ import {
   CheckCircle2,
   XCircle,
   RefreshCw,
-  MoreHorizontal,
   Eye,
   Check,
   X,
@@ -55,17 +54,20 @@ import {
 import Link from 'next/link';
 import { toast } from 'sonner';
 import type { AxiosError } from 'axios';
+import { TableRowMoreActionsTrigger, TableRowViewAction } from '@/components/common';
+import { getOnBehalfMetadata } from '@/features/request';
 import {
   useAvailableOfficers,
   usePendingApprovals,
   useProcessAction,
   useReassignRequest,
-} from '@/features/request/hooks';
+} from '@/features/request';
 import type { RequestWithDetails } from '@/types/request.types';
 import { toRequestDisplayId } from '@/shared/utils/public-id';
 import { formatThaiNumber } from '@/shared/utils/thai-locale';
 
 type RequestStatus = 'pending' | 'approved' | 'rejected' | 'returned';
+const SHOW_CREATE_ON_BEHALF_BUTTON = false;
 
 interface Request {
   id: number;
@@ -80,6 +82,7 @@ interface Request {
   rateMappingDisplay: string;
   amount: number;
   hasVerificationSnapshot: boolean;
+  isOfficerCreated: boolean;
 }
 
 // ... (Helper functions: parseSubmissionData, pickSubmissionValue, mapStatus, sanitizeRatePart remain same)
@@ -241,6 +244,7 @@ export default function RequestsPage() {
       const rateSubItem = sanitizeRatePart(rateMapping?.sub_item_no ?? rateMapping?.subItemId ?? '-');
       const rateMappingDisplay =
         rateSubItem !== '-' ? `${rateGroup}/${rateItem}/${rateSubItem}` : `${rateGroup}/${rateItem}`;
+      const onBehalfMeta = getOnBehalfMetadata(submission);
 
       return {
         id: req.request_id,
@@ -263,6 +267,7 @@ export default function RequestsPage() {
         rateMappingDisplay,
         amount: Number(req.requested_amount ?? 0),
         hasVerificationSnapshot: Boolean(req.has_verification_snapshot),
+        isOfficerCreated: onBehalfMeta.isOfficerCreated,
       };
     });
   }, [requestsData]);
@@ -348,6 +353,14 @@ export default function RequestsPage() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">คำขอรออนุมัติ</h1>
           <p className="text-muted-foreground mt-1">ตรวจสอบและอนุมัติคำขอรับเงิน พ.ต.ส.</p>
         </div>
+        {SHOW_CREATE_ON_BEHALF_BUTTON && (
+          <Button asChild className="gap-2">
+            <Link href="/pts-officer/requests/new">
+              <UserPlus className="h-4 w-4" />
+              สร้างคำขอแทนบุคลากร
+            </Link>
+          </Button>
+        )}
       </div>
 
       {/* Stats Dashboard */}
@@ -389,7 +402,7 @@ export default function RequestsPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <CardTitle className="text-lg flex items-center gap-2">
               <Inbox className="h-5 w-5 text-muted-foreground" />
-              รายการคำขอ
+              รายการคำขอที่รอดำเนินการ
             </CardTitle>
 
             <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
@@ -445,7 +458,7 @@ export default function RequestsPage() {
                 ) : filteredRequests.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
-                      ไม่พบรายการคำขอ
+                      ไม่พบรายการคำขอที่รอดำเนินการ
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -457,7 +470,17 @@ export default function RequestsPage() {
                       <TableCell className="font-mono text-sm">{request.requestNo}</TableCell>
                       <TableCell>
                         <div className="flex flex-col">
-                          <span className="font-medium text-foreground">{request.name}</span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium text-foreground">{request.name}</span>
+                            {request.isOfficerCreated ? (
+                              <Badge
+                                variant="outline"
+                                className="border-primary/20 bg-primary/5 text-primary"
+                              >
+                                เจ้าหน้าที่สร้างแทน
+                              </Badge>
+                            ) : null}
+                          </div>
                           <span
                             className="text-xs text-muted-foreground truncate max-w-[200px]"
                             title={request.position}
@@ -480,25 +503,10 @@ export default function RequestsPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-primary"
-                            asChild
-                          >
-                            <Link href={`/pts-officer/requests/${request.id}`}>
-                              <Eye className="h-4 w-4" />
-                            </Link>
-                          </Button>
+                          <TableRowViewAction href={`/pts-officer/requests/${request.id}`} />
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
+                              <TableRowMoreActionsTrigger />
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem asChild>
@@ -617,12 +625,12 @@ export default function RequestsPage() {
             <Button
               onClick={handleAction}
               disabled={actionType !== 'approve' && !comment.trim()}
-              className={
+              variant={
                 actionType === 'approve'
-                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  ? 'success'
                   : actionType === 'reject'
-                    ? 'bg-destructive hover:bg-destructive/90'
-                    : 'bg-amber-500 hover:bg-amber-600'
+                    ? 'destructive'
+                    : 'warning'
               }
             >
               {actionType === 'approve' && 'อนุมัติ'}

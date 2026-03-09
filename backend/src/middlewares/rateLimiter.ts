@@ -2,9 +2,12 @@ import rateLimit from "express-rate-limit";
 
 const windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000);
 const max = Number(process.env.RATE_LIMIT_MAX || 300);
-const authWindowMs = Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000);
+const authWindowMs = Number(
+  process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000,
+);
 const authMax = Number(process.env.AUTH_RATE_LIMIT_MAX || 5);
 const isRateLimitDisabled = () =>
+  // Evaluate on each request so `.env.local` hot-reload/dev restarts always reflect latest flag.
   String(process.env.DEMO_DISABLE_RATE_LIMIT || "").toLowerCase() === "true";
 
 export const apiRateLimiter = rateLimit({

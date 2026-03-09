@@ -1,7 +1,7 @@
 "use client"
 
 import { use } from "react"
-import { PayrollDetailContent } from "@/features/payroll/components/PayrollDetailContent"
+import { PayrollDetailContent } from "@/features/payroll/components"
 
 type PageParams = Promise<{ id: string; code: string }>
 
@@ -14,7 +14,6 @@ export default function DirectorPayrollProfessionPage({ params }: { params: Page
       selectedProfession={code}
       basePath={`/director/payroll/${id}`}
       compactView
-      backHref={`/director/payroll/${id}`}
       showSelector={false}
       showSummary
       approvalRole="DIRECTOR"

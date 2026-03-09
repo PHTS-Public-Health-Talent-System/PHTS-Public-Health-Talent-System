@@ -10,7 +10,7 @@
  */
 
 import redis from "@config/redis.js";
-import Logger from '@shared/utils/logger.js';
+import Logger from "@shared/utils/logger.js";
 
 const TOKEN_BLACKLIST_PREFIX = "blacklist:token:";
 const USER_TOKENS_PREFIX = "user:tokens:";
@@ -22,7 +22,7 @@ interface TokenBlacklistEntry {
 }
 
 class TokenBlacklistService {
-  private log = Logger.create("TokenBlacklist");
+  private readonly log = Logger.create("TokenBlacklist");
 
   /**
    * Add token to blacklist
@@ -33,7 +33,7 @@ class TokenBlacklistService {
   async blacklistToken(
     token: string,
     expiresIn: number,
-    reason: string = "logout",
+    reason = "logout",
   ): Promise<void> {
     try {
       const key = `${TOKEN_BLACKLIST_PREFIX}${token}`;

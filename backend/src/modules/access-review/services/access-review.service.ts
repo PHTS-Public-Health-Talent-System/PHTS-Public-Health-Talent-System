@@ -1,34 +1,44 @@
 /**
  * PHTS System - Access Review Service
  *
- * Handles quarterly access review cycles and auto-disable.
- * FR-08-01: Quarterly access review reports
- * FR-08-02: 7-day advance warning and post-disable notification
- * FR-08-03: Auto-disable for terminated employees
+ * Handles post-sync access review cycles focused on:
+ * - new/changed users from sync
+ * - role/scope mismatch verification
  */
 
-import { RowDataPacket } from "mysql2/promise";
-import { query, getConnection } from '@config/database.js';
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
+import { IdentityRolePolicyRepository } from '@/modules/identity/repositories/identity-role-policy.repository.js';
+import { IdentityRolePolicyService } from '@/modules/identity/services/identity-role-policy.service.js';
+import {
+  inferScopeType,
+  parseSpecialPositionScopes,
+  removeOverlaps,
+} from '@/modules/request/scope/domain/scope.utils.js';
+import { getSyncRuntimeStatus } from '@/modules/sync/services/sync-status.service.js';
+import { AccessReviewRepository } from '@/modules/access-review/repositories/access-review.repository.js';
+import {
+  AccessReviewQueueStatus,
+  AccessReviewReasonCode,
+} from '@/modules/access-review/entities/access-review.entity.js';
 
 /**
  * Review cycle status
  */
 export enum ReviewCycleStatus {
-  PENDING = "PENDING",
-  IN_PROGRESS = "IN_PROGRESS",
-  COMPLETED = "COMPLETED",
-  OVERDUE = "OVERDUE",
+  PENDING = 'PENDING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  OVERDUE = 'OVERDUE',
 }
 
 /**
  * Review result for a user
  */
 export enum ReviewResult {
-  KEEP = "KEEP",
-  DISABLE = "DISABLE",
-  PENDING = "PENDING",
+  KEEP = 'KEEP',
+  DISABLE = 'DISABLE',
+  PENDING = 'PENDING',
 }
 
 /**
@@ -67,166 +77,393 @@ export interface ReviewItem {
   auto_disabled: boolean;
 }
 
-/**
- * Get current quarter
- */
 function getCurrentQuarter(): { quarter: number; year: number } {
   const now = new Date();
   const quarter = Math.ceil((now.getMonth() + 1) / 3);
   return { quarter, year: now.getFullYear() };
 }
 
-/**
- * Get quarter start and due dates
- */
 function getQuarterDates(
   quarter: number,
   year: number,
 ): { startDate: Date; dueDate: Date } {
-  // Review starts at beginning of quarter
   const startMonth = (quarter - 1) * 3;
   const startDate = new Date(year, startMonth, 1);
-
-  // Due date is 14 days after quarter start (2 weeks to complete review)
   const dueDate = new Date(year, startMonth, 14);
-
   return { startDate, dueDate };
 }
 
-/**
- * Get all review cycles
- */
-export async function getReviewCycles(year?: number): Promise<ReviewCycle[]> {
-  let sql = "SELECT * FROM audit_review_cycles";
-  const params: any[] = [];
+const INACTIVE_STATUS_KEYWORDS = [
+  'ลาออก',
+  'เกษียณ',
+  'เสียชีวิต',
+  'โอนออก',
+  'not working',
+  'inactive',
+  'resigned',
+  'retired',
+  'deceased',
+  'terminated',
+];
 
-  if (year) {
-    sql += " WHERE year = ?";
-    params.push(year);
-  }
-
-  sql += " ORDER BY year DESC, quarter DESC";
-
-  const rows = await query<RowDataPacket[]>(sql, params);
-  return rows as ReviewCycle[];
+function isInactiveEmployeeStatus(status: string | null | undefined): boolean {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  if (!normalized) return false;
+  return INACTIVE_STATUS_KEYWORDS.some((keyword) =>
+    normalized.includes(keyword.toLowerCase()),
+  );
 }
 
-/**
- * Get a specific review cycle
- */
+function buildScopeExplanation(
+  role: string,
+  specialPosition: string | null | undefined,
+): string | null {
+  if (role !== 'HEAD_SCOPE') return null;
+  const rawScopes = parseSpecialPositionScopes(specialPosition ?? null);
+  if (rawScopes.length === 0) return 'ไม่พบข้อมูลตำแหน่งพิเศษที่ใช้คำนวณขอบเขตการดูแล';
+
+  const wardScopes = rawScopes.filter((scope) => inferScopeType(scope) === 'UNIT');
+  const deptScopes = rawScopes.filter((scope) => inferScopeType(scope) === 'DEPT');
+  const cleanedWardScopes = removeOverlaps(wardScopes, deptScopes);
+
+  return [
+    `ข้อมูลตำแหน่งพิเศษ: ${String(specialPosition ?? '-')}`,
+    `ขอบเขตระดับหน่วยงาน: ${cleanedWardScopes.length ? cleanedWardScopes.join(', ') : '-'}`,
+    `ขอบเขตระดับกลุ่มงาน: ${deptScopes.length ? deptScopes.join(', ') : '-'}`,
+  ].join(' | ');
+}
+
+type RiskDetectionCandidate = {
+  id: number;
+  citizen_id: string;
+  role: string;
+  expected_role: string;
+  employee_status: string | null;
+  last_login_at: Date | null;
+  user_created_at: Date | null;
+  profile_synced_at: Date | null;
+  special_position: string | null;
+  reasons: AccessReviewReasonCode[];
+  reviewNote: string;
+};
+
+function toDateOrNull(value: unknown): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+async function buildRiskDetectionCandidates(
+  connection: Awaited<ReturnType<typeof AccessReviewRepository.getConnection>>,
+  options?: { syncTimestamp?: Date | null; citizenId?: string | null },
+): Promise<RiskDetectionCandidate[]> {
+  const users = await AccessReviewRepository.findNonAdminUsers(connection);
+  const activeHeadScopes = await IdentityRolePolicyRepository.findActiveHeadScopes(connection);
+  const syncTimestamp = options?.syncTimestamp ?? null;
+  const scopedHeadRoleSet = new Set(
+    activeHeadScopes.map((row) => `${String(row.citizen_id)}|${String(row.role)}`),
+  );
+
+  return (users as any[])
+    .filter((user) =>
+      options?.citizenId
+        ? String(user.citizen_id ?? "") === String(options.citizenId)
+        : true,
+    )
+    .map((user) => {
+      const hrRow = {
+        citizen_id: String(user.citizen_id ?? ""),
+        position_name: user.position_name ?? null,
+        special_position: user.special_position ?? null,
+        department: user.department ?? null,
+        sub_department: user.sub_department ?? null,
+      };
+
+      const currentRole = String(user.role ?? "");
+      const isUserActive = Number(user.is_active ?? 0) === 1;
+      const isProtectedRole = IdentityRolePolicyService.PROTECTED_ROLES.has(currentRole);
+      const derivedRole = isProtectedRole
+        ? currentRole
+        : IdentityRolePolicyService.deriveRole(hrRow as any);
+      const expectedRole =
+        derivedRole === 'WARD_SCOPE' || derivedRole === 'DEPT_SCOPE'
+          ? scopedHeadRoleSet.has(`${hrRow.citizen_id}|${derivedRole}`)
+            ? 'HEAD_SCOPE'
+            : 'USER'
+          : derivedRole;
+      const roleMismatch = isUserActive && expectedRole !== currentRole;
+      const inactiveStatus = isUserActive && isInactiveEmployeeStatus(user.employee_status);
+      const scopeExplanation = buildScopeExplanation(currentRole, user.special_position);
+
+      const profileSyncedAt = toDateOrNull(user.profile_synced_at);
+      const changedByLatestSync =
+        Boolean(
+          isUserActive &&
+            syncTimestamp &&
+            profileSyncedAt &&
+            profileSyncedAt.getTime() >= syncTimestamp.getTime(),
+        );
+      const userCreatedAt = toDateOrNull(user.created_at);
+      const isNewUser =
+        Boolean(
+          syncTimestamp &&
+            userCreatedAt &&
+            userCreatedAt.getTime() >= syncTimestamp.getTime(),
+        );
+
+      const reasons: AccessReviewReasonCode[] = [];
+      if (isNewUser) reasons.push(AccessReviewReasonCode.NEW_USER);
+      if (roleMismatch) reasons.push(AccessReviewReasonCode.ROLE_MISMATCH);
+      if (changedByLatestSync) reasons.push(AccessReviewReasonCode.PROFILE_CHANGED);
+      if (inactiveStatus) reasons.push(AccessReviewReasonCode.INACTIVE_BUT_ACTIVE);
+
+      const reviewNoteParts = [
+        `sync_at=${syncTimestamp ? syncTimestamp.toISOString() : "unknown"}`,
+        `current_role=${currentRole || "-"}`,
+        `expected_role=${expectedRole || "-"}`,
+        `is_active=${isUserActive ? "yes" : "no"}`,
+        `role_mismatch=${roleMismatch ? "yes" : "no"}`,
+        `employee_status=${String(user.employee_status ?? "-")}`,
+        `new_user=${isNewUser ? "yes" : "no"}`,
+        `profile_changed=${changedByLatestSync ? "yes" : "no"}`,
+        scopeExplanation ? `ขอบเขตการดูแล: ${scopeExplanation}` : null,
+      ].filter(Boolean);
+
+      return {
+        id: Number(user.id),
+        citizen_id: String(user.citizen_id ?? ""),
+        role: currentRole,
+        expected_role: expectedRole,
+        employee_status: user.employee_status ?? null,
+        last_login_at: user.last_login_at ?? null,
+        user_created_at: userCreatedAt,
+        profile_synced_at: profileSyncedAt,
+        special_position: user.special_position ?? null,
+        reasons,
+        reviewNote: reviewNoteParts.join(" | "),
+      };
+    })
+    .filter((user) => user.reasons.length > 0);
+}
+
+async function syncGlobalReviewQueue(
+  connection: Awaited<ReturnType<typeof AccessReviewRepository.getConnection>>,
+  detections: RiskDetectionCandidate[],
+  options?: { batchId?: number | null; citizenId?: string | null },
+): Promise<void> {
+  const batchId = options?.batchId ?? null;
+  if (!batchId) return;
+
+  for (const candidate of detections) {
+    for (const reason of candidate.reasons) {
+      await AccessReviewRepository.upsertQueueDetection({
+        userId: candidate.id,
+        reasonCode: reason,
+        batchId,
+        detectedAt: new Date(),
+        payload: {
+          citizen_id: candidate.citizen_id,
+          current_role: candidate.role,
+          expected_role: candidate.expected_role,
+          employee_status: candidate.employee_status,
+          profile_synced_at: candidate.profile_synced_at
+            ? candidate.profile_synced_at.toISOString()
+            : null,
+          review_note: candidate.reviewNote,
+        },
+        conn: connection,
+      });
+    }
+  }
+
+  let targetUserId: number | null = null;
+  if (options?.citizenId) {
+    targetUserId = await AccessReviewRepository.findUserIdByCitizenId(options.citizenId, connection);
+  }
+
+  await AccessReviewRepository.autoResolveUnseenQueueByBatch({
+    batchId,
+    userId: targetUserId ?? undefined,
+    conn: connection,
+  });
+}
+
+export async function getReviewCycles(year?: number): Promise<ReviewCycle[]> {
+  return AccessReviewRepository.findCycles(year);
+}
+
 export async function getReviewCycle(
   cycleId: number,
 ): Promise<ReviewCycle | null> {
-  const sql = "SELECT * FROM audit_review_cycles WHERE cycle_id = ?";
-  const rows = await query<RowDataPacket[]>(sql, [cycleId]);
-  return rows.length > 0 ? (rows[0] as ReviewCycle) : null;
+  return AccessReviewRepository.findCycleById(cycleId);
 }
 
-/**
- * Create a new review cycle for the current quarter
- */
 export async function createReviewCycle(): Promise<ReviewCycle> {
+  const syncStatus = await getSyncRuntimeStatus();
+  const syncTimestampRaw = getTimestamp(syncStatus.lastResult);
+  const syncTimestamp = syncTimestampRaw ? new Date(syncTimestampRaw) : null;
+  const refreshResult = await refreshReviewCycleFromSync({
+    syncTimestamp,
+  });
+  const cycle = await AccessReviewRepository.findCycleById(refreshResult.cycleId);
+  if (!cycle) {
+    throw new Error('Review cycle not found after refresh');
+  }
+  return cycle as ReviewCycle;
+}
+
+export async function refreshReviewCycleFromSync(options?: {
+  actorId?: number | null;
+  syncTimestamp?: Date | null;
+  citizenId?: string | null;
+  batchId?: number | null;
+}): Promise<{ cycleId: number; createdCycle: boolean; insertedItems: number }> {
   const { quarter, year } = getCurrentQuarter();
   const { startDate, dueDate } = getQuarterDates(quarter, year);
-
-  const connection = await getConnection();
+  const connection = await AccessReviewRepository.getConnection();
 
   try {
     await connection.beginTransaction();
 
-    // Check if cycle already exists
-    const [existing] = await connection.query<RowDataPacket[]>(
-      "SELECT * FROM audit_review_cycles WHERE quarter = ? AND year = ?",
-      [quarter, year],
-    );
-
-    if (existing.length > 0) {
-      await connection.rollback();
-      return existing[0] as ReviewCycle;
-    }
-
-    // Get all active users with non-ADMIN roles
-    const [users] = await connection.query<RowDataPacket[]>(`
-      SELECT u.id, u.citizen_id, u.role, u.last_login_at,
-             COALESCE(
-               NULLIF(e.original_status, ''),
-               CASE
-                 WHEN s.is_currently_active = 0 THEN 'inactive'
-                 WHEN s.is_currently_active = 1 THEN 'active'
-                 ELSE NULL
-               END,
-               'unknown'
-             ) AS employee_status
-      FROM users u
-      LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
-      LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
-      WHERE u.role != 'ADMIN' AND u.is_active = 1
-    `);
-
-    // Create cycle
-    const [cycleResult] = await connection.execute(
-      `INSERT INTO audit_review_cycles
-       (quarter, year, status, start_date, due_date, total_users)
-       VALUES (?, ?, 'PENDING', ?, ?, ?)`,
-      [quarter, year, startDate, dueDate, users.length],
-    );
-
-    const cycleId = (cycleResult as any).insertId;
-
-    // Create review items for each user
-    for (const user of users as any[]) {
-      await connection.execute(
-        `INSERT INTO audit_review_items
-         (cycle_id, user_id, current_role, employee_status, last_login_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [cycleId, user.id, user.role, user.employee_status, user.last_login_at],
+    let effectiveSyncTimestamp = options?.syncTimestamp ?? null;
+    if (options?.batchId) {
+      const batchStartedAt = await AccessReviewRepository.findSyncBatchStartedAt(
+        options.batchId,
+        connection,
       );
+      if (batchStartedAt) {
+        effectiveSyncTimestamp = batchStartedAt;
+      }
     }
+
+    let cycle = await AccessReviewRepository.findActiveCycleByQuarterYear({
+      quarter,
+      year,
+      conn: connection,
+    });
+    let createdCycle = false;
+
+    if (!cycle) {
+      // If a cycle already exists for this quarter/year (including COMPLETED),
+      // reuse it instead of creating a duplicate against unique key.
+      const existingCycle = await AccessReviewRepository.findCycleByQuarterYear(
+        quarter,
+        year,
+        connection,
+      );
+      if (existingCycle) {
+        cycle = existingCycle;
+      } else {
+        const cycleId = await AccessReviewRepository.createCycle(
+          quarter,
+          year,
+          startDate,
+          dueDate,
+          0,
+          connection,
+        );
+        createdCycle = true;
+        cycle = await AccessReviewRepository.findCycleById(cycleId, connection);
+        if (!cycle) {
+          throw new Error('Failed to load access review cycle after creation');
+        }
+      }
+    }
+
+    const riskDetections = await buildRiskDetectionCandidates(connection, {
+      syncTimestamp: effectiveSyncTimestamp,
+      citizenId: options?.citizenId ?? null,
+    });
+    await syncGlobalReviewQueue(connection, riskDetections, {
+      batchId: options?.batchId ?? null,
+      citizenId: options?.citizenId ?? null,
+    });
+
+    // Completed cycle for current quarter should remain immutable in post-sync refresh.
+    if (cycle.status === ReviewCycleStatus.COMPLETED) {
+      await connection.commit();
+      return {
+        cycleId: cycle.cycle_id,
+        createdCycle: false,
+        insertedItems: 0,
+      };
+    }
+
+    const reviewCandidates = riskDetections.map((user) => ({
+      id: Number(user.id),
+      role: String(user.role ?? ''),
+      employee_status: user.employee_status ?? null,
+      last_login_at: user.last_login_at ?? null,
+      reviewNote: String(user.reviewNote ?? ''),
+    }));
+
+    let insertedItems = 0;
+    for (const user of reviewCandidates) {
+      const inserted = await AccessReviewRepository.createItemIfNotExists(
+        cycle.cycle_id,
+        user.id,
+        user.role,
+        user.employee_status,
+        user.last_login_at,
+        user.reviewNote,
+        connection,
+      );
+      if (inserted) insertedItems += 1;
+    }
+
+    const totalUsers = await AccessReviewRepository.countItemsByCycle(
+      cycle.cycle_id,
+      connection,
+    );
+    await AccessReviewRepository.updateCycleTotalUsers(
+      cycle.cycle_id,
+      totalUsers,
+      connection,
+    );
+    await AccessReviewRepository.updateCycleStats(cycle.cycle_id, connection);
 
     await connection.commit();
 
-    // Log audit event
-    await emitAuditEvent(
-      {
-        eventType: AuditEventType.ACCESS_REVIEW_CREATE,
-        entityType: "access_review_cycle",
-        entityId: cycleId,
-        actionDetail: {
-          quarter,
-          year,
-          total_users: users.length,
-        },
-      },
-      connection,
-    );
-
-    // Notify ADMIN users
-    const [admins] = await connection.query<RowDataPacket[]>(
-      "SELECT id FROM users WHERE role = 'ADMIN' AND is_active = 1",
-    );
-
-    for (const admin of admins as any[]) {
-      await NotificationService.notifyUser(
-        admin.id,
-        "รอบตรวจทานสิทธิ์ใหม่",
-        `สร้างรอบตรวจทานสิทธิ์ไตรมาส ${quarter}/${year} แล้ว มีผู้ใช้ทั้งหมด ${users.length} คนรอตรวจทาน`,
-        `/dashboard/admin/access-review/${cycleId}`,
-        "SYSTEM",
-      );
+    if (createdCycle || insertedItems > 0) {
+      const admins = await AccessReviewRepository.findAdminUsers(connection);
+      for (const adminId of admins) {
+        await NotificationService.notifyUser(
+          adminId,
+          createdCycle
+            ? 'สร้างรอบตรวจทานสิทธิ์อัตโนมัติหลัง Sync'
+            : 'อัปเดตรายการตรวจทานสิทธิ์หลัง Sync',
+          createdCycle
+            ? `มีผู้ใช้ทั้งหมด ${totalUsers} คนในรอบตรวจทานล่าสุด`
+            : `พบรายการต้องตรวจทานเพิ่ม ${insertedItems} รายการ`,
+          `/dashboard/admin/access-review/${cycle.cycle_id}`,
+          'SYSTEM',
+        );
+      }
     }
 
+    await emitAuditEvent({
+      eventType: AuditEventType.ACCESS_REVIEW_CREATE,
+      entityType: 'access_review_cycle',
+      entityId: cycle.cycle_id,
+      actorId: options?.actorId ?? null,
+      actionDetail: {
+        action: createdCycle ? 'CREATE_OR_REFRESH' : 'REFRESH',
+        inserted_items: insertedItems,
+        total_users: totalUsers,
+        quarter,
+        year,
+        sync_timestamp: effectiveSyncTimestamp
+          ? effectiveSyncTimestamp.toISOString()
+          : null,
+        target_citizen_id: options?.citizenId ?? null,
+        sync_batch_id: options?.batchId ?? null,
+      },
+    });
+
     return {
-      cycle_id: cycleId,
-      quarter,
-      year,
-      status: ReviewCycleStatus.PENDING,
-      start_date: startDate,
-      due_date: dueDate,
-      completed_at: null,
-      completed_by: null,
-      total_users: users.length,
-      reviewed_users: 0,
-      disabled_users: 0,
+      cycleId: cycle.cycle_id,
+      createdCycle,
+      insertedItems,
     };
   } catch (error) {
     await connection.rollback();
@@ -236,130 +473,79 @@ export async function createReviewCycle(): Promise<ReviewCycle> {
   }
 }
 
-/**
- * Get review items for a cycle
- */
-export async function getReviewItems(
-  cycleId: number,
-  result?: ReviewResult,
-): Promise<ReviewItem[]> {
-  let sql = `
-    SELECT i.*, u.citizen_id,
-           COALESCE(e.first_name, s.first_name, '') AS first_name,
-           COALESCE(e.last_name, s.last_name, '') AS last_name
-    FROM audit_review_items i
-    JOIN users u ON i.user_id = u.id
-    LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
-    LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
-    WHERE i.cycle_id = ?
-  `;
-
-  const params: any[] = [cycleId];
-
-  if (result) {
-    sql += " AND i.review_result = ?";
-    params.push(result);
-  }
-
-  sql += " ORDER BY i.review_result, last_name, first_name";
-
-  const rows = await query<RowDataPacket[]>(sql, params);
-
-  return (rows as any[]).map((row) => ({
-    item_id: row.item_id,
-    cycle_id: row.cycle_id,
-    user_id: row.user_id,
-    citizen_id: row.citizen_id,
-    user_name: `${row.first_name} ${row.last_name}`.trim(),
-    current_role: row.current_role,
-    employee_status: row.employee_status,
-    last_login_at: row.last_login_at,
-    review_result: row.review_result,
-    reviewed_at: row.reviewed_at,
-    reviewed_by: row.reviewed_by,
-    review_note: row.review_note,
-    auto_disabled: row.auto_disabled === 1,
-  }));
+function getTimestamp(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const timestamp = (value as { timestamp?: unknown }).timestamp;
+  return typeof timestamp === 'string' ? timestamp : null;
 }
 
-/**
- * Update review result for a user
- */
-export async function updateReviewItem(
-  itemId: number,
-  result: ReviewResult,
-  reviewerId: number,
-  note?: string,
-): Promise<void> {
-  const connection = await getConnection();
+function extractReviewNoteValue(
+  reviewNote: string | null | undefined,
+  key: string,
+): string | null {
+  if (!reviewNote) return null;
+  const parts = reviewNote.split('|').map((part) => part.trim());
+  const prefix = `${key}=`;
+  for (const part of parts) {
+    if (part.startsWith(prefix)) {
+      return part.slice(prefix.length).trim() || null;
+    }
+  }
+  return null;
+}
 
+function hasRoleMismatchFromReviewNote(
+  reviewNote: string | null | undefined,
+): boolean | null {
+  const value = extractReviewNoteValue(reviewNote, 'role_mismatch');
+  if (!value) return null;
+  if (value === 'yes') return true;
+  if (value === 'no') return false;
+  return null;
+}
+
+export type AccessReviewQueueListInput = {
+  page?: number;
+  limit?: number;
+  status?: AccessReviewQueueStatus;
+  reasonCode?: string;
+  currentRole?: string;
+  isActive?: number;
+  detectedFrom?: string;
+  detectedTo?: string;
+  batchId?: number;
+  search?: string;
+};
+
+export type AccessReviewQueueResolveAction = "RESOLVE" | "DISMISS";
+
+export async function getAccessReviewQueue(input?: AccessReviewQueueListInput) {
+  return AccessReviewRepository.getReviewQueue(input);
+}
+
+export async function getAccessReviewQueueEvents(queueId: number, limit?: number) {
+  return AccessReviewRepository.getReviewQueueEvents(queueId, limit);
+}
+
+export async function resolveAccessReviewQueueItem(params: {
+  queueId: number;
+  action: AccessReviewQueueResolveAction;
+  actorId: number;
+  note?: string | null;
+}): Promise<void> {
+  const connection = await AccessReviewRepository.getConnection();
   try {
     await connection.beginTransaction();
-
-    // Get item and cycle info
-    const [items] = await connection.query<RowDataPacket[]>(
-      `SELECT i.*, c.cycle_id
-       FROM audit_review_items i
-       JOIN audit_review_cycles c ON i.cycle_id = c.cycle_id
-       WHERE i.item_id = ? FOR UPDATE`,
-      [itemId],
-    );
-
-    if (items.length === 0) {
-      throw new Error("Review item not found");
-    }
-
-    const item = items[0] as any;
-
-    // Update review item
-    await connection.execute(
-      `UPDATE audit_review_items
-       SET review_result = ?, reviewed_at = NOW(), reviewed_by = ?, review_note = ?
-       WHERE item_id = ?`,
-      [result, reviewerId, note || null, itemId],
-    );
-
-    // If marking as DISABLE, actually disable the user
-    if (result === ReviewResult.DISABLE) {
-      await connection.execute("UPDATE users SET is_active = 0 WHERE id = ?", [
-        item.user_id,
-      ]);
-
-      // Notify the user
-      await NotificationService.notifyUser(
-        item.user_id,
-        "บัญชีถูกปิดใช้งาน",
-        "บัญชีของท่านถูกปิดใช้งานจากการตรวจทานสิทธิ์ประจำไตรมาส กรุณาติดต่อผู้ดูแลระบบ",
-        "/login",
-        "OTHER",
-      );
-
-      // Log audit
-      await emitAuditEvent(
-        {
-          eventType: AuditEventType.USER_DISABLE,
-          entityType: "users",
-          entityId: item.user_id,
-          actorId: reviewerId,
-          actionDetail: {
-            reason: "access_review",
-            cycle_id: item.cycle_id,
-            note: note,
-          },
-        },
-        connection,
-      );
-    }
-
-    // Update cycle statistics
-    await connection.execute(
-      `UPDATE audit_review_cycles c
-       SET reviewed_users = (SELECT COUNT(*) FROM audit_review_items WHERE cycle_id = c.cycle_id AND review_result != 'PENDING'),
-           disabled_users = (SELECT COUNT(*) FROM audit_review_items WHERE cycle_id = c.cycle_id AND review_result = 'DISABLE')
-       WHERE c.cycle_id = ?`,
-      [item.cycle_id],
-    );
-
+    await AccessReviewRepository.resolveQueueItem({
+      queueId: params.queueId,
+      status:
+        params.action === "DISMISS"
+          ? AccessReviewQueueStatus.DISMISSED
+          : AccessReviewQueueStatus.RESOLVED,
+      actorId: params.actorId,
+      note: params.note ?? null,
+      conn: connection,
+    });
     await connection.commit();
   } catch (error) {
     await connection.rollback();
@@ -369,74 +555,264 @@ export async function updateReviewItem(
   }
 }
 
-/**
- * Complete a review cycle
- */
+export async function resolveAccessReviewQueueItems(params: {
+  queueIds: number[];
+  action: AccessReviewQueueResolveAction;
+  actorId: number;
+  note?: string | null;
+}): Promise<{ updatedCount: number }> {
+  const queueIds = [...new Set(params.queueIds.map((queueId) => Number(queueId)).filter(Number.isFinite))];
+  if (queueIds.length === 0) {
+    throw new Error('Queue ids are required');
+  }
+
+  const connection = await AccessReviewRepository.getConnection();
+  try {
+    await connection.beginTransaction();
+    for (const queueId of queueIds) {
+      await AccessReviewRepository.resolveQueueItem({
+        queueId,
+        status:
+          params.action === "DISMISS"
+            ? AccessReviewQueueStatus.DISMISSED
+            : AccessReviewQueueStatus.RESOLVED,
+        actorId: params.actorId,
+        note: params.note ?? null,
+        conn: connection,
+      });
+    }
+    await connection.commit();
+    return { updatedCount: queueIds.length };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function getReviewItems(
+  cycleId: number,
+  result?: ReviewResult,
+): Promise<ReviewItem[]> {
+  return AccessReviewRepository.findItems(cycleId, result);
+}
+
+export async function autoReviewCycle(
+  cycleId: number,
+  reviewerId: number,
+  options?: { disableInactive?: boolean },
+): Promise<{ processed: number; kept: number; disabled: number; skipped: number }> {
+  const connection = await AccessReviewRepository.getConnection();
+  const disableInactive = options?.disableInactive ?? true;
+  const summary = {
+    processed: 0,
+    kept: 0,
+    disabled: 0,
+    skipped: 0,
+  };
+
+  try {
+    await connection.beginTransaction();
+
+    const cycle = await AccessReviewRepository.findCycleById(cycleId, connection);
+    if (!cycle) {
+      throw new Error('Review cycle not found');
+    }
+    if (cycle.status === ReviewCycleStatus.COMPLETED) {
+      throw new Error('Review cycle already completed');
+    }
+
+    const pendingItems = await AccessReviewRepository.findItems(
+      cycleId,
+      ReviewResult.PENDING,
+      connection,
+    );
+    summary.processed = pendingItems.length;
+
+    for (const item of pendingItems) {
+      const inactive = isInactiveEmployeeStatus(item.employee_status);
+      const roleMismatch = hasRoleMismatchFromReviewNote(item.review_note);
+
+      if (inactive && disableInactive) {
+        await AccessReviewRepository.updateItemResult(
+          item.item_id,
+          ReviewResult.DISABLE,
+          reviewerId,
+          [
+            item.review_note,
+            'auto_review=DISABLE(reason=inactive_status)',
+          ]
+            .filter(Boolean)
+            .join(' | '),
+          connection,
+        );
+        await AccessReviewRepository.disableUser(item.user_id, connection);
+        summary.disabled += 1;
+        await emitAuditEvent(
+          {
+            eventType: AuditEventType.USER_DISABLE,
+            entityType: 'users',
+            entityId: item.user_id,
+            actorId: reviewerId,
+            actionDetail: {
+              reason: 'access_review_auto',
+              cycle_id: cycleId,
+              rule: 'inactive_status',
+            },
+          },
+          connection,
+        );
+        continue;
+      }
+
+      if (roleMismatch === false && !inactive) {
+        await AccessReviewRepository.updateItemResult(
+          item.item_id,
+          ReviewResult.KEEP,
+          reviewerId,
+          [
+            item.review_note,
+            'auto_review=KEEP(reason=role_aligned)',
+          ]
+            .filter(Boolean)
+            .join(' | '),
+          connection,
+        );
+        summary.kept += 1;
+        continue;
+      }
+
+      summary.skipped += 1;
+    }
+
+    await AccessReviewRepository.updateCycleStats(cycleId, connection);
+    await connection.commit();
+
+    await emitAuditEvent({
+      eventType: AuditEventType.ACCESS_REVIEW_COMPLETE,
+      entityType: 'access_review_cycle',
+      entityId: cycleId,
+      actorId: reviewerId,
+      actionDetail: {
+        action: 'AUTO_REVIEW',
+        disable_inactive: disableInactive,
+        ...summary,
+      },
+    });
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  return summary;
+}
+
+export async function updateReviewItem(
+  itemId: number,
+  result: ReviewResult,
+  reviewerId: number,
+  note?: string,
+): Promise<void> {
+  const connection = await AccessReviewRepository.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const item = await AccessReviewRepository.findItemById(itemId, connection);
+    if (!item) {
+      throw new Error('Review item not found');
+    }
+
+    await AccessReviewRepository.updateItemResult(
+      itemId,
+      result,
+      reviewerId,
+      note || null,
+      connection,
+    );
+
+    if (result === ReviewResult.DISABLE) {
+      await AccessReviewRepository.disableUser(item.user_id, connection);
+
+      await NotificationService.notifyUser(
+        item.user_id,
+        'บัญชีถูกปิดใช้งาน',
+        'บัญชีของท่านถูกปิดใช้งานจากการตรวจทานสิทธิ์ กรุณาติดต่อผู้ดูแลระบบ',
+        '/login',
+        'OTHER',
+      );
+
+      await emitAuditEvent(
+        {
+          eventType: AuditEventType.USER_DISABLE,
+          entityType: 'users',
+          entityId: item.user_id,
+          actorId: reviewerId,
+          actionDetail: {
+            reason: 'access_review',
+            cycle_id: item.cycle_id,
+            note,
+          },
+        },
+        connection,
+      );
+    }
+
+    await AccessReviewRepository.updateCycleStats(item.cycle_id, connection);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 export async function completeReviewCycle(
   cycleId: number,
   completedBy: number,
   options?: { autoKeepPending?: boolean; note?: string },
 ): Promise<void> {
-  const connection = await getConnection();
+  const connection = await AccessReviewRepository.getConnection();
 
   try {
     await connection.beginTransaction();
 
-    // Check if all items are reviewed
-    const [pending] = await connection.query<RowDataPacket[]>(
-      `SELECT COUNT(*) as count
-       FROM audit_review_items
-       WHERE cycle_id = ? AND review_result = 'PENDING'`,
-      [cycleId],
+    const pendingCount = await AccessReviewRepository.countPendingItems(
+      cycleId,
+      connection,
     );
 
-    const pendingCount = Number((pending[0] as any).count || 0);
-
     if (pendingCount > 0 && !options?.autoKeepPending) {
-      throw new Error(
-        `ยังมี ${pendingCount} รายการที่ยังไม่ได้ตรวจทาน`,
-      );
+      throw new Error(`ยังมี ${pendingCount} รายการที่ยังไม่ได้ตรวจทาน`);
     }
 
     if (pendingCount > 0 && options?.autoKeepPending) {
-      await connection.execute(
-        `UPDATE audit_review_items
-         SET review_result = 'KEEP',
-             reviewed_at = NOW(),
-             reviewed_by = ?,
-             review_note = COALESCE(?, review_note)
-         WHERE cycle_id = ? AND review_result = 'PENDING'`,
-        [
-          completedBy,
-          options.note ?? "อนุมัติคงค้างอัตโนมัติขณะปิดรอบ",
-          cycleId,
-        ],
-      );
+      await AccessReviewRepository.updatePendingItemsToKeep({
+        cycleId,
+        completedBy,
+        note: options.note ?? 'อนุมัติคงค้างอัตโนมัติขณะปิดรอบ',
+        conn: connection,
+      });
     }
 
-    await connection.execute(
-      `UPDATE audit_review_cycles c
-       SET reviewed_users = (SELECT COUNT(*) FROM audit_review_items WHERE cycle_id = c.cycle_id AND review_result != 'PENDING'),
-           disabled_users = (SELECT COUNT(*) FROM audit_review_items WHERE cycle_id = c.cycle_id AND review_result = 'DISABLE')
-       WHERE c.cycle_id = ?`,
-      [cycleId],
-    );
-
-    // Update cycle status
-    await connection.execute(
-      `UPDATE audit_review_cycles
-       SET status = 'COMPLETED', completed_at = NOW(), completed_by = ?
-       WHERE cycle_id = ?`,
-      [completedBy, cycleId],
+    await AccessReviewRepository.updateCycleStats(cycleId, connection);
+    await AccessReviewRepository.updateCycleStatus(
+      cycleId,
+      ReviewCycleStatus.COMPLETED,
+      completedBy,
+      connection,
     );
 
     await connection.commit();
 
-    // Log audit
     await emitAuditEvent(
       {
         eventType: AuditEventType.ACCESS_REVIEW_COMPLETE,
-        entityType: "access_review_cycle",
+        entityType: 'access_review_cycle',
         entityId: cycleId,
         actorId: completedBy,
         actionDetail: {
@@ -453,143 +829,4 @@ export async function completeReviewCycle(
   } finally {
     connection.release();
   }
-}
-
-/**
- * Auto-disable users who are no longer employed
- * This should be run as a scheduled job
- */
-export async function autoDisableTerminatedUsers(): Promise<{
-  disabled: number;
-  errors: string[];
-}> {
-  const result = { disabled: 0, errors: [] as string[] };
-
-  const connection = await getConnection();
-
-  try {
-    await connection.beginTransaction();
-
-    // Get current cycle
-    const { quarter, year } = getCurrentQuarter();
-    const [cycles] = await connection.query<RowDataPacket[]>(
-      "SELECT * FROM audit_review_cycles WHERE quarter = ? AND year = ? AND status != ?",
-      [quarter, year, "COMPLETED"],
-    );
-
-    if (cycles.length === 0) {
-      // No active cycle, skip
-      await connection.rollback();
-      return result;
-    }
-
-    const cycle = cycles[0] as any;
-
-    // Find users with terminated status in review items
-    const [items] = await connection.query<RowDataPacket[]>(
-      `
-      SELECT i.item_id, i.user_id, i.employee_status
-      FROM audit_review_items i
-      WHERE i.cycle_id = ? AND i.review_result = 'PENDING'
-        AND i.employee_status IN ('resigned', 'terminated', 'retired', 'deceased')
-    `,
-      [cycle.cycle_id],
-    );
-
-    for (const item of items as any[]) {
-      try {
-        // Auto-disable
-        await connection.execute(
-          `UPDATE audit_review_items
-           SET review_result = 'DISABLE', reviewed_at = NOW(), auto_disabled = 1,
-               review_note = ?
-           WHERE item_id = ?`,
-          [`Auto-disabled: ${item.employee_status}`, item.item_id],
-        );
-
-        await connection.execute(
-          "UPDATE users SET is_active = 0 WHERE id = ?",
-          [item.user_id],
-        );
-
-        // Log audit
-        await emitAuditEvent(
-          {
-            eventType: AuditEventType.USER_DISABLE,
-            entityType: "users",
-            entityId: item.user_id,
-            actionDetail: {
-              reason: "auto_disable",
-              employee_status: item.employee_status,
-              cycle_id: cycle.cycle_id,
-            },
-          },
-          connection,
-        );
-
-        result.disabled++;
-      } catch (error: any) {
-        result.errors.push(`User ${item.user_id}: ${error.message}`);
-      }
-    }
-
-    // Update cycle statistics
-    await connection.execute(
-      `UPDATE audit_review_cycles c
-       SET reviewed_users = (SELECT COUNT(*) FROM audit_review_items WHERE cycle_id = c.cycle_id AND review_result != 'PENDING'),
-           disabled_users = (SELECT COUNT(*) FROM audit_review_items WHERE cycle_id = c.cycle_id AND review_result = 'DISABLE')
-       WHERE c.cycle_id = ?`,
-      [cycle.cycle_id],
-    );
-
-    await connection.commit();
-  } catch (error: any) {
-    await connection.rollback();
-    result.errors.push(`Job error: ${error.message}`);
-  } finally {
-    connection.release();
-  }
-
-  return result;
-}
-
-/**
- * Send reminders for upcoming review due dates
- */
-export async function sendReviewReminders(): Promise<number> {
-  let remindersSent = 0;
-
-  // Find cycles due in 7 days
-  const sql = `
-    SELECT * FROM audit_review_cycles
-    WHERE status IN ('PENDING', 'IN_PROGRESS')
-      AND DATEDIFF(due_date, CURDATE()) <= 7
-      AND DATEDIFF(due_date, CURDATE()) >= 0
-  `;
-
-  const cycles = await query<RowDataPacket[]>(sql);
-
-  for (const cycle of cycles as any[]) {
-    const daysRemaining = Math.ceil(
-      (new Date(cycle.due_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
-    );
-
-    // Notify ADMIN users
-    const admins = await query<RowDataPacket[]>(
-      "SELECT id FROM users WHERE role = 'ADMIN' AND is_active = 1",
-    );
-
-    for (const admin of admins as any[]) {
-      await NotificationService.notifyUser(
-        admin.id,
-        "เตือน: ครบกำหนดตรวจทานสิทธิ์",
-        `รอบตรวจทานสิทธิ์ไตรมาส ${cycle.quarter}/${cycle.year} จะครบกำหนดใน ${daysRemaining} วัน`,
-        `/dashboard/admin/access-review/${cycle.cycle_id}`,
-        "REMINDER",
-      );
-      remindersSent++;
-    }
-  }
-
-  return remindersSent;
 }

@@ -1,6 +1,10 @@
+/**
+ * personnel-changes module - React query hooks
+ *
+ */
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createPersonnelMovement,
   createRetirement,
@@ -10,18 +14,18 @@ import {
   getRetirements,
   updatePersonnelMovement,
   updateRetirement,
-} from './api';
+} from "./api";
 
 export function useRetirements() {
   return useQuery({
-    queryKey: ['personnel-changes', 'retirements'],
+    queryKey: ["personnel-changes", "retirements"],
     queryFn: getRetirements,
   });
 }
 
 export function usePersonnelMovements() {
   return useQuery({
-    queryKey: ['personnel-changes', 'movements'],
+    queryKey: ["personnel-changes", "movements"],
     queryFn: getPersonnelMovements,
   });
 }
@@ -31,7 +35,7 @@ export function useCreateRetirement() {
   return useMutation({
     mutationFn: createRetirement,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['personnel-changes', 'retirements'] });
+      qc.invalidateQueries({ queryKey: ["personnel-changes", "retirements"] });
     },
   });
 }
@@ -39,10 +43,15 @@ export function useCreateRetirement() {
 export function useUpdateRetirement() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ retirementId, payload }: { retirementId: number; payload: { citizen_id: string; retire_date: string; note?: string } }) =>
-      updateRetirement(retirementId, payload),
+    mutationFn: ({
+      retirementId,
+      payload,
+    }: {
+      retirementId: number;
+      payload: { citizen_id: string; retire_date: string; note?: string };
+    }) => updateRetirement(retirementId, payload),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['personnel-changes', 'retirements'] });
+      qc.invalidateQueries({ queryKey: ["personnel-changes", "retirements"] });
     },
   });
 }
@@ -52,7 +61,7 @@ export function useDeleteRetirement() {
   return useMutation({
     mutationFn: (retirementId: number) => deleteRetirement(retirementId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['personnel-changes', 'retirements'] });
+      qc.invalidateQueries({ queryKey: ["personnel-changes", "retirements"] });
     },
   });
 }
@@ -62,7 +71,7 @@ export function useCreatePersonnelMovement() {
   return useMutation({
     mutationFn: createPersonnelMovement,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['personnel-changes', 'movements'] });
+      qc.invalidateQueries({ queryKey: ["personnel-changes", "movements"] });
     },
   });
 }
@@ -83,7 +92,7 @@ export function useUpdatePersonnelMovement() {
       };
     }) => updatePersonnelMovement(movementId, payload),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['personnel-changes', 'movements'] });
+      qc.invalidateQueries({ queryKey: ["personnel-changes", "movements"] });
     },
   });
 }
@@ -93,7 +102,7 @@ export function useDeletePersonnelMovement() {
   return useMutation({
     mutationFn: (movementId: number) => deletePersonnelMovement(movementId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['personnel-changes', 'movements'] });
+      qc.invalidateQueries({ queryKey: ["personnel-changes", "movements"] });
     },
   });
 }

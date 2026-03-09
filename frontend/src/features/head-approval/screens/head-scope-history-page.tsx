@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { History, Search, Eye } from 'lucide-react';
+import { History, Search } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
@@ -22,11 +21,18 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useApprovalHistory } from '@/features/request/hooks';
-import { mapRequestToFormData } from '@/features/request/components/hooks/request-form-mapper';
+import { useApprovalHistory } from '@/features/request/core/hooks';
+import { TableRowViewAction } from '@/components/common';
+import { mapRequestToFormData } from '@/features/request/create/hooks/request-form-mapper';
 import type { RequestWithDetails, ApprovalAction } from '@/types/request.types';
 import { STATUS_LABELS } from '@/types/request.types';
 import { formatThaiDateTime } from '@/shared/utils/thai-locale';
+import {
+  getDefaultHistoryActionMode,
+  matchesHistoryActionFilter,
+  type HistoryActionFilter,
+} from '@/features/head-approval/history.utils';
+import { getOnBehalfMetadata } from '@/features/request/core/utils';
 
 type HeadScopeHistoryPageProps = {
   basePath: string;
@@ -42,6 +48,7 @@ type HistoryRow = {
   status: string;
   lastActionType: ApprovalAction['action'] | '-';
   lastActionDate: string | null;
+  isOfficerCreated: boolean;
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -61,8 +68,8 @@ const statusBadgeClass = (status: string) => {
     case 'RETURNED':
       return 'bg-amber-50 text-amber-700 border-amber-200';
     case 'PENDING':
-    case 'PENDING_HEAD_WARD':
-    case 'PENDING_HEAD_DEPT':
+    case 'PENDING_WARD_SCOPE':
+    case 'PENDING_DEPT_SCOPE':
     case 'PENDING_PTS_OFFICER':
     case 'PENDING_HR':
     case 'PENDING_FINANCE':
@@ -81,10 +88,12 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
     const saved = window.localStorage.getItem(storageKey);
     return saved === 'mine' || saved === 'team' ? saved : 'team';
   });
-  const [actionMode, setActionMode] = useState<'important' | 'all'>('important');
+  const [actionMode, setActionMode] = useState<'important' | 'all'>(() =>
+    getDefaultHistoryActionMode(roleKey),
+  );
   const historyQuery = useApprovalHistory({ view: historyView, actions: actionMode });
   const [searchTerm, setSearchTerm] = useState('');
-  const [actionFilter, setActionFilter] = useState<'all' | 'APPROVE' | 'REJECT' | 'RETURN'>('all');
+  const [actionFilter, setActionFilter] = useState<HistoryActionFilter>('all');
 
   useEffect(() => {
     const storageKey = `${HISTORY_VIEW_STORAGE_KEY_PREFIX}${roleKey}`;
@@ -95,8 +104,25 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
     const items = (historyQuery.data ?? []) as RequestWithDetails[];
     return items.map((request) => {
       const formData = mapRequestToFormData(request);
+      const onBehalfMeta = getOnBehalfMetadata(
+        request.submission_data && typeof request.submission_data === 'object'
+          ? (request.submission_data as Record<string, unknown>)
+          : null,
+      );
+      const requesterFromProfile = [
+        request.requester?.first_name,
+        request.requester?.last_name,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const requesterFromSubmission = [formData.title, formData.firstName, formData.lastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
       const requesterName =
-        [formData.title, formData.firstName, formData.lastName].filter(Boolean).join(' ').trim() ||
+        requesterFromProfile ||
+        requesterFromSubmission ||
         request.citizen_id;
       const department =
         formData.subDepartment || formData.department || request.current_department || '-';
@@ -115,6 +141,7 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
         status: request.status,
         lastActionType: (lastAction?.action as ApprovalAction['action']) ?? '-',
         lastActionDate: lastAction?.action_date ?? null,
+        isOfficerCreated: onBehalfMeta.isOfficerCreated,
       };
     });
   }, [historyQuery.data, actionMode]);
@@ -127,7 +154,7 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
         row.requestNo.toLowerCase().includes(keyword) ||
         row.requesterName.toLowerCase().includes(keyword) ||
         row.department.toLowerCase().includes(keyword);
-      const matchesAction = actionFilter === 'all' || row.lastActionType === actionFilter;
+      const matchesAction = matchesHistoryActionFilter(row, actionFilter);
       return matchesSearch && matchesAction;
     });
   }, [rows, searchTerm, actionFilter]);
@@ -137,7 +164,7 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">ประวัติการอนุมัติ</h1>
-          <p className="text-muted-foreground mt-1">รายการคำขอที่{roleTitle}เคยดำเนินการ</p>
+          <p className="text-muted-foreground mt-1">รายการคำขอที่{roleTitle}เคยดำเนินการไว้</p>
         </div>
       </div>
 
@@ -152,7 +179,7 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
                 onClick={() => setHistoryView('team')}
                 className="h-8"
               >
-                ของทีม/ตาม scope
+                ตามขอบเขตการดูแล
               </Button>
               <Button
                 type="button"
@@ -167,7 +194,7 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
             <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
               <History className="h-5 w-5 text-muted-foreground" />
-              {historyView === 'team' ? 'ประวัติของทีม/ตาม scope' : 'ประวัติของฉัน'}
+              {historyView === 'team' ? 'ประวัติตามขอบเขตการดูแล' : 'ประวัติของฉัน'}
             </CardTitle>
             <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
               <div className="relative w-full sm:w-72">
@@ -188,12 +215,15 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
                   <SelectItem value="all">ทุกการดำเนินการ</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={actionFilter} onValueChange={(v) => setActionFilter(v as typeof actionFilter)}>
+                <Select value={actionFilter} onValueChange={(v) => setActionFilter(v as typeof actionFilter)}>
                 <SelectTrigger className="w-full sm:w-48">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">ทุกการดำเนินการ</SelectItem>
+                  {roleKey === 'PTS_OFFICER' ? (
+                    <SelectItem value="ON_BEHALF">คำขอที่สร้างแทน</SelectItem>
+                  ) : null}
                   <SelectItem value="APPROVE">อนุมัติ</SelectItem>
                   <SelectItem value="RETURN">ส่งกลับแก้ไข</SelectItem>
                   <SelectItem value="REJECT">ไม่อนุมัติ</SelectItem>
@@ -237,9 +267,19 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
                       <TableCell className="font-medium">{row.requesterName}</TableCell>
                       <TableCell className="text-muted-foreground">{row.department}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">
-                          {row.lastActionType === '-' ? '-' : ACTION_LABELS[row.lastActionType] ?? row.lastActionType}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline">
+                            {row.lastActionType === '-' ? '-' : ACTION_LABELS[row.lastActionType] ?? row.lastActionType}
+                          </Badge>
+                          {row.isOfficerCreated ? (
+                            <Badge
+                              variant="outline"
+                              className="border-primary/20 bg-primary/5 text-primary"
+                            >
+                              เจ้าหน้าที่สร้างแทน
+                            </Badge>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {row.lastActionDate ? formatThaiDateTime(row.lastActionDate) : '-'}
@@ -250,11 +290,7 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link href={`${basePath}/requests/${row.id}`}>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </Link>
+                        <TableRowViewAction href={`${basePath}/requests/${row.id}?from=history`} />
                       </TableCell>
                     </TableRow>
                   ))

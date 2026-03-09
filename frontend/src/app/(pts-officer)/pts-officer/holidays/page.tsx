@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ThaiDateField } from '@/components/thai-date-field';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -174,13 +175,15 @@ export default function HolidaysPage() {
     return holidays.filter((holiday) => holiday.year.toString() === selectedYear);
   }, [holidays, selectedYear]);
 
-  const filteredHolidays = holidays.filter((holiday) => {
-    const matchesSearch = holiday.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesYear = holiday.year.toString() === selectedYear;
-    const matchesMonth =
-      selectedMonth === 'all' || holiday.date.split('-')[1] === selectedMonth.padStart(2, '0');
-    return matchesSearch && matchesYear && matchesMonth;
-  });
+  const filteredHolidays = useMemo(() => {
+    return holidays.filter((holiday) => {
+      const matchesSearch = holiday.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesYear = holiday.year.toString() === selectedYear;
+      const matchesMonth =
+        selectedMonth === 'all' || holiday.date.split('-')[1] === selectedMonth.padStart(2, '0');
+      return matchesSearch && matchesYear && matchesMonth;
+    });
+  }, [holidays, searchQuery, selectedYear, selectedMonth]);
 
   const sortedFilteredHolidays = useMemo(() => {
     return [...filteredHolidays].sort((a, b) => a.date.localeCompare(b.date));
@@ -496,11 +499,10 @@ export default function HolidaysPage() {
             )}
             <div className="grid gap-2">
               <Label htmlFor="date">วันที่</Label>
-              <Input
+              <ThaiDateField
                 id="date"
-                type="date"
                 value={newHoliday.date}
-                onChange={(e) => setNewHoliday({ ...newHoliday, date: e.target.value })}
+                onChange={(value) => setNewHoliday({ ...newHoliday, date: value })}
               />
             </div>
             <div className="grid gap-2">
@@ -559,11 +561,10 @@ export default function HolidaysPage() {
               )}
               <div className="grid gap-2">
                 <Label htmlFor="edit-date">วันที่</Label>
-                <Input
+                <ThaiDateField
                   id="edit-date"
-                  type="date"
                   value={selectedHoliday.date}
-                  onChange={(e) => setSelectedHoliday({ ...selectedHoliday, date: e.target.value })}
+                  onChange={(value) => setSelectedHoliday({ ...selectedHoliday, date: value })}
                 />
               </div>
               <div className="grid gap-2">

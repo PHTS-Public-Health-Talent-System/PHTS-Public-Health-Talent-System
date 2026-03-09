@@ -9,15 +9,15 @@ import { Request, Response } from "express";
 import { ApiResponse, UserRole } from '@/types/auth.js';
 
 // Services
-import { requestQueryService } from '@/modules/request/services/query.service.js';
+import { requestQueryService } from '@/modules/request/read/services/query.service.js';
 import { requestCommandService } from '@/modules/request/services/command.service.js';
 import { requestApprovalService } from '@/modules/request/services/approval.service.js';
-import * as reassignService from '@/modules/request/reassign/reassign.service.js';
+import * as reassignService from '@/modules/request/reassign/application/reassign.service.js';
 import * as rateService from '@/modules/master-data/services/rate.service.js';
 
-import { getUserScopesForDisplay, getUserScopesWithMembers } from '@/modules/request/scope/scope.service.js';
+import { getUserScopesForDisplay, getUserScopesWithMembers } from '@/modules/request/scope/application/scope.service.js';
 
-import { requestRepository } from '@/modules/request/repositories/request.repository.js';
+import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 import {
   cleanupUploadSession,
 } from '@/modules/request/helpers/utils.js';
@@ -34,13 +34,91 @@ import {
   ValidationError,
 } from '@shared/utils/errors.js';
 import { resolveProfessionCode } from '@shared/utils/profession.js';
-import { ELIGIBILITY_EXPIRING_DAYS } from '@/modules/request/request.constants.js';
+import { ELIGIBILITY_EXPIRING_DAYS } from '@/modules/request/contracts/request.constants.js';
 
 const decodeSignatureBase64 = (payload?: string): Buffer | null => {
   if (!payload || typeof payload !== "string") return null;
   const base64 = payload.includes(",") ? payload.split(",")[1] : payload;
   if (!base64) return null;
   return Buffer.from(base64, "base64");
+};
+
+const ELIGIBILITY_FILTER_KEYS = [
+  "page",
+  "limit",
+  "profession_code",
+  "search",
+  "rate_group",
+  "department",
+  "sub_department",
+  "license_status",
+  "alert_filter",
+] as const;
+
+const hasEligibilityFilters = (query: Request["query"]): boolean =>
+  ELIGIBILITY_FILTER_KEYS.some((key) => typeof query[key] !== "undefined");
+
+const readOptionalQueryString = (
+  query: Request["query"],
+  key: keyof Request["query"],
+): string | null => {
+  const value = query[key];
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const parseEligibilityFilters = (query: Request["query"]) => {
+  const page = Number(query.page ?? 1);
+  const limit = Number(query.limit ?? 20);
+  const professionCodeRaw = readOptionalQueryString(query, "profession_code") ?? "ALL";
+  const professionCode =
+    professionCodeRaw.toUpperCase() === "ALL"
+      ? "ALL"
+      : professionCodeRaw.toUpperCase();
+  const search = readOptionalQueryString(query, "search");
+  const rateGroup = readOptionalQueryString(query, "rate_group");
+  const department = readOptionalQueryString(query, "department");
+  const subDepartment = readOptionalQueryString(query, "sub_department");
+  const licenseStatus =
+    typeof query.license_status === "string" && query.license_status !== "all"
+      ? (query.license_status as any)
+      : null;
+  const alertFilter =
+    typeof query.alert_filter === "string" && query.alert_filter !== "all"
+      ? (query.alert_filter as any)
+      : null;
+
+  return {
+    page: Number.isFinite(page) && page > 0 ? page : 1,
+    limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20,
+    professionCode,
+    search,
+    rateGroup,
+    department,
+    subDepartment,
+    licenseStatus,
+    alertFilter,
+  };
+};
+
+const parsePositiveInt = (value: unknown): number | null => {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const resolveRequestIdFromParam = async (rawId: string): Promise<number> => {
+  const requestId = Number(rawId);
+  if (!Number.isNaN(requestId) && Number.isFinite(requestId)) {
+    return requestId;
+  }
+  if (/^REQ-\d{4}-\d+$/i.test(rawId)) {
+    const request = await requestRepository.findByRequestNo(rawId);
+    if (!request) throw new ValidationError("Request not found");
+    return request.request_id;
+  }
+  throw new ValidationError("Invalid Request ID");
 };
 
 export class RequestController {
@@ -51,16 +129,7 @@ export class RequestController {
     if (!req.user) throw new AuthenticationError("Unauthorized access");
     assertNotAdmin(req);
     const rawId = String(req.params.id || "");
-    let requestId = Number(rawId);
-    if (!Number.isNaN(requestId) && Number.isFinite(requestId)) {
-      // use numeric id
-    } else if (/^(PTS-\d+|REQ-\d{4}-\d+)$/i.test(rawId)) {
-      const request = await requestRepository.findByRequestNo(rawId);
-      if (!request) throw new ValidationError("Request not found");
-      requestId = request.request_id;
-    } else {
-      throw new ValidationError("Invalid Request ID");
-    }
+    const requestId = await resolveRequestIdFromParam(rawId);
 
     const request = await requestQueryService.getRequestById(
       requestId,
@@ -90,6 +159,21 @@ export class RequestController {
       res.json({ success: true, data: history });
   });
 
+  getOcrPrecheckHistory = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+    if (!req.user) throw new AuthenticationError("Unauthorized access");
+    const page = Number(req.query.page ?? 1);
+    const limit = Number(req.query.limit ?? 20);
+    const status = readOptionalQueryString(req.query, "status");
+    const search = readOptionalQueryString(req.query, "search");
+    const data = await requestQueryService.getOcrPrecheckHistory({
+      page: Number.isFinite(page) && page > 0 ? page : 1,
+      limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20,
+      status,
+      search,
+    });
+    res.json({ success: true, data });
+  });
+
   getPendingApprovals = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
       const scopeParam = req.query.scope as string | undefined;
@@ -104,46 +188,31 @@ export class RequestController {
   getEligibilityList = catchAsync(
     async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
-      const activeOnly = String(req.query.active_only ?? "1") !== "0";
-      const hasAnyFilter =
-        typeof req.query.page !== "undefined" ||
-        typeof req.query.limit !== "undefined" ||
-        typeof req.query.profession_code !== "undefined" ||
-        typeof req.query.search !== "undefined" ||
-        typeof req.query.rate_group !== "undefined" ||
-        typeof req.query.department !== "undefined" ||
-        typeof req.query.sub_department !== "undefined" ||
-        typeof req.query.license_status !== "undefined";
+      const activeOnlyParam = String(req.query.active_only ?? "1");
+      const activeOnly = activeOnlyParam === "1";
+      const inactiveOnly = activeOnlyParam === "2";
+      const hasAnyFilter = hasEligibilityFilters(req.query);
 
-      if (!hasAnyFilter) {
+      if (!hasAnyFilter && !inactiveOnly) {
         const rows = await requestQueryService.getEligibilityList(activeOnly);
         res.json({ success: true, data: rows });
         return;
       }
 
-      const page = Number(req.query.page ?? 1);
-      const limit = Number(req.query.limit ?? 20);
-      const professionCodeRaw = typeof req.query.profession_code === "string" ? req.query.profession_code : "ALL";
-      const professionCode = professionCodeRaw.toUpperCase() === "ALL" ? "ALL" : professionCodeRaw.toUpperCase();
-      const search = typeof req.query.search === "string" ? req.query.search.trim() : null;
-      const rateGroup = typeof req.query.rate_group === "string" ? req.query.rate_group.trim() : null;
-      const department = typeof req.query.department === "string" ? req.query.department.trim() : null;
-      const subDepartment = typeof req.query.sub_department === "string" ? req.query.sub_department.trim() : null;
-      const licenseStatus =
-        typeof req.query.license_status === "string" && req.query.license_status !== "all"
-          ? (req.query.license_status as any)
-          : null;
+      const filters = parseEligibilityFilters(req.query);
 
       const data = await requestQueryService.getEligibilityListPaged({
         activeOnly,
-        page: Number.isFinite(page) && page > 0 ? page : 1,
-        limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20,
-        professionCode,
-        search: search && search.length ? search : null,
-        rateGroup: rateGroup && rateGroup.length ? rateGroup : null,
-        department: department && department.length ? department : null,
-        subDepartment: subDepartment && subDepartment.length ? subDepartment : null,
-        licenseStatus,
+        inactiveOnly,
+        page: filters.page,
+        limit: filters.limit,
+        professionCode: filters.professionCode,
+        search: filters.search,
+        rateGroup: filters.rateGroup,
+        department: filters.department,
+        subDepartment: filters.subDepartment,
+        licenseStatus: filters.licenseStatus,
+        alertFilter: filters.alertFilter,
         expiringDays: ELIGIBILITY_EXPIRING_DAYS,
       });
 
@@ -155,8 +224,68 @@ export class RequestController {
     async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
       const activeOnly = String(req.query.active_only ?? "1") !== "0";
-      const data = await requestQueryService.getEligibilitySummary(activeOnly);
+      const filters = parseEligibilityFilters(req.query);
+      const data = await requestQueryService.getEligibilitySummary({
+        activeOnly,
+        professionCode: filters.professionCode,
+        search: filters.search,
+        rateGroup: filters.rateGroup,
+        department: filters.department,
+        subDepartment: filters.subDepartment,
+        licenseStatus: filters.licenseStatus,
+        alertFilter: filters.alertFilter,
+        expiringDays: ELIGIBILITY_EXPIRING_DAYS,
+      });
       res.json({ success: true, data });
+    },
+  );
+
+  uploadEligibilityAttachments = catchAsync(
+    async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      const eligibilityId = Number(req.params.eligibilityId);
+      if (!Number.isFinite(eligibilityId)) {
+        cleanupUploadSession(req);
+        throw new ValidationError("Invalid eligibility ID");
+      }
+
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      const allFiles = [
+        ...(files?.["files"] || []),
+        ...(files?.["files[]"] || []),
+        ...(files?.["license_file"] || []),
+      ];
+
+      let data;
+      try {
+        data = await requestCommandService.addEligibilityAttachments(
+          eligibilityId,
+          req.user.userId,
+          allFiles,
+        );
+      } catch (error) {
+        cleanupUploadSession(req);
+        throw error;
+      }
+      res.status(201).json({ success: true, data, message: "อัปโหลดไฟล์แนบสำเร็จ" });
+    },
+  );
+
+  removeEligibilityAttachment = catchAsync(
+    async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      const eligibilityId = Number(req.params.eligibilityId);
+      const attachmentId = Number(req.params.attachmentId);
+      if (!Number.isFinite(eligibilityId) || !Number.isFinite(attachmentId)) {
+        throw new ValidationError("Invalid attachment identifier");
+      }
+
+      const data = await requestCommandService.removeEligibilityAttachment(
+        eligibilityId,
+        attachmentId,
+        req.user.userId,
+      );
+      res.json({ success: true, data, message: "ลบไฟล์แนบสำเร็จ" });
     },
   );
 
@@ -178,6 +307,10 @@ export class RequestController {
         typeof req.query.license_status === "string" && req.query.license_status !== "all"
           ? (req.query.license_status as any)
           : null;
+      const alertFilter =
+        typeof req.query.alert_filter === "string" && req.query.alert_filter !== "all"
+          ? (req.query.alert_filter as any)
+          : null;
 
       // Hard safety guard to avoid accidental huge exports.
       const meta = await requestRepository.findEligibilityListMeta({
@@ -188,6 +321,7 @@ export class RequestController {
         department,
         subDepartment,
         licenseStatus,
+        alertFilter,
         expiringDays: ELIGIBILITY_EXPIRING_DAYS,
       });
       const maxRows = 20000;
@@ -206,10 +340,11 @@ export class RequestController {
           search,
           rateGroup,
           department,
-          subDepartment,
-          licenseStatus,
-          expiringDays: ELIGIBILITY_EXPIRING_DAYS,
-        },
+        subDepartment,
+        licenseStatus,
+        alertFilter,
+        expiringDays: ELIGIBILITY_EXPIRING_DAYS,
+      },
         1,
         maxRows,
       );
@@ -284,6 +419,57 @@ export class RequestController {
     },
   );
 
+  setPrimaryEligibility = catchAsync(
+    async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      const eligibilityId = Number(req.params.eligibilityId);
+      if (!Number.isFinite(eligibilityId)) {
+        throw new ValidationError("Invalid eligibility ID");
+      }
+      const data = await requestCommandService.setPrimaryEligibility(
+        eligibilityId,
+        req.user.userId,
+        req.user.role,
+        typeof req.body?.reason === "string" ? req.body.reason : null,
+      );
+      res.json({ success: true, data, message: "ตั้งเป็นสิทธิ์ใช้งานหลักแล้ว" });
+    },
+  );
+
+  deactivateEligibility = catchAsync(
+    async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      const eligibilityId = Number(req.params.eligibilityId);
+      if (!Number.isFinite(eligibilityId)) {
+        throw new ValidationError("Invalid eligibility ID");
+      }
+      const data = await requestCommandService.deactivateEligibilityById(
+        eligibilityId,
+        req.user.userId,
+        req.user.role,
+        typeof req.body?.reason === "string" ? req.body.reason : null,
+      );
+      res.json({ success: true, data, message: "ปิดสิทธิ์เรียบร้อย" });
+    },
+  );
+
+  reactivateEligibility = catchAsync(
+    async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      const eligibilityId = Number(req.params.eligibilityId);
+      if (!Number.isFinite(eligibilityId)) {
+        throw new ValidationError("Invalid eligibility ID");
+      }
+      const data = await requestCommandService.reactivateEligibilityById(
+        eligibilityId,
+        req.user.userId,
+        req.user.role,
+        typeof req.body?.reason === "string" ? req.body.reason : null,
+      );
+      res.json({ success: true, data, message: "เปิดสิทธิ์กลับเรียบร้อย" });
+    },
+  );
+
   // --- WRITE Operations ---
 
   createRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
@@ -308,7 +494,18 @@ export class RequestController {
       const signatureFile = signatureFiles[0];
 
       const requestData = validation.data.body;
-      const employeeExists = await requestRepository.findEmployeeExists(req.user.citizenId);
+      const targetUserId = requestData.target_user_id;
+      const targetCitizenId =
+        req.user.role === UserRole.PTS_OFFICER && targetUserId
+          ? await requestRepository.findUserCitizenId(targetUserId)
+          : req.user.citizenId;
+      if (!targetCitizenId) {
+          cleanupUploadSession(req);
+          res.status(404).json({ success: false, error: "Employee not found" });
+          return;
+      }
+
+      const employeeExists = await requestRepository.findEmployeeExists(targetCitizenId);
       if (!employeeExists) {
           cleanupUploadSession(req);
           res.status(404).json({ success: false, error: "Employee not found" });
@@ -317,6 +514,7 @@ export class RequestController {
 
       const request = await requestCommandService.createRequest(
           req.user.userId,
+          req.user.role,
           requestData,
           allFiles,
           signatureFile
@@ -499,8 +697,21 @@ export class RequestController {
   getPrefill = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user?.citizenId) throw new AuthenticationError("Unauthorized");
       assertNotAdmin(req);
+      const targetUserId = parsePositiveInt(req.query.target_user_id);
+      let citizenId = req.user.citizenId;
 
-      const emp = await requestRepository.findEmployeeProfile(req.user.citizenId);
+      if (targetUserId) {
+        if (req.user.role !== UserRole.PTS_OFFICER) {
+          throw new AuthorizationError("มีสิทธิ์เลือกบุคลากรได้เฉพาะเจ้าหน้าที่ พ.ต.ส.");
+        }
+        const targetCitizenId = await requestRepository.findUserCitizenId(targetUserId);
+        if (!targetCitizenId) {
+          throw new ValidationError("ไม่พบบุคลากรที่เลือก");
+        }
+        citizenId = targetCitizenId;
+      }
+
+      const emp = await requestRepository.findEmployeeProfile(citizenId);
 
       if (!emp) {
           res.json({ success: true, data: null });
@@ -509,6 +720,30 @@ export class RequestController {
       const professionCode = resolveProfessionCode(emp.position_name || "");
 
       res.json({ success: true, data: { ...emp, profession_code: professionCode } });
+  });
+
+  searchPersonnelOptions = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      if (req.user.role !== UserRole.PTS_OFFICER) {
+        throw new AuthorizationError("มีสิทธิ์ค้นหาบุคลากรได้เฉพาะเจ้าหน้าที่ พ.ต.ส.");
+      }
+
+      const search = readOptionalQueryString(req.query, "search") ?? "";
+      const limit = parsePositiveInt(req.query.limit) ?? 20;
+      const rows = await requestRepository.searchPersonnelOptions(search, limit);
+      const data = rows.map((row) => ({
+        user_id: Number(row.user_id),
+        citizen_id: String(row.citizen_id ?? ""),
+        title: row.title ?? null,
+        first_name: row.first_name ?? null,
+        last_name: row.last_name ?? null,
+        position_name: row.position_name ?? null,
+        position_number: row.position_number ?? null,
+        department: row.department ?? null,
+        sub_department: row.sub_department ?? null,
+        emp_type: row.emp_type ?? null,
+      }));
+      res.json({ success: true, data });
   });
 
   getMyScopes = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
@@ -557,6 +792,84 @@ export class RequestController {
       res.json({ success: true, data: result });
   });
 
+  persistManualOcrPrecheck = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
+      const requestId = parseInt(req.params.id);
+      const result = await requestCommandService.persistManualOcrPrecheck(
+        requestId,
+        req.user.userId,
+        req.user.role,
+        req.body,
+      );
+      res.json({ success: true, data: result });
+  });
+
+  runRequestAttachmentsOcr = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
+      const requestId = parseInt(req.params.id);
+      const result = await requestCommandService.runRequestAttachmentsOcr(
+        requestId,
+        req.user.userId,
+        req.user.role,
+        req.body,
+      );
+      res.json({ success: true, data: result });
+  });
+
+  clearRequestAttachmentOcr = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
+      const requestId = parseInt(req.params.id);
+      const result = await requestCommandService.clearRequestAttachmentOcr(
+        requestId,
+        req.user.userId,
+        req.user.role,
+        req.body.file_name,
+      );
+      res.json({ success: true, data: result });
+  });
+
+  persistEligibilityManualOcrPrecheck = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
+      const eligibilityId = parseInt(req.params.id);
+      const result = await requestCommandService.persistEligibilityManualOcrPrecheck(
+        eligibilityId,
+        req.user.userId,
+        req.user.role,
+        req.body,
+      );
+      res.json({ success: true, data: result });
+  });
+
+  runEligibilityAttachmentsOcr = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
+      const eligibilityId = parseInt(req.params.eligibilityId);
+      const result = await requestCommandService.runEligibilityAttachmentsOcr(
+        eligibilityId,
+        req.user.userId,
+        req.user.role,
+        req.body,
+      );
+      res.json({ success: true, data: result });
+  });
+
+  clearEligibilityAttachmentOcr = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
+      const eligibilityId = parseInt(req.params.eligibilityId);
+      const result = await requestCommandService.clearEligibilityAttachmentOcr(
+        eligibilityId,
+        req.user.userId,
+        req.user.role,
+        req.body.file_name,
+      );
+      res.json({ success: true, data: result });
+  });
+
   updateVerificationChecks = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
      if (!req.user) throw new AuthenticationError("Unauthorized access");
      const requestId = parseInt(req.params.id);
@@ -572,19 +885,21 @@ export class RequestController {
   cancelRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
      if (!req.user) throw new AuthenticationError("Unauthorized access");
      assertNotAdmin(req);
+     const user = req.user;
      const requestId = parseInt(req.params.id);
-     await requestCommandService.cancelRequest(requestId, req.user!.userId);
+     await requestCommandService.cancelRequest(requestId, user.userId);
      res.json({ success: true, message: "Cancelled" });
   });
 
   submitRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
      if (!req.user) throw new AuthenticationError("Unauthorized access");
      assertNotAdmin(req);
+     const user = req.user;
      const requestId = parseInt(req.params.id);
      const result = await requestCommandService.submitRequest(
        requestId,
-       req.user!.userId,
-       req.user!.role,
+       user.userId,
+       user.role,
      );
      res.json({ success: true, message: "Submitted", data: result });
   });

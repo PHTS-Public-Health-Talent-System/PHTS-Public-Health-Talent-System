@@ -1,18 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { useCallback, useMemo, useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -20,389 +15,621 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Play, Send, RefreshCw, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  RefreshCw,
+  ShieldCheck,
+  Filter,
+  Search,
+  CheckCircle2,
+  XCircle,
+  UserCog,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  ArrowRight,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  useAccessReviewCycles,
-  useAccessReviewItems,
-  useCompleteAccessReviewCycle,
-  useCreateAccessReviewCycle,
-  useRunAccessReviewAutoDisable,
-  useSendAccessReviewReminders,
-  useUpdateAccessReviewItem,
-} from '@/features/access-review/hooks';
-import { formatThaiDate, formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
-import { ConfirmActionDialog } from '@/components/common/confirm-action-dialog';
+  AccessReviewQueueRowItem,
+  getPayloadEntries,
+  getQueueReasonLabel,
+  useAccessReviewQueue,
+  useResolveAccessReviewQueueItem,
+  useResolveAccessReviewQueueItems,
+} from '@/features/access-review/queue';
+import type { AccessReviewQueueRow, AccessReviewQueueStatus } from '@/features/access-review/shared';
+import { useUpdateUserRole } from '@/features/system/users';
+import { formatThaiNumber } from '@/shared/utils/thai-locale';
+import { getRoleLabel, ROLE_OPTIONS } from '@/shared/utils/role-label';
+import { cn } from '@/lib/utils';
+import { AdminPageShell } from '@/components/admin/admin-page-shell';
 
-// --- Types ---
-type ReviewCycle = {
-  cycle_id: number;
-  quarter: number;
-  year: number;
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE';
-  start_date: string;
-  due_date: string;
-  total_users: number;
-  reviewed_users: number;
-  disabled_users: number;
-};
+const LIMIT_OPTIONS = [10, 20, 50] as const;
 
-type ReviewItem = {
-  item_id: number;
-  user_name: string;
-  citizen_id: string;
-  current_role: string;
-  review_result: 'KEEP' | 'DISABLE' | 'PENDING';
-  last_login_at: string | null;
-  reviewer_comment?: string;
-};
+type RoleChangeDialogState = {
+  row: AccessReviewQueueRow;
+  nextRole: string;
+  reason: string;
+  hasError?: boolean;
+} | null;
 
-// --- Helpers ---
-const getResultBadge = (result: string) => {
-  switch (result) {
-    case 'KEEP':
-      return (
-        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
-          อนุมัติคงสิทธิ์
-        </Badge>
-      );
-    case 'DISABLE':
-      return <Badge variant="destructive">ระงับสิทธิ์</Badge>;
-    default:
-      return (
-        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-          รอตรวจสอบ
-        </Badge>
-      );
-  }
-};
+type BulkQueueActionDialogState = {
+  action: 'RESOLVE' | 'DISMISS';
+  queueIds: number[];
+  note: string;
+} | null;
 
 export default function AccessReviewPage() {
-  // --- State ---
-  const [resultFilter, setResultFilter] = useState<'all' | 'PENDING' | 'KEEP' | 'DISABLE'>('all');
-  const [selectedCycle, setSelectedCycle] = useState<string>('');
+  const [queuePage, setQueuePage] = useState(1);
+  const [queueLimit, setQueueLimit] = useState<number>(10);
 
-  // --- Hooks ---
-  const cyclesQuery = useAccessReviewCycles();
+  // Filters
+  const [queueStatusFilter, setQueueStatusFilter] = useState<'all' | AccessReviewQueueStatus>('OPEN');
+  const [queueReasonFilter, setQueueReasonFilter] = useState<string>('all');
+  const [queueRoleFilter, setQueueRoleFilter] = useState<string>('all');
+  const [queueActiveFilter, setQueueActiveFilter] = useState<'all' | '1' | '0'>('all');
+  const [queueBatchFilter, setQueueBatchFilter] = useState<string>('');
+  const [queueSearchFilter, setQueueSearchFilter] = useState<string>('');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
-  // Mutations
-  const createCycleMutation = useCreateAccessReviewCycle();
-  const completeCycleMutation = useCompleteAccessReviewCycle();
-  const sendRemindersMutation = useSendAccessReviewReminders();
-  const autoDisableMutation = useRunAccessReviewAutoDisable();
-  const updateItemMutation = useUpdateAccessReviewItem();
+  const [expandedQueueIds, setExpandedQueueIds] = useState<number[]>([]);
+  const [selectedQueueIds, setSelectedQueueIds] = useState<number[]>([]);
+  const [queueRoleDraft, setQueueRoleDraft] = useState<Record<number, string>>({});
+  const [roleChangeDialog, setRoleChangeDialog] = useState<RoleChangeDialogState>(null);
+  const [bulkQueueActionDialog, setBulkQueueActionDialog] = useState<BulkQueueActionDialogState>(null);
 
-  // --- Data Processing ---
-  const cycles = useMemo(() => {
-    const data = (cyclesQuery.data ?? []) as ReviewCycle[];
-    return data.sort((a, b) => {
-      if (b.year !== a.year) return b.year - a.year;
-      return b.quarter - a.quarter;
-    });
-  }, [cyclesQuery.data]);
-
-  const activeCycleId = useMemo(() => {
-    if (selectedCycle) return Number(selectedCycle);
-    return cycles[0]?.cycle_id;
-  }, [cycles, selectedCycle]);
-
-  const itemsQuery = useAccessReviewItems(activeCycleId, {
-    result: resultFilter === 'all' ? undefined : resultFilter,
+  const queueQuery = useAccessReviewQueue({
+    page: queuePage,
+    limit: queueLimit,
+    status: queueStatusFilter === 'all' ? undefined : queueStatusFilter,
+    reason_code: queueReasonFilter === 'all' ? undefined : queueReasonFilter,
+    current_role: queueRoleFilter === 'all' ? undefined : queueRoleFilter,
+    is_active: queueActiveFilter === 'all' ? undefined : (Number(queueActiveFilter) as 0 | 1),
+    batch_id: queueBatchFilter.trim().length > 0 && !Number.isNaN(Number(queueBatchFilter)) ? Number(queueBatchFilter) : undefined,
+    search: queueSearchFilter.trim().length > 0 ? queueSearchFilter.trim() : undefined,
   });
 
-  const items = (itemsQuery.data ?? []) as ReviewItem[];
-  const activeCycle = cycles.find((c) => c.cycle_id === activeCycleId) ?? null;
+  const resolveQueueMutation = useResolveAccessReviewQueueItem();
+  const resolveQueueItemsMutation = useResolveAccessReviewQueueItems();
+  const updateUserRoleMutation = useUpdateUserRole();
 
-  const pendingCount = Math.max(
-    0,
-    Number(activeCycle?.total_users ?? 0) - Number(activeCycle?.reviewed_users ?? 0),
+  const queueResponse = queueQuery.data;
+  const queueRows = useMemo(
+    () => (queueResponse?.rows ?? []) as AccessReviewQueueRow[],
+    [queueResponse?.rows],
   );
+  const queueReasonOptions = queueResponse?.reason_options ?? [];
+  const queueTotalPages = Math.max(1, Math.ceil(Number(queueResponse?.total ?? 0) / Number(queueResponse?.limit ?? queueLimit)));
 
-  const progress = activeCycle
-    ? activeCycle.total_users > 0
-      ? (activeCycle.reviewed_users / activeCycle.total_users) * 100
-      : 0
-    : 0;
+  const activeFilterChips = [
+    queueRoleFilter !== 'all' ? { key: 'role', label: `บทบาท: ${getRoleLabel(queueRoleFilter)}`, clear: () => { setQueueRoleFilter('all'); setQueuePage(1); } } : null,
+    queueReasonFilter !== 'all' ? { key: 'reason', label: `เหตุผล: ${getQueueReasonLabel(queueReasonFilter)}`, clear: () => { setQueueReasonFilter('all'); setQueuePage(1); } } : null,
+    queueActiveFilter !== 'all' ? { key: 'active', label: `สถานะบัญชี: ${queueActiveFilter === '1' ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}`, clear: () => { setQueueActiveFilter('all'); setQueuePage(1); } } : null,
+    queueBatchFilter.trim() ? { key: 'batch', label: `Batch #${queueBatchFilter.trim()}`, clear: () => { setQueueBatchFilter(''); setQueuePage(1); } } : null,
+  ].filter(Boolean) as Array<{ key: string; label: string; clear: () => void }>;
 
-  // --- Handlers ---
-  const handleCreateCycle = async () => {
+  const expandedQueueIdSet = useMemo(() => new Set(expandedQueueIds), [expandedQueueIds]);
+  const selectedQueueIdSet = useMemo(() => new Set(selectedQueueIds), [selectedQueueIds]);
+  const openQueueIds = useMemo(
+    () => queueRows.filter((row) => row.status === 'OPEN').map((row) => row.queue_id),
+    [queueRows],
+  );
+  const openQueueIdSet = useMemo(() => new Set(openQueueIds), [openQueueIds]);
+  const selectedOpenQueueIds = useMemo(
+    () => selectedQueueIds.filter((queueId) => openQueueIdSet.has(queueId)),
+    [openQueueIdSet, selectedQueueIds],
+  );
+  const isAllOpenRowsSelected = openQueueIds.length > 0 && selectedOpenQueueIds.length === openQueueIds.length;
+  const isPartiallySelected = selectedOpenQueueIds.length > 0 && !isAllOpenRowsSelected;
+  const payloadEntriesByQueueId = useMemo(
+    () =>
+      new Map(queueRows.map((row) => [row.queue_id, getPayloadEntries(row.payload_json)])),
+    [queueRows],
+  );
+  const toggleExpanded = useCallback((queueId: number) => {
+    setExpandedQueueIds((prev) => prev.includes(queueId) ? prev.filter((id) => id !== queueId) : [...prev, queueId]);
+  }, []);
+
+  const handleRoleDraftChange = useCallback((queueId: number, role: string) => {
+    setQueueRoleDraft((prev) => ({ ...prev, [queueId]: role }));
+  }, []);
+
+  const toggleQueueSelection = useCallback((queueId: number, checked: boolean) => {
+    setSelectedQueueIds((prev) =>
+      checked ? [...new Set([...prev, queueId])] : prev.filter((id) => id !== queueId),
+    );
+  }, []);
+
+  const toggleSelectAllOpenRows = (checked: boolean) => {
+    if (!checked) {
+      setSelectedQueueIds((prev) => prev.filter((queueId) => !openQueueIds.includes(queueId)));
+      return;
+    }
+    setSelectedQueueIds((prev) => [...new Set([...prev, ...openQueueIds])]);
+  };
+
+  const handleResolveQueue = useCallback(async (queueId: number, action: 'RESOLVE' | 'DISMISS') => {
     try {
-      await createCycleMutation.mutateAsync({});
-      toast.success('สร้างรอบตรวจสอบสิทธิ์ประจำไตรมาสสำเร็จ');
-      cyclesQuery.refetch();
+      await resolveQueueMutation.mutateAsync({ id: queueId, payload: { action } });
+      toast.success(action === 'RESOLVE' ? 'ปิดเคสเรียบร้อยแล้ว' : 'ยกเลิกเคสเรียบร้อยแล้ว');
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'ไม่สามารถสร้างรอบใหม่ได้';
-      toast.error(message);
+      toast.error(error instanceof Error ? error.message : 'อัปเดตคิวไม่สำเร็จ');
     }
-  };
+  }, [resolveQueueMutation]);
 
-  const handleReview = async (itemId: number, result: 'KEEP' | 'DISABLE') => {
-    try {
-      await updateItemMutation.mutateAsync({
-        id: itemId,
-        payload: { result },
-      });
-      toast.success(`บันทึกสถานะ ${result} สำเร็จ`);
-      itemsQuery.refetch();
-      cyclesQuery.refetch(); // Update progress
-    } catch {
-      toast.error('บันทึกผลตรวจสอบไม่สำเร็จ');
-    }
-  };
+  const handleFixRoleAndResolve = useCallback(async (row: AccessReviewQueueRow, nextRole: string) => {
+    if (row.status !== 'OPEN') return toast.error('แก้ไขสิทธิ์ได้เฉพาะเคสที่ยังค้างตรวจเท่านั้น');
 
-  const handleCompleteCycle = async (autoKeep: boolean = false) => {
-    if (!activeCycleId) return;
+    if (!nextRole || nextRole === row.current_role) return toast.error('กรุณาเลือกบทบาทใหม่ที่แตกต่างจากเดิม');
+
+    setRoleChangeDialog({ row, nextRole, reason: '' });
+  }, []);
+
+  const handleBulkQueueAction = async () => {
+    if (!bulkQueueActionDialog || bulkQueueActionDialog.queueIds.length === 0) return;
+
     try {
-      await completeCycleMutation.mutateAsync({
-        id: activeCycleId,
+      const result = await resolveQueueItemsMutation.mutateAsync({
         payload: {
-          autoKeepPending: autoKeep,
-          note: autoKeep ? 'อนุมัติคงสิทธิ์รายการที่เหลืออัตโนมัติ' : undefined,
+          queue_ids: bulkQueueActionDialog.queueIds,
+          action: bulkQueueActionDialog.action,
+          note: bulkQueueActionDialog.note.trim() || undefined,
         },
       });
-      toast.success('ปิดรอบการตรวจสอบสำเร็จ');
-      cyclesQuery.refetch();
-      itemsQuery.refetch();
-    } catch {
-      toast.error('ปิดรอบไม่สำเร็จ');
+      toast.success(
+        bulkQueueActionDialog.action === 'RESOLVE'
+          ? `ปิดเคสพร้อมกันแล้ว ${formatThaiNumber(result.updatedCount)} รายการ`
+          : `ยกเลิกเคสพร้อมกันแล้ว ${formatThaiNumber(result.updatedCount)} รายการ`,
+      );
+      setSelectedQueueIds((prev) =>
+        prev.filter((queueId) => !bulkQueueActionDialog.queueIds.includes(queueId)),
+      );
+      setBulkQueueActionDialog(null);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'อัปเดตคิวแบบชุดไม่สำเร็จ');
     }
+  };
+
+  const submitRoleChangeAndResolve = async () => {
+    if (!roleChangeDialog) return;
+    const { row, nextRole, reason } = roleChangeDialog;
+
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) {
+      setRoleChangeDialog({ ...roleChangeDialog, hasError: true });
+      toast.error('กรุณาระบุเหตุผลการเปลี่ยนสิทธิ์');
+      return;
+    }
+
+    try {
+      await updateUserRoleMutation.mutateAsync({ userId: row.user_id, payload: { role: nextRole }});
+      await resolveQueueMutation.mutateAsync({
+        id: row.queue_id,
+        payload: { action: 'RESOLVE', note: `ROLE_UPDATED ${row.current_role} -> ${nextRole} | ${normalizedReason}` },
+      });
+      toast.success('อัปเดตสิทธิ์และปิดเคสเรียบร้อย');
+      setRoleChangeDialog(null);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'แก้ไขสิทธิ์ไม่สำเร็จ');
+    }
+  };
+
+  const clearFilters = () => {
+    setQueueStatusFilter('OPEN');
+    setQueueReasonFilter('all');
+    setQueueRoleFilter('all');
+    setQueueActiveFilter('all');
+    setQueueBatchFilter('');
+    setQueueSearchFilter('');
+    setQueuePage(1);
   };
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-primary" /> ตรวจสอบสิทธิ์
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            บริหารจัดการรอบการตรวจสอบสิทธิ์ผู้ใช้งานประจำไตรมาส
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <ConfirmActionDialog
-            trigger={
-              <Button size="sm" className="gap-2">
-                <Play className="h-4 w-4" /> สร้างรอบใหม่
-              </Button>
-            }
-            title="สร้างรอบตรวจสอบสิทธิ์ใหม่?"
-            description="ระบบจะสร้างรอบตรวจสอบสำหรับไตรมาสปัจจุบัน และแจ้งเตือนหัวหน้างานให้เริ่มตรวจสอบลูกทีม"
-            confirmText="สร้างรอบ"
-            onConfirm={handleCreateCycle}
-            disabled={createCycleMutation.isPending}
-          />
-        </div>
-      </div>
+    <AdminPageShell
+      eyebrow="Review Queue"
+      title="ตรวจสอบสิทธิ์การใช้งาน"
+      description="จัดการคิวแจ้งเตือนความผิดปกติของสิทธิ์ผู้ใช้งานที่ตรวจพบหลังจากการซิงก์ข้อมูล"
+      icon={ShieldCheck}
+      actions={
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-2 bg-background/90 shadow-sm"
+          onClick={() => queueQuery.refetch()}
+          disabled={queueQuery.isFetching}
+        >
+          <RefreshCw className={cn("h-4 w-4 text-muted-foreground", queueQuery.isFetching && "animate-spin")} /> ดึงข้อมูลล่าสุด
+        </Button>
+      }
+    >
 
-      {/* Cycle Management Card */}
-      <Card className="border-border shadow-sm bg-card">
-        <CardHeader className="pb-4 border-b">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <Card className="border-border shadow-sm flex flex-col">
+        <CardHeader className="border-b bg-muted/5 pb-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="space-y-1">
-              <CardTitle className="text-lg">สถานะรอบปัจจุบัน</CardTitle>
-              <CardDescription>
-                {activeCycle
-                  ? `ไตรมาส ${activeCycle.quarter}/${activeCycle.year} (${formatThaiDate(activeCycle.start_date)} - ${formatThaiDate(activeCycle.due_date)})`
-                  : 'กรุณาเลือกหรือสร้างรอบการตรวจสอบ'}
-              </CardDescription>
+              <CardTitle className="text-lg">คิวตรวจสอบปัจจุบัน</CardTitle>
+              <CardDescription>รายการความขัดแย้งของข้อมูลที่ต้องการการตัดสินใจจากผู้ดูแลระบบ</CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">เลือกรอบ:</span>
-              <Select value={String(activeCycleId ?? '')} onValueChange={setSelectedCycle}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="เลือกรายการ" />
-                </SelectTrigger>
-                <SelectContent>
-                  {cycles.map((cycle) => (
-                    <SelectItem key={cycle.cycle_id} value={String(cycle.cycle_id)}>
-                      Q{cycle.quarter}/{cycle.year} ({cycle.status})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+            {/* Clean Status Summary Badges */}
+            <div className="flex bg-background border rounded-lg p-1 shadow-sm overflow-hidden">
+              <div className="px-3 py-1 flex flex-col items-center border-r">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">ค้างตรวจ</span>
+                <span className="font-bold text-amber-600">{formatThaiNumber(queueResponse?.summary?.open_count ?? 0)}</span>
+              </div>
+              <div className="px-3 py-1 flex flex-col items-center border-r">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">กำลังตรวจ</span>
+                <span className="font-bold text-blue-600">{formatThaiNumber(queueResponse?.summary?.in_review_count ?? 0)}</span>
+              </div>
+              <div className="px-3 py-1 flex flex-col items-center">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">ปิดแล้ว</span>
+                <span className="font-bold text-emerald-600">{formatThaiNumber(queueResponse?.summary?.resolved_count ?? 0)}</span>
+              </div>
             </div>
           </div>
         </CardHeader>
 
-        {activeCycle && (
-          <CardContent className="pt-6 space-y-6">
-            {/* Progress Bar */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">
-                  ความคืบหน้าการตรวจสอบ ({Math.round(progress)}%)
-                </span>
-                <span className="font-medium">
-                  {formatThaiNumber(activeCycle.reviewed_users)} /{' '}
-                  {formatThaiNumber(activeCycle.total_users)} คน
-                </span>
+        <CardContent className="p-0 flex-1 flex flex-col">
+          {selectedOpenQueueIds.length > 0 && (
+            <div className="border-b bg-amber-50/60 px-4 py-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="text-sm text-amber-900">
+                  เลือกไว้ <span className="font-semibold">{formatThaiNumber(selectedOpenQueueIds.length)}</span> เคส
+                  <span className="text-amber-700"> จากหน้าปัจจุบัน</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2 border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
+                    onClick={() =>
+                      setBulkQueueActionDialog({
+                        action: 'RESOLVE',
+                        queueIds: selectedOpenQueueIds,
+                        note: '',
+                      })
+                    }
+                  >
+                    <CheckCircle2 className="h-4 w-4" /> ปิดเคสที่เลือก
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2 bg-white"
+                    onClick={() =>
+                      setBulkQueueActionDialog({
+                        action: 'DISMISS',
+                        queueIds: selectedOpenQueueIds,
+                        note: '',
+                      })
+                    }
+                  >
+                    <XCircle className="h-4 w-4" /> ยกเลิกเคสที่เลือก
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedQueueIds([])}>
+                    ล้างการเลือก
+                  </Button>
+                </div>
               </div>
-              <Progress value={progress} className="h-2" />
-              <div className="flex justify-between text-xs text-muted-foreground pt-1">
-                <span>คงเหลือ: {formatThaiNumber(pendingCount)} คน</span>
-                <span>ระงับสิทธิ์ไปแล้ว: {formatThaiNumber(activeCycle.disabled_users)} คน</span>
+            </div>
+          )}
+          {/* Smart Filter Bar */}
+          <div className="p-4 border-b bg-muted/10 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="ค้นหาด้วยชื่อ หรือเลขบัตรประชาชน..."
+                  value={queueSearchFilter}
+                  onChange={(e) => { setQueueSearchFilter(e.target.value); setQueuePage(1); }}
+                  className="pl-9 h-9 bg-background"
+                />
+              </div>
+
+              <div className="flex gap-2 shrink-0">
+                <Select value={queueStatusFilter} onValueChange={(v: 'all' | AccessReviewQueueStatus) => { setQueueStatusFilter(v); setQueuePage(1); }}>
+                  <SelectTrigger className="h-9 w-[130px] bg-background text-xs"><SelectValue placeholder="สถานะ" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">ทุกสถานะ</SelectItem>
+                    <SelectItem value="OPEN">ค้างตรวจ</SelectItem>
+                    <SelectItem value="IN_REVIEW">กำลังตรวจ</SelectItem>
+                    <SelectItem value="RESOLVED">ปิดแล้ว</SelectItem>
+                    <SelectItem value="DISMISSED">ยกเลิกเคส</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant={showAdvancedFilters ? "secondary" : "outline"} size="sm" className="h-9 px-3 gap-2 bg-background shadow-sm" onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}>
+                  <Filter className="h-3.5 w-3.5" /> <span className="hidden sm:inline">ตัวกรองอื่น</span>
+                </Button>
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-wrap gap-3 pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => sendRemindersMutation.mutateAsync()}
-                disabled={sendRemindersMutation.isPending || activeCycle.status === 'COMPLETED'}
-                className="gap-2"
-              >
-                <Send className="h-4 w-4" /> ส่งแจ้งเตือน
-              </Button>
+            {/* Collapsible Advanced Filters */}
+            {showAdvancedFilters && (
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 animate-in slide-in-from-top-2">
+                <Select value={queueReasonFilter} onValueChange={(v) => { setQueueReasonFilter(v); setQueuePage(1); }}>
+                  <SelectTrigger className="h-8 text-xs bg-background"><SelectValue placeholder="เหตุผลการแจ้งเตือน" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">ทุกเหตุผล</SelectItem>
+                    {queueReasonOptions.map((code) => <SelectItem key={code} value={code}>{getQueueReasonLabel(code)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={queueRoleFilter} onValueChange={(v) => { setQueueRoleFilter(v); setQueuePage(1); }}>
+                  <SelectTrigger className="h-8 text-xs bg-background"><SelectValue placeholder="บทบาทปัจจุบัน" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">ทุกบทบาท</SelectItem>
+                    {ROLE_OPTIONS.map((role) => <SelectItem key={role} value={role}>{getRoleLabel(role)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={queueActiveFilter} onValueChange={(v: 'all' | '1' | '0') => { setQueueActiveFilter(v); setQueuePage(1); }}>
+                  <SelectTrigger className="h-8 text-xs bg-background"><SelectValue placeholder="สถานะบัญชี" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">ทุกสถานะบัญชี</SelectItem>
+                    <SelectItem value="1">บัญชีเปิดใช้งาน</SelectItem>
+                    <SelectItem value="0">บัญชีปิดใช้งาน</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input type="number" placeholder="ค้นหาด้วย Batch ID" value={queueBatchFilter} onChange={(e) => { setQueueBatchFilter(e.target.value); setQueuePage(1); }} className="h-8 text-xs bg-background" />
+                <Button size="sm" variant="ghost" onClick={clearFilters} className="h-8 text-xs text-muted-foreground hover:text-foreground">ล้างตัวกรองทั้งหมด</Button>
+              </div>
+            )}
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => autoDisableMutation.mutateAsync()}
-                disabled={autoDisableMutation.isPending}
-                className="gap-2"
-              >
-                <RefreshCw className="h-4 w-4" /> ระงับสิทธิ์อัตโนมัติ
-              </Button>
+            {activeFilterChips.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {activeFilterChips.map((chip) => (
+                  <Badge key={chip.key} variant="secondary" className="gap-1 rounded-full px-2.5 py-1 bg-background border">
+                    <span className="font-normal text-muted-foreground">{chip.label.split(':')[0]}:</span>
+                    <span className="font-medium text-foreground">{chip.label.split(':')[1]}</span>
+                    <button
+                      type="button"
+                      onClick={chip.clear}
+                      className="rounded-full p-0.5 ml-0.5 text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
 
-              <div className="flex-1" />
+          {/* Clean Data Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-muted/30 text-xs uppercase text-muted-foreground border-b border-border/60">
+                <tr>
+                  <th className="px-4 py-3 w-[52px]">
+                    <div className="flex items-center justify-center">
+                      <Checkbox
+                        checked={isAllOpenRowsSelected ? true : isPartiallySelected ? 'indeterminate' : false}
+                        onCheckedChange={(checked) => toggleSelectAllOpenRows(checked === true)}
+                        aria-label="เลือกทุกเคสที่เปิดอยู่ในหน้านี้"
+                        disabled={openQueueIds.length === 0}
+                      />
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap w-[25%]">ผู้ใช้งาน</th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap w-[25%]">รายละเอียดปัญหา</th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap">ข้อมูลปัจจุบัน</th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap">เวลาตรวจพบ</th>
+                  <th className="px-4 py-3 font-medium text-right whitespace-nowrap">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {queueQuery.isLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i}>
+                      <td className="p-4"><Skeleton className="h-4 w-4 rounded-sm" /></td>
+                      <td className="p-4"><div className="space-y-2"><Skeleton className="h-4 w-32" /><Skeleton className="h-3 w-24" /></div></td>
+                      <td className="p-4"><div className="space-y-2"><Skeleton className="h-4 w-40" /><Skeleton className="h-5 w-20 rounded-full" /></div></td>
+                      <td className="p-4"><div className="space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-4 w-16" /></div></td>
+                      <td className="p-4"><Skeleton className="h-4 w-28" /></td>
+                      <td className="p-4 text-right"><Skeleton className="h-8 w-8 ml-auto rounded-md" /></td>
+                    </tr>
+                  ))
+                ) : queueRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="h-48 text-center text-muted-foreground">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <ShieldCheck className="h-10 w-10 text-muted-foreground/30 mb-2" />
+                        <p>ไม่พบคิวค้างตรวจตามเงื่อนไขที่กำหนด</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  queueRows.map((row) => (
+                    <AccessReviewQueueRowItem
+                      key={row.queue_id}
+                      row={row}
+                      isExpanded={expandedQueueIdSet.has(row.queue_id)}
+                      isSelected={selectedQueueIdSet.has(row.queue_id)}
+                      draftRole={queueRoleDraft[row.queue_id] ?? row.current_role}
+                      payloadEntries={payloadEntriesByQueueId.get(row.queue_id) ?? []}
+                      isActionPending={
+                        resolveQueueMutation.isPending || updateUserRoleMutation.isPending
+                      }
+                      onToggleExpanded={toggleExpanded}
+                      onToggleSelection={toggleQueueSelection}
+                      onRoleDraftChange={handleRoleDraftChange}
+                      onFixRoleAndResolve={handleFixRoleAndResolve}
+                      onResolveQueue={handleResolveQueue}
+                    />
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
 
-              {activeCycle.status !== 'COMPLETED' && (
-                <>
-                  <ConfirmActionDialog
-                    trigger={
-                      <Button variant="secondary" size="sm">
-                        ปิดรอบ + อนุมัติที่เหลือ
-                      </Button>
-                    }
-                    title="ยืนยันการปิดรอบแบบอนุมัติอัตโนมัติ?"
-                    description={`ระบบจะอนุมัติคงสิทธิ์ผู้ใช้ที่ยังรอการตรวจสอบทั้งหมด ${formatThaiNumber(pendingCount)} คน และปิดรอบทันที`}
-                    confirmText="ยืนยันปิดรอบ"
-                    onConfirm={() => handleCompleteCycle(true)}
-                    disabled={completeCycleMutation.isPending}
-                  />
-
-                  <ConfirmActionDialog
-                    trigger={
-                      <Button variant="default" size="sm">
-                        ปิดรอบ
-                      </Button>
-                    }
-                    title="ยืนยันการปิดรอบ?"
-                    description="การปิดรอบจะหยุดรับการตรวจสอบเพิ่มเติม คุณแน่ใจหรือไม่?"
-                    confirmText="ยืนยัน"
-                    onConfirm={() => handleCompleteCycle(false)}
-                    disabled={completeCycleMutation.isPending}
-                  />
-                </>
-              )}
-            </div>
-          </CardContent>
-        )}
-      </Card>
-
-      {/* Review Items Table */}
-      <Card className="border-border shadow-sm">
-        <CardHeader className="border-b bg-muted/10 py-4 px-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <CardTitle className="text-base font-semibold">รายชื่อผู้ใช้ในรอบนี้</CardTitle>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">สถานะ:</span>
-              <Select
-                value={resultFilter}
-                onValueChange={(v: 'all' | 'PENDING' | 'KEEP' | 'DISABLE') => setResultFilter(v)}
-              >
-                <SelectTrigger className="w-[150px] h-9 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
+          {/* Footer Pagination */}
+          <div className="border-t bg-muted/10 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 mt-auto">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">แสดงผล</span>
+              <Select value={String(queueLimit)} onValueChange={(v) => { setQueueLimit(Number(v)); setQueuePage(1); }}>
+                <SelectTrigger className="h-8 w-[70px] text-xs bg-background"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">ทั้งหมด</SelectItem>
-                  <SelectItem value="PENDING">รอตรวจสอบ</SelectItem>
-                  <SelectItem value="KEEP">อนุมัติแล้ว</SelectItem>
-                  <SelectItem value="DISABLE">ระงับสิทธิ์</SelectItem>
+                  {LIMIT_OPTIONS.map(v => <SelectItem key={v} value={String(v)}>{v}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <span className="text-xs text-muted-foreground">จากทั้งหมด <span className="font-medium text-foreground">{formatThaiNumber(queueResponse?.total ?? 0)}</span> รายการ</span>
+            </div>
+
+            <div className="flex gap-2 items-center">
+              <Button variant="outline" size="sm" className="h-8 px-2 bg-background" onClick={() => setQueuePage(p => Math.max(1, p - 1))} disabled={queuePage <= 1 || queueQuery.isLoading}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-xs font-medium px-2">หน้า {queuePage} / {queueTotalPages}</span>
+              <Button variant="outline" size="sm" className="h-8 px-2 bg-background" onClick={() => setQueuePage(p => Math.min(queueTotalPages, p + 1))} disabled={queuePage >= queueTotalPages || queueQuery.isLoading}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader className="bg-muted/30">
-              <TableRow>
-                <TableHead>ผู้ใช้งาน</TableHead>
-                <TableHead>บทบาทปัจจุบัน</TableHead>
-                <TableHead>เข้าใช้ล่าสุด</TableHead>
-                <TableHead>ผลการตรวจสอบ</TableHead>
-                <TableHead className="text-right">สิทธิ์ผู้ดูแลระบบ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {itemsQuery.isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
-                    กำลังโหลดข้อมูล...
-                  </TableCell>
-                </TableRow>
-              ) : items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                    ไม่พบรายการ
-                  </TableCell>
-                </TableRow>
-              ) : (
-                items.map((item) => (
-                  <TableRow key={item.item_id} className="hover:bg-muted/20">
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{item.user_name}</span>
-                        <span className="text-xs text-muted-foreground font-mono">
-                          {item.citizen_id}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="font-normal">
-                        {item.current_role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {item.last_login_at
-                        ? formatThaiDateTime(item.last_login_at)
-                        : 'ไม่เคยเข้าใช้งาน'}
-                    </TableCell>
-                    <TableCell>{getResultBadge(item.review_result)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:text-emerald-600"
-                          onClick={() => handleReview(item.item_id, 'KEEP')}
-                          title="อนุมัติคงสิทธิ์"
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:text-destructive"
-                          onClick={() => handleReview(item.item_id, 'DISABLE')}
-                          title="ระงับสิทธิ์"
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
         </CardContent>
       </Card>
-    </div>
+
+      {/* Role Change Confirmation Dialog */}
+      <Dialog open={!!roleChangeDialog} onOpenChange={(open) => { if (!open) setRoleChangeDialog(null); }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-primary">
+              <UserCog className="h-5 w-5" /> ยืนยันการแก้สิทธิ์และปิดเคส
+            </DialogTitle>
+            <DialogDescription>
+              ใช้สำหรับเคสที่ตรวจสอบแล้วว่าจำเป็นต้องเปลี่ยนบทบาทของผู้ใช้ (Role) และปิดคิวการแจ้งเตือนนี้
+            </DialogDescription>
+          </DialogHeader>
+
+          {roleChangeDialog && (
+            <div className="space-y-5 py-2">
+              <div className="rounded-lg border bg-muted/20 p-3 text-sm flex flex-col items-center text-center shadow-sm">
+                 <p className="font-semibold text-foreground text-base">{roleChangeDialog.row.user_name || 'ไม่ระบุชื่อ'}</p>
+                 <span className="text-xs text-muted-foreground font-mono mt-0.5">{roleChangeDialog.row.citizen_id}</span>
+                 <Badge variant="secondary" className="mt-3 font-normal bg-background border">{getQueueReasonLabel(roleChangeDialog.row.reason_code)}</Badge>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-[1fr_auto_1fr] items-center bg-muted/10 p-4 rounded-lg border">
+                <div className="space-y-1.5 text-center">
+                  <Label className="text-[10px] uppercase text-muted-foreground tracking-wider">บทบาทปัจจุบัน</Label>
+                  <div className="h-9 rounded-md border border-dashed bg-background px-3 text-sm font-medium text-muted-foreground flex items-center justify-center">
+                    {getRoleLabel(roleChangeDialog.row.current_role)}
+                  </div>
+                </div>
+                <div className="flex justify-center text-muted-foreground/30">
+                   <ArrowRight className="h-5 w-5 rotate-90 sm:rotate-0" />
+                </div>
+                <div className="space-y-1.5 text-center">
+                  <Label className="text-[10px] uppercase text-primary tracking-wider font-semibold">บทบาทใหม่</Label>
+                  <div className="h-9 rounded-md border-primary/30 bg-primary/5 text-primary px-3 text-sm font-semibold flex items-center justify-center shadow-sm">
+                    {getRoleLabel(roleChangeDialog.nextRole)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="role-change-reason" className={cn("flex justify-between", roleChangeDialog.hasError && "text-destructive")}>
+                  <span>เหตุผลการแก้ไขสิทธิ์ <span className="text-destructive">*</span></span>
+                </Label>
+                <Textarea
+                  id="role-change-reason"
+                  value={roleChangeDialog.reason}
+                  onChange={(event) => setRoleChangeDialog((prev) => prev ? { ...prev, reason: event.target.value, hasError: false } : prev)}
+                  rows={3}
+                  placeholder="เช่น ปรับสิทธิ์ตามตำแหน่งใหม่ในระบบ HRMS..."
+                  className={cn("resize-none", roleChangeDialog.hasError && "border-destructive focus-visible:ring-destructive/20")}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0 mt-2">
+            <Button variant="outline" onClick={() => setRoleChangeDialog(null)}>
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={submitRoleChangeAndResolve}
+              disabled={resolveQueueMutation.isPending || updateUserRoleMutation.isPending}
+              className="gap-2 shadow-sm"
+            >
+              {resolveQueueMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              บันทึกสิทธิ์และปิดเคส
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!bulkQueueActionDialog}
+        onOpenChange={(open) => {
+          if (!open) setBulkQueueActionDialog(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-primary">
+              {bulkQueueActionDialog?.action === 'RESOLVE' ? (
+                <CheckCircle2 className="h-5 w-5" />
+              ) : (
+                <XCircle className="h-5 w-5" />
+              )}
+              {bulkQueueActionDialog?.action === 'RESOLVE' ? 'ยืนยันการปิดหลายเคส' : 'ยืนยันการยกเลิกหลายเคส'}
+            </DialogTitle>
+            <DialogDescription>
+              การดำเนินการนี้จะอัปเดตคิวที่เลือกพร้อมกันในครั้งเดียว และบันทึกประวัติให้ทุกเคส
+            </DialogDescription>
+          </DialogHeader>
+
+          {bulkQueueActionDialog && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border bg-muted/10 px-4 py-3 text-sm">
+                จะ{bulkQueueActionDialog.action === 'RESOLVE' ? 'ปิด' : 'ยกเลิก'}ทั้งหมด{' '}
+                <span className="font-semibold">{formatThaiNumber(bulkQueueActionDialog.queueIds.length)}</span> เคส
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bulk-queue-note">หมายเหตุเพิ่มเติม</Label>
+                <Textarea
+                  id="bulk-queue-note"
+                  rows={3}
+                  value={bulkQueueActionDialog.note}
+                  onChange={(event) =>
+                    setBulkQueueActionDialog((prev) =>
+                      prev ? { ...prev, note: event.target.value } : prev,
+                    )
+                  }
+                  placeholder="เช่น ตรวจสอบแล้วข้อมูลถูกต้องทั้งหมดตามกติกาใหม่"
+                  className="resize-none"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setBulkQueueActionDialog(null)}>
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={handleBulkQueueAction}
+              disabled={resolveQueueItemsMutation.isPending}
+              className="gap-2"
+            >
+              {resolveQueueItemsMutation.isPending ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : bulkQueueActionDialog?.action === 'RESOLVE' ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <XCircle className="h-4 w-4" />
+              )}
+              {bulkQueueActionDialog?.action === 'RESOLVE' ? 'ยืนยันปิดหลายเคส' : 'ยืนยันยกเลิกหลายเคส'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </AdminPageShell>
   );
 }

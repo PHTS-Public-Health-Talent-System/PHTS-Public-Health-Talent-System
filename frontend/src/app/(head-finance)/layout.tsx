@@ -1,5 +1,5 @@
 import React from "react"
-import { HeadFinanceSidebar } from "@/features/navigation/components/head-finance-sidebar"
+import { HeadFinanceSidebar } from "@/features/navigation/components"
 
 export default function HeadFinanceLayout({
   children,

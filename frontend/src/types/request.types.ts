@@ -7,8 +7,8 @@ export type RequestType = 'NEW_ENTRY' | 'EDIT_INFO_SAME_RATE' | 'EDIT_INFO_NEW_R
 export type RequestStatus =
   | 'DRAFT'
   | 'PENDING'
-  | 'PENDING_HEAD_WARD'
-  | 'PENDING_HEAD_DEPT'
+  | 'PENDING_WARD_SCOPE'
+  | 'PENDING_DEPT_SCOPE'
   | 'PENDING_PTS_OFFICER'
   | 'PENDING_HR'
   | 'PENDING_FINANCE'
@@ -41,6 +41,7 @@ export interface ApprovalAction {
   actor: {
     first_name: string;
     last_name: string;
+    role?: string;
   } | null;
   comment: string | null;
   action_date: string;
@@ -72,6 +73,50 @@ export interface PTSRequest {
 export interface RequestWithDetails extends PTSRequest {
   attachments: Attachment[];
   actions: ApprovalAction[];
+  linked_eligibility?: {
+    eligibility_id: number;
+    profession_code?: string | null;
+    is_active?: boolean;
+  } | null;
+  ocr_precheck?: {
+    request_id: number;
+    status: "queued" | "processing" | "completed" | "failed" | "skipped";
+    source?: string | null;
+    service_url?: string | null;
+    worker?: string | null;
+    queued_at?: string | null;
+    started_at?: string | null;
+    finished_at?: string | null;
+    count?: number | null;
+    success_count?: number | null;
+    failed_count?: number | null;
+    error?: string | null;
+    results?: Array<{
+      name?: string;
+      ok?: boolean;
+      markdown?: string;
+      error?: string;
+      engine_used?: string;
+      fallback_used?: boolean;
+      document_kind?: string;
+      fields?: Record<string, unknown>;
+      missing_fields?: string[];
+      fallback_reason?: string;
+      quality?: {
+        required_fields?: number;
+        captured_fields?: number;
+        passed?: boolean;
+      };
+    }> | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+  } | null;
+  latest_verification_snapshot?: {
+    snapshot_id: number;
+    created_at?: string | Date | null;
+    created_by?: number | null;
+    snapshot_data?: Record<string, unknown> | string | null;
+  } | null;
   requester?: {
     citizen_id: string;
     role: string;
@@ -155,8 +200,8 @@ export const PERSONNEL_TYPE_LABELS: Record<PersonnelType, string> = {
 export const STATUS_LABELS: Record<RequestStatus, string> = {
   DRAFT: 'ฉบับร่าง',
   PENDING: 'รอดำเนินการ',
-  PENDING_HEAD_WARD: 'รอตรวจโดยหัวหน้าตึก/หัวหน้างาน',
-  PENDING_HEAD_DEPT: 'รอตรวจโดยหัวหน้ากลุ่มงาน',
+  PENDING_WARD_SCOPE: 'รอหัวหน้าตึก/หัวหน้างาน',
+  PENDING_DEPT_SCOPE: 'รอหัวหน้ากลุ่มงาน',
   PENDING_PTS_OFFICER: 'รอตรวจโดยเจ้าหน้าที่ พ.ต.ส.',
   PENDING_HR: 'รอหัวหน้า HR',
   PENDING_FINANCE: 'รอตรวจโดยหัวหน้าการเงิน',

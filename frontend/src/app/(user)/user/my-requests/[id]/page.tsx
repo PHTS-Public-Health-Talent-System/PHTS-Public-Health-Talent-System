@@ -3,6 +3,7 @@
 import { use, useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
   AlertDialog,
@@ -28,7 +29,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { useRequestDetail, useCancelRequest } from '@/features/request/hooks';
+import { useRequestDetail, useCancelRequest } from '@/features/request';
 import { useRateHierarchy } from '@/features/master-data/hooks';
 import type { RequestWithDetails } from '@/types/request.types';
 import { toRequestDisplayId } from '@/shared/utils/public-id';
@@ -36,14 +37,21 @@ import {
   isEmptyRateMapping,
   normalizeRateMapping,
   resolveRateMappingDisplay,
-} from '@/features/request/detail/requestDetail.rateMapping';
+} from '@/features/request/detail/utils';
 import { AttachmentPreviewDialog } from '@/components/common/attachment-preview-dialog';
-import { buildAttachmentUrl, isPreviewableFile } from '@/features/request/detail/requestDetail.attachments';
-import { getAttachmentLabel } from '@/features/request/detail/requestDetail.attachmentsLabel';
-import { ApprovalTimelineCard } from '@/features/request/detail/components/ApprovalTimelineCard';
-import { InfoItem, SectionHeader } from '@/features/request/detail/requestDetail.ui';
-import { RequestDetailPageShell } from '@/features/request/detail/components/RequestDetailPageShell';
+import { buildAttachmentUrl, isPreviewableFile } from '@/features/request/detail/utils';
+import { getAttachmentLabel } from '@/features/request/detail/utils';
+import { RequestTimelineCard } from '@/features/request/detail/timeline';
+import { InfoItem, SectionHeader } from '@/features/request/detail/utils';
+import { RequestDetailPageShell } from '@/features/request/detail/shell/RequestDetailPageShell';
+import { AssignmentOrderSummaryCard, MemoSummaryCard } from '@/features/request/detail/cards';
+import { findAssignmentOrderSummary, findMemoSummary } from '@/features/request/detail/utils';
 import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
+import {
+  buildAllowanceAttachmentOcrPolicy,
+  buildAllowanceAttachmentOcrResultMap,
+  buildAllowanceOcrDocuments,
+} from '@/app/(pts-officer)/pts-officer/allowance-list/attachments';
 
 const parseSubmission = (value: RequestWithDetails['submission_data']) => {
   if (!value) return {};
@@ -142,7 +150,40 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     ? formatThaiDate(request.effective_date, { month: 'long' })
     : null;
   const isRateMappingEmpty = useMemo(() => isEmptyRateMapping(rateMapping), [rateMapping]);
-  const attachments = request?.attachments ?? [];
+  const attachments = useMemo(() => request?.attachments ?? [], [request?.attachments]);
+  const ocrPrecheck = request?.ocr_precheck ?? null;
+  const visibleAttachmentFileNames = useMemo(
+    () => attachments.map((file) => file.file_name),
+    [attachments],
+  );
+  const requestOcrResultMap = useMemo(
+    () =>
+      buildAllowanceAttachmentOcrResultMap({
+        requestResults: ocrPrecheck?.results ?? [],
+        visibleFileNames: visibleAttachmentFileNames,
+      }),
+    [ocrPrecheck?.results, visibleAttachmentFileNames],
+  );
+  const ocrDocuments = useMemo(
+    () =>
+      buildAllowanceOcrDocuments({
+        requestResults: ocrPrecheck?.results ?? [],
+        visibleFileNames: visibleAttachmentFileNames,
+      }),
+    [ocrPrecheck?.results, visibleAttachmentFileNames],
+  );
+  const assignmentOrderSummary = useMemo(() => {
+    if (!requesterName || requesterName === '-' || ocrDocuments.length === 0) {
+      return null;
+    }
+    return findAssignmentOrderSummary(ocrDocuments, requesterName);
+  }, [ocrDocuments, requesterName]);
+  const memoSummary = useMemo(() => {
+    if (!requesterName || requesterName === '-' || ocrDocuments.length === 0) {
+      return null;
+    }
+    return findMemoSummary(ocrDocuments, requesterName);
+  }, [ocrDocuments, requesterName]);
   const personnelTypeLabel = request?.personnel_type
     ? PERSONNEL_TYPE_LABELS[request.personnel_type] || request.personnel_type
     : '-';
@@ -179,7 +220,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     <RequestDetailPageShell
       state={isLoading ? 'loading' : request ? 'ready' : 'notFound'}
       backHref="/user/my-requests"
-      backLabel="รายการคำขอ"
+      backLabel="คำขอของฉัน"
       displayId={displayId}
       status={request?.status}
       currentStep={request?.current_step ?? null}
@@ -269,7 +310,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                       <div className="sm:col-span-2 mt-2 pt-4 border-t border-border/50 flex justify-between items-center">
                         <span className="text-sm font-medium">อัตราเงินตามสิทธิ</span>
                         <span className="text-lg font-bold text-primary">
-                          {rateAmount !== null && rateAmount !== undefined ? formatThaiNumber(Number(rateAmount)) : '-'}
+                          {rateAmount !== null ? formatThaiNumber(Number(rateAmount)) : '-'}
                           <span className="text-sm font-normal text-muted-foreground ml-1">บาท/เดือน</span>
                         </span>
                       </div>
@@ -282,16 +323,33 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             <Card className="scroll-mt-20 shadow-sm transition-all duration-300 border-border/60">
               <CardContent className="p-6">
                 <SectionHeader title={`ไฟล์แนบ (${attachments.length})`} icon={FileText} />
+                {memoSummary ? <MemoSummaryCard summary={memoSummary} /> : null}
+                {assignmentOrderSummary ? (
+                  <div className="mt-4">
+                    <AssignmentOrderSummaryCard summary={assignmentOrderSummary} />
+                  </div>
+                ) : null}
                 {attachments.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
                     <FileText className="h-8 w-8 mb-2 opacity-20" />
                     <p className="text-sm">ไม่มีไฟล์เอกสารแนบ</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                     {attachments.map((file) => {
                       const fileUrl = buildAttachmentUrl(file.file_path);
                       const previewable = isPreviewableFile(file.file_name);
+                      const ocrResult = requestOcrResultMap.get(file.file_name) ?? null;
+                      const {
+                        documentLabel: ocrDocumentLabel,
+                        notice: ocrNotice,
+                      } = buildAllowanceAttachmentOcrPolicy({
+                        fileName: file.file_name,
+                        result: ocrResult,
+                        personName: requesterName,
+                        suppressActions: true,
+                        clearableFileNames: new Set<string>(),
+                      });
                       return (
                         <div
                           key={file.attachment_id}
@@ -307,6 +365,18 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                             <p className="text-xs text-muted-foreground mt-0.5">
                               {getAttachmentLabel(file.file_name, file.file_type)}
                             </p>
+                            {ocrDocumentLabel ? (
+                              <div className="mt-2">
+                                <Badge variant="outline" className="text-[11px]">
+                                  {ocrDocumentLabel}
+                                </Badge>
+                              </div>
+                            ) : null}
+                            {ocrNotice ? (
+                              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                                {ocrNotice}
+                              </p>
+                            ) : null}
                             <div className="flex items-center gap-2 mt-2 opacity-60 group-hover:opacity-100 transition-opacity">
                               {previewable && (
                                 <button
@@ -364,7 +434,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
               </CardContent>
             </Card>
 
-            <ApprovalTimelineCard request={request} />
+            <RequestTimelineCard request={request} />
           </>
         ) : null
       }

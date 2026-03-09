@@ -152,7 +152,7 @@ export default function UserDashboardPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Recent Requests */}
         <div className="lg:col-span-2 space-y-6">
-          <DataTableCard title="คำขอล่าสุด" viewAllHref="/user/my-requests">
+          <DataTableCard title="คำขอของฉันล่าสุด" viewAllHref="/user/my-requests">
             <div className="space-y-3">
               {recentRequests.length > 0 ? (
                 recentRequests.map((request) => (

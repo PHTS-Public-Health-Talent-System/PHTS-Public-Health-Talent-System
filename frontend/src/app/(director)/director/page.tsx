@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { usePendingApprovals } from '@/features/request/hooks';
+import { usePendingApprovals } from '@/features/request';
 import { usePendingWithSla, useSlaKpiOverview } from '@/features/sla/hooks';
 import { usePeriods } from '@/features/payroll/hooks';
 import type { RequestWithDetails } from '@/types/request.types';
@@ -202,9 +202,9 @@ export default function DirectorDashboardPage() {
   return (
     <div className="space-y-8 p-8 pb-20">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">แดชบอร์ด (ผู้บริหาร)</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">แดชบอร์ด</h1>
         <p className="text-muted-foreground">
-          ภาพรวมคำขอและรอบจ่ายเงินที่รออนุมัติขั้นสุดท้ายของผู้บริหาร
+          ภาพรวมคำขอและรอบจ่ายเงินที่รอการอนุมัติขั้นสุดท้าย
         </p>
       </div>
 

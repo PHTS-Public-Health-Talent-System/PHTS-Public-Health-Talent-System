@@ -24,7 +24,6 @@ import {
   FileText,
   Search,
   Plus,
-  Eye,
   Edit,
   Trash2,
   Send,
@@ -38,7 +37,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { useMyRequests, useSubmitRequest, useCancelRequest } from '@/features/request/hooks';
+import { TableRowViewAction } from '@/components/common';
+import { useMyRequests, useSubmitRequest, useCancelRequest } from '@/features/request/core/hooks';
 import type { RequestWithDetails } from '@/types/request.types';
 import { toRequestDisplayId } from '@/shared/utils/public-id';
 import {
@@ -288,7 +288,7 @@ export function HeadScopeMyRequestsPage({ basePath }: HeadScopeMyRequestsPagePro
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <CardTitle className="text-lg flex items-center gap-2">
                 <FileText className="h-5 w-5 text-muted-foreground" />
-                รายการคำขอ
+                คำขอของฉัน
               </CardTitle>
 
               <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
@@ -382,21 +382,7 @@ export function HeadScopeMyRequestsPage({ basePath }: HeadScopeMyRequestsPagePro
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-muted-foreground hover:text-primary"
-                                  asChild
-                                >
-                                  <Link href={`${basePath}/my-requests/${request.id}`}>
-                                    <Eye className="h-4 w-4" />
-                                  </Link>
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>ดูรายละเอียด</TooltipContent>
-                            </Tooltip>
+                            <TableRowViewAction href={`${basePath}/my-requests/${request.id}`} />
 
                             {request.status === 'DRAFT' && (
                               <>

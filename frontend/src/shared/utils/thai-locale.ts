@@ -106,3 +106,11 @@ export const formatThaiNumber = (
   value: number,
   options?: Intl.NumberFormatOptions,
 ): string => new Intl.NumberFormat(THAI_LOCALE, options).format(value);
+
+export const formatBuddhistDateForFilename = (value?: string | Date | null): string => {
+  const date = toDate(value) ?? new Date();
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = String(toBuddhistYear(date.getFullYear()));
+  return `${year}-${month}-${day}`;
+};

@@ -42,14 +42,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/providers/auth-provider';
 import { Button } from '@/components/ui/button';
-
-export interface NavItem {
-  name: string;
-  href: string;
-  icon?: React.ComponentType<{ className?: string }>;
-  iconKey?: string;
-  badge?: number;
-}
+import type { NavItem } from '@/features/navigation/core/types';
 
 export interface SidebarConfig {
   role: string;

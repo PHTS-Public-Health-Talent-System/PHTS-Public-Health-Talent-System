@@ -1,5 +1,9 @@
+/**
+ * report module - request orchestration
+ *
+ */
 import { Request, Response } from "express";
-import * as reportService from '@/modules/report/services/report.service.js';
+import * as reportService from "@/modules/report/services/report.service.js";
 
 function handleReportError(res: Response, error: unknown): void {
   const message = (error as Error)?.message || "Failed to generate report";
@@ -10,6 +14,7 @@ function handleReportError(res: Response, error: unknown): void {
   }
 
   if (
+    message.includes("SNAPSHOT_NOT_READY") ||
     message.includes("Report is available only for closed periods") ||
     message.includes("Report requires frozen snapshot") ||
     message.includes("Snapshot not found for frozen period") ||
@@ -31,6 +36,7 @@ export const downloadDetailReport = async (
     const year = Number(req.query.year);
     const month = Number(req.query.month);
     const profession = req.query.profession as string | undefined;
+    const groupNo = req.query.groupNo ? Number(req.query.groupNo) : undefined;
     const format = String(req.query.format ?? "xlsx").toLowerCase();
 
     if (!year || !month) {
@@ -44,11 +50,13 @@ export const downloadDetailReport = async (
           year,
           month,
           professionCode: profession,
+          groupNo,
         })
       : await reportService.generateDetailReport({
           year,
           month,
           professionCode: profession,
+          groupNo,
         });
     const filename = `PTS_Detail_${profession || "ALL"}_${year}_${month}.${isCsv ? "csv" : "xlsx"}`;
 

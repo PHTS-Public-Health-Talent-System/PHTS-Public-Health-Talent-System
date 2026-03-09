@@ -19,10 +19,10 @@ export class FinanceRepository {
   static async findPeriodWorkflowContextById(
     periodId: number,
     conn?: PoolConnection,
-  ): Promise<{ period_id: number; status: string; is_frozen: number } | null> {
+  ): Promise<{ period_id: number; status: string; snapshot_status: string } | null> {
     const executor = conn ?? db;
     const [rows] = await executor.query<RowDataPacket[]>(
-      "SELECT period_id, status, is_frozen FROM pay_periods WHERE period_id = ?",
+      "SELECT period_id, status, snapshot_status FROM pay_periods WHERE period_id = ?",
       [periodId],
     );
     return (rows[0] as any) ?? null;
@@ -49,7 +49,7 @@ export class FinanceRepository {
     payment_status: PaymentStatus;
     total_payable: number;
     period_status: string;
-    is_frozen: number;
+    snapshot_status: string;
   } | null> {
     const [rows] = await conn.query<RowDataPacket[]>(
       `
@@ -59,7 +59,7 @@ export class FinanceRepository {
         p.payment_status,
         p.total_payable,
         pp.status AS period_status,
-        pp.is_frozen
+        pp.snapshot_status
       FROM pay_results p
       INNER JOIN pay_periods pp ON pp.period_id = p.period_id
       WHERE p.payout_id = ?
@@ -108,6 +108,8 @@ export class FinanceRepository {
     periodId: number,
     status?: PaymentStatus,
     search?: string,
+    professionCode?: string,
+    groupNo?: number,
     conn?: PoolConnection,
   ): Promise<PayoutWithDetails[]> {
     const executor = conn ?? db;
@@ -121,6 +123,8 @@ export class FinanceRepository {
         COALESCE(e.first_name, s.first_name, '') as first_name,
         COALESCE(e.last_name, s.last_name, '') as last_name,
         COALESCE(e.department, s.department, '') as department,
+        COALESCE(p.profession_code, mr.profession_code, NULL) as profession_code,
+        mr.group_no as group_no,
         p.pts_rate_snapshot,
         p.calculated_amount,
         p.retroactive_amount,
@@ -132,6 +136,7 @@ export class FinanceRepository {
       JOIN pay_periods pd ON p.period_id = pd.period_id
       LEFT JOIN emp_profiles e ON p.citizen_id = e.citizen_id
       LEFT JOIN emp_support_staff s ON p.citizen_id = s.citizen_id
+      LEFT JOIN cfg_payment_rates mr ON p.master_rate_id = mr.rate_id
       WHERE p.period_id = ?
     `;
     const params: any[] = [periodId];
@@ -153,6 +158,16 @@ export class FinanceRepository {
       params.push(term, term, term);
     }
 
+    if (professionCode) {
+      sql += ` AND COALESCE(p.profession_code, mr.profession_code, '') = ?`;
+      params.push(professionCode);
+    }
+
+    if (groupNo !== undefined) {
+      sql += ` AND mr.group_no = ?`;
+      params.push(groupNo);
+    }
+
     sql += ` ORDER BY p.citizen_id ASC`;
 
     const [rows] = await executor.query<RowDataPacket[]>(sql, params);
@@ -165,6 +180,8 @@ export class FinanceRepository {
       citizen_id: row.citizen_id,
       employee_name: `${row.first_name} ${row.last_name}`.trim(),
       department: row.department,
+      profession_code: row.profession_code ?? null,
+      group_no: row.group_no !== null && row.group_no !== undefined ? Number(row.group_no) : null,
       pts_rate_snapshot: Number(row.pts_rate_snapshot),
       calculated_amount: Number(row.calculated_amount),
       retroactive_amount: Number(row.retroactive_amount),
@@ -190,7 +207,7 @@ export class FinanceRepository {
         pp.period_month,
         pp.period_year,
         pp.status AS period_status,
-        pp.is_frozen,
+        pp.snapshot_status,
         COUNT(pr.payout_id) AS total_employees,
         COALESCE(SUM(pr.total_payable), 0) AS total_amount,
         COALESCE(
@@ -222,14 +239,14 @@ export class FinanceRepository {
         params.push(month);
       }
       if (reportableOnly) {
-        sql += ` AND pp.status = 'CLOSED' AND pp.is_frozen = 1`;
+        sql += ` AND pp.status = 'CLOSED' AND pp.snapshot_status = 'READY'`;
       }
     } else if (reportableOnly) {
-      sql += ` WHERE pp.status = 'CLOSED' AND pp.is_frozen = 1`;
+      sql += ` WHERE pp.status = 'CLOSED' AND pp.snapshot_status = 'READY'`;
     }
 
     sql += `
-      GROUP BY pp.period_id, pp.period_month, pp.period_year, pp.status, pp.is_frozen
+      GROUP BY pp.period_id, pp.period_month, pp.period_year, pp.status, pp.snapshot_status
       ORDER BY pp.period_year DESC, pp.period_month DESC
     `;
 
@@ -265,10 +282,10 @@ export class FinanceRepository {
       sql += ` WHERE pp.period_year = ?`;
       params.push(year);
       if (reportableOnly) {
-        sql += ` AND pp.status = 'CLOSED' AND pp.is_frozen = 1`;
+        sql += ` AND pp.status = 'CLOSED' AND pp.snapshot_status = 'READY'`;
       }
     } else if (reportableOnly) {
-      sql += ` WHERE pp.status = 'CLOSED' AND pp.is_frozen = 1`;
+      sql += ` WHERE pp.status = 'CLOSED' AND pp.snapshot_status = 'READY'`;
     }
 
     sql += ` GROUP BY pp.period_year ORDER BY pp.period_year DESC`;

@@ -6,6 +6,7 @@
  */
 
 import redisClient from '@config/redis.js';
+import crypto from "node:crypto";
 
 const DEFAULT_LOCK_TTL = 5 * 60; // 5 minutes
 const DEFAULT_MAX_RETRIES = 3;
@@ -35,8 +36,8 @@ export async function acquireLock(
   const retryDelay = options.retryDelay ?? DEFAULT_RETRY_DELAY;
 
   const timestamp = Date.now();
-  const random = Math.random();
-  const lockValue = `${holder}-${timestamp}-${random}`;
+  const randomId = crypto.randomUUID();
+  const lockValue = `${holder}-${timestamp}-${randomId}`;
   const lockKey = `lock:${key}`;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {

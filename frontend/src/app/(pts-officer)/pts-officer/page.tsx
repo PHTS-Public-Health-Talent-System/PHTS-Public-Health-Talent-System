@@ -17,8 +17,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useEligibilityList, usePendingApprovals } from '@/features/request/hooks';
-import { useLicenseAlertsList, useLicenseAlertsSummary } from '@/features/license-alerts/hooks';
+import { useEligibilityList, usePendingApprovals } from '@/features/request';
+import {
+  useLicenseComplianceList,
+  useLicenseComplianceSummary,
+} from '@/features/license-compliance/hooks';
 import type { RequestWithDetails } from '@/types/request.types';
 import { usePeriods } from '@/features/payroll/hooks';
 import type { PayPeriod } from '@/features/payroll/api';
@@ -49,7 +52,7 @@ function formatPeriodLabel(period: PayPeriod | null) {
   return `${monthName} ${thaiYear}`;
 }
 
-type LicenseAlertRow = {
+type LicenseComplianceRow = {
   full_name?: string;
   license_expiry?: string | null;
   days_left?: number | null;
@@ -151,11 +154,11 @@ const StatCard = ({ title, value, subtext, icon: Icon, colorClass, bgClass, href
 export default function DashboardPage() {
   const { data: approvalsData, isLoading: approvalsLoading } = usePendingApprovals();
   const { data: eligibilityData } = useEligibilityList(true);
-  const { data: alertsData, isLoading: alertsLoading } = useLicenseAlertsList({
+  const { data: alertsData, isLoading: alertsLoading } = useLicenseComplianceList({
     bucket: '30',
     limit: 5,
   });
-  const { data: alertsSummary } = useLicenseAlertsSummary();
+  const { data: alertsSummary } = useLicenseComplianceSummary();
   const { data: periodsData } = usePeriods();
 
   const latestPeriod = useMemo(() => {
@@ -173,9 +176,9 @@ export default function DashboardPage() {
     return approvalsData as RequestWithDetails[];
   }, [approvalsData]);
 
-  const alertRows = useMemo<LicenseAlertRow[]>(() => {
+  const alertRows = useMemo<LicenseComplianceRow[]>(() => {
     if (!alertsData || !Array.isArray(alertsData)) return [];
-    return alertsData as LicenseAlertRow[];
+    return alertsData as LicenseComplianceRow[];
   }, [alertsData]);
 
   const recentRequests = useMemo(() => {
@@ -216,6 +219,7 @@ export default function DashboardPage() {
       profession: alert.profession_code || '-',
     }));
   }, [alertRows]);
+  const visibleAlerts = useMemo(() => alerts.slice(0, 5), [alerts]);
 
   const isLoading = approvalsLoading || alertsLoading;
 
@@ -237,6 +241,10 @@ export default function DashboardPage() {
   const allowanceCount = Array.isArray(eligibilityData) ? eligibilityData.length : 0;
   const periodLabel = formatPeriodLabel(latestPeriod);
   const expiringCount = (alertsSummary?.expiring_30 ?? 0) + (alertsSummary?.expired ?? 0);
+  const remainingAlertCount = Math.max(
+    (alerts.length > visibleAlerts.length ? alerts.length : expiringCount) - visibleAlerts.length,
+    0,
+  );
 
   return (
     <div className="p-8 space-y-8 pb-20">
@@ -282,7 +290,7 @@ export default function DashboardPage() {
           icon={AlertTriangle}
           colorClass={expiringCount > 0 ? 'text-destructive' : 'text-amber-500'}
           bgClass={expiringCount > 0 ? 'bg-destructive/10' : 'bg-amber-50'}
-          href="/pts-officer/alerts"
+          href="/pts-officer/license-compliance"
         />
       </div>
 
@@ -293,7 +301,7 @@ export default function DashboardPage() {
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-lg font-semibold flex items-center gap-2">
                 <Clock className="h-5 w-5 text-muted-foreground" />
-                คำขอล่าสุด
+                คำขอที่รอดำเนินการล่าสุด
               </CardTitle>
               <Button variant="ghost" size="sm" asChild className="text-xs">
                 <Link href="/pts-officer/requests">ดูทั้งหมด</Link>
@@ -331,7 +339,7 @@ export default function DashboardPage() {
                   ))
                 ) : (
                   <div className="py-12 text-center text-muted-foreground text-sm">
-                    ไม่มีรายการคำขอล่าสุด
+                    ไม่มีรายการคำขอที่รอดำเนินการ
                   </div>
                 )}
               </div>
@@ -351,31 +359,38 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {alerts.length > 0 ? (
-                  alerts.map((alert, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-start gap-3 p-3 rounded-md bg-amber-500/5 border border-amber-200/50"
-                    >
+                {visibleAlerts.length > 0 ? (
+                  <>
+                    {visibleAlerts.map((alert, idx) => (
                       <div
-                        className={`mt-0.5 h-2 w-2 rounded-full ${alert.daysLeft <= 0 ? 'bg-destructive' : 'bg-amber-500'}`}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{alert.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          ใบอนุญาตหมด: {alert.expiry} (
-                          {alert.daysLeft > 0 ? `เหลือ ${alert.daysLeft} วัน` : 'หมดอายุแล้ว'})
-                        </p>
+                        key={idx}
+                        className="flex items-start gap-3 p-3 rounded-md bg-amber-500/5 border border-amber-200/50"
+                      >
+                        <div
+                          className={`mt-0.5 h-2 w-2 rounded-full ${alert.daysLeft <= 0 ? 'bg-destructive' : 'bg-amber-500'}`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{alert.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            ใบอนุญาตหมด: {alert.expiry} (
+                            {alert.daysLeft > 0 ? `เหลือ ${alert.daysLeft} วัน` : 'หมดอายุแล้ว'})
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                    {remainingAlertCount > 0 ? (
+                      <div className="rounded-md border border-dashed border-amber-200/70 bg-amber-50/40 px-3 py-2 text-xs text-muted-foreground">
+                        และอีก {formatThaiNumber(remainingAlertCount)} ราย
+                      </div>
+                    ) : null}
+                  </>
                 ) : (
                   <div className="py-6 text-center text-sm text-muted-foreground">
                     ไม่พบการแจ้งเตือนวิกฤต
                   </div>
                 )}
                 <Button variant="outline" className="w-full text-xs h-8" asChild>
-                  <Link href="/pts-officer/alerts">ดูรายการแจ้งเตือนทั้งหมด</Link>
+                  <Link href="/pts-officer/license-compliance">ดูรายการแจ้งเตือนทั้งหมด</Link>
                 </Button>
               </div>
             </CardContent>

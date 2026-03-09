@@ -35,11 +35,9 @@ import {
   XCircle,
   RefreshCw,
   Clock,
-  Eye,
   FileText,
   AlertTriangle,
   AlertCircle,
-  MoreHorizontal,
   CheckCheck,
   type LucideIcon,
 } from 'lucide-react';
@@ -49,15 +47,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import Link from 'next/link';
-import { usePendingApprovals, useProcessAction } from '@/features/request/hooks';
+import { TableRowMoreActionsTrigger, TableRowViewAction } from '@/components/common';
+import { usePendingApprovals, useProcessAction } from '@/features/request';
 import { usePendingWithSla } from '@/features/sla/hooks';
-import { mapRequestToFormData } from '@/features/request/components/hooks/request-form-mapper';
+import { mapRequestToFormData } from '@/features/request';
 import type { RequestWithDetails } from '@/types/request.types';
 import {
   normalizeRateMapping,
   resolveRateMappingDisplay,
-} from '@/features/request/detail/requestDetail.rateMapping';
+} from '@/features/request/detail/utils';
 import { useRateHierarchy } from '@/features/master-data/hooks';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -361,9 +359,9 @@ export default function DirectorRequestsPage() {
   return (
     <div className="p-8 space-y-8 pb-20">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">อนุมัติคำขอ (ผู้อำนวยการ)</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">รายการคำขอที่รออนุมัติ</h1>
         <p className="text-muted-foreground">
-          ตรวจสอบและอนุมัติคำขอ พ.ต.ส. ขั้นสุดท้าย ที่ผ่านหัวหน้าการเงินแล้ว
+          ตรวจสอบและอนุมัติคำขอ พ.ต.ส. ขั้นสุดท้ายที่ผ่านการพิจารณาด้านการเงินแล้ว
         </p>
       </div>
 
@@ -440,7 +438,8 @@ export default function DirectorRequestsPage() {
               </Select>
               {selectedRequests.length > 0 && (
                 <Button
-                  className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  variant="success"
+                  className="h-9"
                   onClick={() => setBatchApproveOpen(true)}
                 >
                   <CheckCheck className="mr-2 h-4 w-4" />
@@ -542,25 +541,11 @@ export default function DirectorRequestsPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Link href={`/director/requests/${request.id}`}>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-primary"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </Link>
+                          <TableRowViewAction href={`/director/requests/${request.id}`} />
 
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
+                              <TableRowMoreActionsTrigger />
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
@@ -638,28 +623,31 @@ export default function DirectorRequestsPage() {
               {actionType === 'return' && 'ยืนยันการส่งกลับแก้ไข'}
             </DialogTitle>
             <DialogDescription>
-              {selectedRequest && (
-                <div className="mt-3 rounded-md bg-secondary/50 p-3 text-sm space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">คำขอเลขที่:</span>
-                    <span className="font-mono font-medium">{selectedRequest.requestNo}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">ผู้ยื่น:</span>
-                    <span className="font-medium">{selectedRequest.name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">จำนวนเงิน:</span>
-                    <span className="font-medium">
-                      {formatThaiNumber(selectedRequest.amount)} บาท
-                    </span>
-                  </div>
-                </div>
-              )}
+              {selectedRequest
+                ? `คำขอ ${selectedRequest.requestNo} ของ ${selectedRequest.name}`
+                : undefined}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            {selectedRequest && (
+              <div className="rounded-md bg-secondary/50 p-3 text-sm space-y-1">
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">คำขอเลขที่:</span>
+                  <span className="font-mono font-medium text-right">{selectedRequest.requestNo}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">ผู้ยื่น:</span>
+                  <span className="font-medium text-right">{selectedRequest.name}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">จำนวนเงิน:</span>
+                  <span className="font-medium text-right">
+                    {formatThaiNumber(selectedRequest.amount)} บาท
+                  </span>
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
                 {actionType === 'approve' ? 'หมายเหตุ (ไม่บังคับ)' : 'เหตุผลการดำเนินการ'}
@@ -699,12 +687,12 @@ export default function DirectorRequestsPage() {
             <Button
               onClick={handleAction}
               disabled={actionMutation.isPending}
-              className={
+              variant={
                 actionType === 'approve'
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  ? 'success'
                   : actionType === 'reject'
-                    ? 'bg-destructive hover:bg-destructive/90 text-white'
-                    : 'bg-amber-500 hover:bg-amber-600 text-white'
+                    ? 'destructive'
+                    : 'warning'
               }
             >
               {actionMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยัน'}
@@ -746,7 +734,7 @@ export default function DirectorRequestsPage() {
             <Button
               onClick={handleBatchApprove}
               disabled={actionMutation.isPending || selectedRequests.length === 0}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              variant="success"
             >
               {actionMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันอนุมัติทั้งหมด'}
             </Button>

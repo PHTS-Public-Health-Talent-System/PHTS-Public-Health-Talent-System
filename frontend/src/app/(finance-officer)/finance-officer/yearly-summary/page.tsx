@@ -4,7 +4,6 @@ export const dynamic = 'force-dynamic';
 
 import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
@@ -24,8 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useFinanceSummary } from '@/features/finance/hooks';
-import { toast } from 'sonner';
-import { Download, TrendingUp, Users, Wallet, Landmark, PieChart } from 'lucide-react';
+import { TrendingUp, Users, Wallet, Landmark, PieChart } from 'lucide-react';
 import {
   formatThaiCurrency,
   formatThaiMonthYear,
@@ -39,18 +37,12 @@ type MonthlySummaryRow = {
   period_month: number;
   period_year: number;
   period_status: string;
-  is_frozen: boolean | number;
+  snapshot_status: string;
   total_employees: number;
   total_amount: number;
   paid_amount: number;
   pending_amount: number;
   pending_count: number;
-};
-
-const escapeCsv = (value: string | number) => {
-  const text = String(value ?? '');
-  if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
-  return text;
 };
 
 export default function YearlySummaryPage() {
@@ -66,7 +58,7 @@ export default function YearlySummaryPage() {
       period_month: Number(row.period_month ?? 0),
       period_year: toGregorianYear(Number(row.period_year ?? 0)),
       period_status: String(row.period_status ?? ''),
-      is_frozen: row.is_frozen ?? 0,
+      snapshot_status: String(row.snapshot_status ?? ''),
       total_employees: Number(row.total_employees ?? 0),
       total_amount: Number(row.total_amount ?? 0),
       paid_amount: Number(row.paid_amount ?? 0),
@@ -78,7 +70,7 @@ export default function YearlySummaryPage() {
   const reportablePeriods = useMemo(
     () =>
       allPeriods.filter(
-        (row) => row.period_status === 'CLOSED' && (row.is_frozen === true || row.is_frozen === 1),
+        (row) => row.period_status === 'CLOSED' && row.snapshot_status === 'READY',
       ),
     [allPeriods],
   );
@@ -138,32 +130,6 @@ export default function YearlySummaryPage() {
     return ((current.totalAmount - previous.totalAmount) / previous.totalAmount) * 100;
   }, [yearlyTotals, resolvedSelectedYear]);
 
-  const handleExport = () => {
-    if (monthlyRows.length === 0) {
-      toast.error('ไม่พบข้อมูลสำหรับปีที่เลือก');
-      return;
-    }
-
-    const rows = [
-      ['ปี (พ.ศ.)', toBuddhistYear(resolvedSelectedYear)],
-      ['จำนวนผู้รับเงิน', annualFinance.totalEmployees],
-      ['งบประมาณรวม', annualFinance.totalAmount],
-      ['เบิกจ่ายแล้ว', annualFinance.paidAmount],
-      ['ภาระผูกพันคงค้าง', annualFinance.pendingAmount],
-      ['สัดส่วนการเบิกจ่าย (%)', paidRatio.toFixed(2)],
-    ];
-    const csv =
-      '\uFEFF' + ['หัวข้อ,ค่า', ...rows.map((line) => line.map(escapeCsv).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `finance-yearly-summary-${toBuddhistYear(resolvedSelectedYear)}.csv`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-    toast.success('ส่งออกรายงานสำเร็จ');
-  };
-
   if (summaryQuery.isLoading) {
     return (
       <div className="p-8 space-y-6">
@@ -208,10 +174,6 @@ export default function YearlySummaryPage() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={handleExport} className="bg-background">
-            <Download className="mr-2 h-4 w-4" />
-            ส่งออก CSV
-          </Button>
         </div>
       </div>
 

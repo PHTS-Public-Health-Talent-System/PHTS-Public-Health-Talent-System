@@ -1,4 +1,4 @@
-import type { EligibilityRecord } from "@/features/request/api"
+import type { EligibilityRecord } from "@/features/request"
 import {
   normalizeProfessionCode,
   resolveProfessionLabel,
@@ -27,6 +27,20 @@ function formatDate(value?: string | null): string {
   return formatThaiDate(value)
 }
 
+export function formatRateItemLabel(
+  itemNo: string | null | undefined,
+  subItemNo: string | null | undefined,
+): string {
+  const baseItem = itemNo !== null && itemNo !== undefined ? String(itemNo).trim() : ""
+  const nestedItem = subItemNo !== null && subItemNo !== undefined ? String(subItemNo).trim() : ""
+
+  if (!baseItem || baseItem === "-") return "-"
+  if (!nestedItem || nestedItem === "-") return baseItem
+  if (nestedItem === baseItem || nestedItem.startsWith(`${baseItem}.`)) return nestedItem
+
+  return `${baseItem}.${nestedItem}`
+}
+
 export function mapEligibility(row: EligibilityRecord): AllowancePerson {
   const rateValue = Number(row.rate_amount ?? 0)
   const groupNo = row.group_no !== null && row.group_no !== undefined ? String(row.group_no) : "-"
@@ -43,9 +57,9 @@ export function mapEligibility(row: EligibilityRecord): AllowancePerson {
     position: row.position_name ?? "-",
     professionCode,
     professionLabel: resolveProfessionLabel(professionCode, professionCode),
-    licenseExpiry: formatDate(row.expiry_date ?? null),
+    licenseExpiry: formatDate(row.latest_license_valid_until ?? row.expiry_date ?? null),
     rateGroup: groupNo,
-    rateItem: subItemNo && subItemNo !== "-" ? `${itemNo}.${subItemNo}` : itemNo,
+    rateItem: formatRateItemLabel(itemNo, subItemNo),
     baseRate: rateValue,
     actualRate: rateValue,
     note: row.request_no ? `อ้างอิงคำขอ ${row.request_no}` : undefined,

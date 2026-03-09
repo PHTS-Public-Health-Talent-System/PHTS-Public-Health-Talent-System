@@ -84,8 +84,9 @@ export function validateFieldLengths(
   }
 
   if (errors.length > 0) {
+    const details = errors.map((e) => `  - ${e}`).join("\n");
     throw new Error(
-      `Input validation failed:\n${errors.map((e) => `  - ${e}`).join("\n")}`,
+      `Input validation failed:\n${details}`,
     );
   }
 }
@@ -125,7 +126,7 @@ export function validatePassword(password: string): void {
 /**
  * Validate name fields
  */
-export function validateName(name: string, fieldName: string = "name"): void {
+export function validateName(name: string, fieldName = "name"): void {
   validateLength(name, fieldName, FIELD_LIMITS.NAME);
   if (name.trim().length === 0) {
     throw new Error(`${fieldName} cannot be empty`);
@@ -137,8 +138,16 @@ export function validateName(name: string, fieldName: string = "name"): void {
  */
 export function validateEmail(email: string): void {
   validateLength(email, "email", FIELD_LIMITS.EMAIL);
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
+  const value = String(email ?? "").trim();
+  const atIndex = value.indexOf("@");
+  const lastAtIndex = value.lastIndexOf("@");
+  const hasSingleAt = atIndex > 0 && atIndex === lastAtIndex;
+  const hasNoWhitespace = !value.includes(" ");
+  const domain = hasSingleAt ? value.slice(atIndex + 1) : "";
+  const local = hasSingleAt ? value.slice(0, atIndex) : "";
+  const dotIndex = domain.indexOf(".");
+  const hasValidDomainDot = dotIndex > 0 && dotIndex < domain.length - 1;
+  if (!hasSingleAt || !hasNoWhitespace || local.length === 0 || !hasValidDomainDot) {
     throw new Error("Invalid email format");
   }
 }
@@ -146,7 +155,7 @@ export function validateEmail(email: string): void {
 /**
  * Validate comment/note fields
  */
-export function validateComment(comment: string, fieldName: string = "comment"): void {
+export function validateComment(comment: string, fieldName = "comment"): void {
   if (!comment || comment.trim().length === 0) {
     throw new Error(`${fieldName} cannot be empty`);
   }
@@ -164,8 +173,14 @@ export function sanitizeString(value: string): string {
   // Trim whitespace
   let sanitized = value.trim();
 
-  // Remove control characters (except newlines and tabs)
-  sanitized = sanitized.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, "");
+  // Remove control characters (keep TAB/LF/CR for readable multi-line text)
+  sanitized = Array.from(sanitized)
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      if (code === 9 || code === 10 || code === 13) return true;
+      return code >= 32 && code !== 127;
+    })
+    .join("");
 
   return sanitized;
 }

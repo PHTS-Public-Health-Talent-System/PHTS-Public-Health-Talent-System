@@ -1,3 +1,5 @@
+import { formatThaiNumber } from "@/shared/utils/thai-locale"
+
 export interface NormalizedRate {
   id: number
   professionCode: string
@@ -20,8 +22,7 @@ function formatCurrency(amount: number): string {
 
 export function normalizeMasterRates(input: Array<Record<string, unknown>>): NormalizedRate[] {
   return input
-    // If upstream provides is_active, treat falsy (0/false) as inactive and exclude from UI lists by default.
-    .filter((row) => Boolean(row.is_active ?? true))
+    .filter((row) => Number(row.is_active ?? 1) === 1)
     .map((row) => {
       const professionCode = String(row.profession_code ?? "")
       const groupNo = Number(row.group_no ?? 0)
@@ -45,10 +46,9 @@ export function normalizeMasterRates(input: Array<Record<string, unknown>>): Nor
         amount,
         description: conditionDesc || "-",
         requirements: detailedDesc || conditionDesc || "-",
-        isActive: Boolean(row.is_active ?? true),
+        isActive: Number(row.is_active ?? 1) === 1,
         effectiveDate: String(row.created_at ?? ""),
         eligibleCount: Number(row.eligible_count ?? 0),
       }
     })
 }
-import { formatThaiNumber } from "@/shared/utils/thai-locale"

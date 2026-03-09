@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PersonnelType, RequestType } from '@/modules/request/request.types.js';
+import { PersonnelType, RequestType } from '@/modules/request/contracts/request.types.js';
 
 // Helper to parse JSON string
 const jsonPreprocess = (val: unknown) => {
@@ -23,6 +23,10 @@ const numberPreprocess = (val: unknown) => {
 
 export const createRequestSchema = z.object({
   body: z.object({
+    target_user_id: z.preprocess(
+      numberPreprocess,
+      z.number().int().positive().optional(),
+    ),
     personnel_type: z.nativeEnum(PersonnelType, {
       message: "Invalid personnel_type",
     }),
@@ -56,6 +60,7 @@ export type CreateRequestSchema = z.infer<typeof createRequestSchema>["body"];
  * DTO interface for creating a new request (used by services)
  */
 export interface CreateRequestDTO {
+  target_user_id?: number;
   personnel_type: PersonnelType;
   position_number?: string;
   department_group?: string;

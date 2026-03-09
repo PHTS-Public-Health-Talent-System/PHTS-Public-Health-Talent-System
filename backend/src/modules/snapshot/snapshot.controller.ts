@@ -42,7 +42,12 @@ export async function freezePeriod(
 ): Promise<void> {
   try {
     const periodId = Number.parseInt(req.params.id, 10);
-    const userId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const userId = user.userId;
 
     await snapshotService.freezePeriod(periodId, userId);
     res.json({ success: true, message: "Period frozen successfully" });
@@ -52,7 +57,7 @@ export async function freezePeriod(
 }
 
 /**
- * Unfreeze a period (admin only)
+ * Unfreeze a period (admin + PTS officer)
  * POST /api/snapshots/periods/:id/unfreeze
  */
 export async function unfreezePeriod(
@@ -61,7 +66,12 @@ export async function unfreezePeriod(
 ): Promise<void> {
   try {
     const periodId = Number.parseInt(req.params.id, 10);
-    const userId = req.user!.userId;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized access" });
+      return;
+    }
+    const userId = user.userId;
     const { reason } = req.body;
 
     await snapshotService.unfreezePeriod(periodId, userId, reason);
@@ -119,7 +129,7 @@ export async function getSnapshotsForPeriod(
 }
 
 /**
- * Get payout data for report (respects freeze status)
+ * Get payout data for report (requires snapshot ready)
  * GET /api/snapshots/periods/:id/report-data
  */
 export async function getReportData(
@@ -131,12 +141,20 @@ export async function getReportData(
     const data = await snapshotService.getPayoutDataForReport(periodId);
     res.json({ success: true, data });
   } catch (error: any) {
+    if (String(error?.message) === "SNAPSHOT_NOT_READY") {
+      res.status(409).json({
+        success: false,
+        error: "Snapshot is not ready for this period",
+        data: { code: "SNAPSHOT_NOT_READY" },
+      });
+      return;
+    }
     res.status(500).json({ success: false, error: error.message });
   }
 }
 
 /**
- * Get summary data for report (respects freeze status)
+ * Get summary data for report (requires snapshot ready)
  * GET /api/snapshots/periods/:id/summary-data
  */
 export async function getSummaryData(
@@ -148,22 +166,43 @@ export async function getSummaryData(
     const data = await snapshotService.getSummaryDataForReport(periodId);
     res.json({ success: true, data });
   } catch (error: any) {
+    if (String(error?.message) === "SNAPSHOT_NOT_READY") {
+      res.status(409).json({
+        success: false,
+        error: "Snapshot is not ready for this period",
+        data: { code: "SNAPSHOT_NOT_READY" },
+      });
+      return;
+    }
     res.status(500).json({ success: false, error: error.message });
   }
 }
 
 /**
- * Check if period is frozen
- * GET /api/snapshots/periods/:id/is-frozen
+ * Check snapshot readiness for report gating
+ * GET /api/snapshots/periods/:id/readiness
  */
-export async function checkFrozen(
+export async function getSnapshotReadiness(
   req: Request,
   res: Response<ApiResponse>,
 ): Promise<void> {
   try {
     const periodId = Number.parseInt(req.params.id, 10);
-    const isFrozen = await snapshotService.isPeriodFrozen(periodId);
-    res.json({ success: true, data: { is_frozen: isFrozen } });
+    const period = await snapshotService.getPeriodWithSnapshot(periodId);
+    if (!period) {
+      res.status(404).json({ success: false, error: "Period not found" });
+      return;
+    }
+    const snapshotStatus = String(period.snapshot_status ?? "").toUpperCase();
+    const isReady = snapshotStatus === "READY";
+    res.json({
+      success: true,
+      data: {
+        is_ready: isReady,
+        snapshot_status: snapshotStatus || "PENDING",
+        snapshot_ready_at: period.snapshot_ready_at ?? null,
+      },
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

@@ -1,7 +1,8 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
+import { DEFAULT_API_BASE, resolveApiBaseUrl } from '@/shared/api/base-url';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
+  baseURL: resolveApiBaseUrl(process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_BASE),
   headers: {
     'Content-Type': 'application/json',
   },
@@ -23,7 +24,7 @@ type ValidationDetail = {
 
 type ApiErrorBody = {
   success?: boolean;
-  error?: string;
+  error?: unknown;
   message?: string;
   details?: ValidationDetail[];
 };
@@ -36,7 +37,17 @@ const toReadableErrorMessage = (body?: ApiErrorBody): string => {
     if (first?.message) return first.message;
   }
 
-  return body.error || body.message || 'เกิดข้อผิดพลาดจากการเชื่อมต่อระบบ';
+  if (typeof body.error === 'string' && body.error.trim().length > 0) {
+    return body.error;
+  }
+  if (body.error && typeof body.error === 'object') {
+    const nestedMessage = (body.error as { message?: unknown }).message;
+    if (typeof nestedMessage === 'string' && nestedMessage.trim().length > 0) {
+      return nestedMessage;
+    }
+  }
+
+  return body.message || 'เกิดข้อผิดพลาดจากการเชื่อมต่อระบบ';
 };
 
 // Interceptor: Attach Token
@@ -54,10 +65,13 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const errorBody = error?.response?.data as ApiErrorBody | undefined;
+    const axiosError = axios.isAxiosError<ApiErrorBody>(error)
+      ? (error as AxiosError<ApiErrorBody>)
+      : null;
+    const errorBody = axiosError?.response?.data;
     const readableMessage = toReadableErrorMessage(errorBody);
 
-    if (error.response?.status === 401) {
+    if (axiosError?.response?.status === 401) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
@@ -69,8 +83,13 @@ api.interceptors.response.use(
       }
     }
 
-    error.message = readableMessage;
-    (error as { details?: ValidationDetail[] }).details = errorBody?.details;
+    if (axiosError) {
+      axiosError.message = readableMessage;
+      (axiosError as AxiosError<ApiErrorBody> & { details?: ValidationDetail[] }).details =
+        errorBody?.details;
+      return Promise.reject(axiosError);
+    }
+
     return Promise.reject(error);
   }
 );

@@ -1,8 +1,8 @@
 import { UserRole } from '@/types/auth.js';
 
 export const STEP_ROLE_MAP: Record<number, UserRole> = {
-  1: UserRole.HEAD_WARD,
-  2: UserRole.HEAD_DEPT,
+  1: UserRole.WARD_SCOPE,
+  2: UserRole.DEPT_SCOPE,
   3: UserRole.PTS_OFFICER,
   4: UserRole.HEAD_HR,
   5: UserRole.HEAD_FINANCE,
@@ -10,8 +10,9 @@ export const STEP_ROLE_MAP: Record<number, UserRole> = {
 };
 
 export const ROLE_STEP_MAP: Record<UserRole, number> = {
-  [UserRole.HEAD_WARD]: 1,
-  [UserRole.HEAD_DEPT]: 2,
+  [UserRole.HEAD_SCOPE]: 0,
+  [UserRole.WARD_SCOPE]: 1,
+  [UserRole.DEPT_SCOPE]: 2,
   [UserRole.PTS_OFFICER]: 3,
   [UserRole.HEAD_HR]: 4,
   [UserRole.HEAD_FINANCE]: 5,
@@ -49,5 +50,5 @@ export function canAdjustLeave(role: UserRole): boolean {
 }
 
 export function canViewScopes(role: UserRole): boolean {
-  return role === UserRole.HEAD_WARD || role === UserRole.HEAD_DEPT;
+  return role === UserRole.HEAD_SCOPE;
 }

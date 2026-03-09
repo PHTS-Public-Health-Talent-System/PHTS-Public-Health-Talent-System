@@ -24,6 +24,27 @@ const FONT_HEADER: Partial<ExcelJS.Font> = {
 };
 const FONT_BODY: Partial<ExcelJS.Font> = { name: "TH SarabunPSK", size: 16 };
 
+const THAI_SHORT_MONTHS = [
+  "ม.ค.",
+  "ก.พ.",
+  "มี.ค.",
+  "เม.ย.",
+  "พ.ค.",
+  "มิ.ย.",
+  "ก.ค.",
+  "ส.ค.",
+  "ก.ย.",
+  "ต.ค.",
+  "พ.ย.",
+  "ธ.ค.",
+];
+
+const formatThaiReportMonth = (month: number, year: number): string => {
+  const monthLabel = THAI_SHORT_MONTHS[month - 1] ?? String(month);
+  const buddhistYearShort = String(year + 543).slice(-2);
+  return `${monthLabel}-${buddhistYearShort}`;
+};
+
 const escapeCsvValue = (value: string | number | null | undefined): string => {
   const normalized = value === null || value === undefined ? "" : String(value);
   if (
@@ -49,21 +70,29 @@ const buildCsv = (
 export async function generateDetailReport(
   params: ReportParams,
 ): Promise<Buffer> {
-  const { year, month, professionCode } = params;
+  const { year, month, professionCode, groupNo } = params;
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Detail Report");
 
   const periodId = await ReportRepository.getPeriodId(year, month);
   const payoutData = await getPayoutDataForReport(periodId);
   const payouts = payoutData.data as PayoutRow[];
+  const citizenIds = Array.from(new Set(
+    payouts
+      .map((row) => row.citizen_id)
+      .filter((citizenId): citizenId is string => Boolean(citizenId)),
+  ));
 
   const rateIds = payouts
     .map((row) => row.master_rate_id)
     .filter((id): id is number => typeof id === "number");
   const rateMap = await ReportRepository.getMasterRateMap(Array.from(new Set(rateIds)));
+  const profileMap = await ReportRepository.getPersonProfileMap(citizenIds);
+  const periodLabel = formatThaiReportMonth(month, year);
 
   const rows = payouts
     .map((row) => {
+      const profile = profileMap.get(row.citizen_id);
       const rate = row.master_rate_id
         ? rateMap.get(row.master_rate_id)
         : undefined;
@@ -71,12 +100,12 @@ export async function generateDetailReport(
         (row as any).profession_code ?? rate?.profession_code ?? null;
       return {
         citizen_id: row.citizen_id,
-        first_name: row.first_name || "",
-        last_name: row.last_name || "",
+        title: row.title ?? profile?.title ?? "",
+        first_name: row.first_name || profile?.first_name || "",
+        last_name: row.last_name || profile?.last_name || "",
         position_name: row.position_name || "",
         base_rate:
           row.pts_rate_snapshot ?? (row as any).base_rate ?? rate?.amount ?? 0,
-        current_receive: Number(row.calculated_amount) || 0,
         retro: Number(row.retroactive_amount) || 0,
         total: Number(row.total_payable) || 0,
         remark: row.remark || "",
@@ -86,6 +115,7 @@ export async function generateDetailReport(
       };
     })
     .filter((row) => !professionCode || row.profession_code === professionCode)
+    .filter((row) => groupNo === undefined || Number(row.group_no) === Number(groupNo))
     .sort((a, b) => a.first_name.localeCompare(b.first_name, "th"));
 
   worksheet.pageSetup = { paperSize: 9, orientation: "landscape" };
@@ -95,47 +125,55 @@ export async function generateDetailReport(
     `บัญชีรายชื่อข้าราชการที่มีสิทธิ์ได้รับเงินเพิ่มสำหรับตำแหน่งที่มีเหตุพิเศษ (พ.ต.ส.) ตำแหน่ง ${professionCode || "รวม"} ประจำเดือน ${month}/${year}`;
   titleRow.font = { ...FONT_HEADER, size: 18 };
   titleRow.alignment = { horizontal: "center" };
-  worksheet.mergeCells("A1:K1");
+  worksheet.mergeCells("A1:L1");
 
   worksheet.columns = [
     { key: "seq", width: 8 },
-    { key: "name", width: 25 },
-    { key: "pos", width: 20 },
-    { key: "rate", width: 15 },
-    { key: "curr", width: 15 },
-    { key: "retro", width: 12 },
+    { key: "title", width: 12 },
+    { key: "first_name", width: 18 },
+    { key: "last_name", width: 18 },
+    { key: "pos", width: 24 },
+    { key: "rate", width: 18 },
+    { key: "retro", width: 14 },
     { key: "total", width: 15 },
     { key: "ref_group", width: 10 },
     { key: "ref_item", width: 10 },
-    { key: "ref_rate", width: 12 },
+    { key: "ref_rate", width: 18 },
     { key: "remark", width: 20 },
   ];
 
   worksheet.mergeCells("A3:A5");
-  worksheet.getCell("A3").value = "ลำดับ";
+  worksheet.getCell("A3").value = "ลำดับที่";
   worksheet.mergeCells("B3:B5");
-  worksheet.getCell("B3").value = "ชื่อ-สกุล";
+  worksheet.getCell("B3").value = "คำนำหน้าชื่อ";
   worksheet.mergeCells("C3:C5");
-  worksheet.getCell("C3").value = "ตำแหน่ง";
+  worksheet.getCell("C3").value = "ชื่อ";
   worksheet.mergeCells("D3:D5");
-  worksheet.getCell("D3").value = "อัตราเงินเพิ่ม\nที่ได้รับ/เดือน\n(บาท)";
+  worksheet.getCell("D3").value = "สกุล";
   worksheet.mergeCells("E3:E5");
-  worksheet.getCell("E3").value = "ได้รับจริง\n(บาท)";
-  worksheet.mergeCells("F3:F5");
-  worksheet.getCell("F3").value = "ตกเบิก\n(บาท)";
-  worksheet.mergeCells("G3:G5");
-  worksheet.getCell("G3").value = "รวมรับ\n(บาท)";
+  worksheet.getCell("E3").value = "ตำแหน่ง";
 
-  worksheet.mergeCells("H3:J3");
-  worksheet.getCell("H3").value = "ประกาศ ก.พ. (ฉบับที่ 3) พ.ศ. 2560";
-  worksheet.mergeCells("H4:J4");
-  worksheet.getCell("H4").value = "กลุ่มตำแหน่งตามลักษณะงาน";
-  worksheet.getCell("H5").value = "กลุ่มที่";
-  worksheet.getCell("I5").value = "ข้อ";
-  worksheet.getCell("J5").value = "อัตรา(บาท)";
+  worksheet.mergeCells("F3:H3");
+  worksheet.getCell("F3").value = periodLabel;
+  worksheet.getCell("F4").value = "อัตราเงินเพิ่มที่ได้รับ/เดือน(บาท)";
+  worksheet.getCell("G4").value = "ตกเบิก\n(บาท)";
+  worksheet.getCell("H4").value = "รวม\n(บาท)";
+  worksheet.mergeCells("F4:F5");
+  worksheet.mergeCells("G4:G5");
+  worksheet.mergeCells("H4:H5");
 
-  worksheet.mergeCells("K3:K5");
-  worksheet.getCell("K3").value = "หมายเหตุ";
+  worksheet.mergeCells("I3:K3");
+  worksheet.getCell("I3").value =
+    "ประกาศ ก.พ. เรื่อง กำหนดตำแหน่งและเงินเพิ่มสำหรับตำแหน่งที่มีเหตุพิเศษของข้าราชกรพลเรือน(ฉบับที่ 3) พ.ศ. 2560";
+  worksheet.mergeCells("I4:J4");
+  worksheet.getCell("I4").value = "กลุ่มตำแหน่ง\nตามลักษณะงาน";
+  worksheet.mergeCells("K4:K5");
+  worksheet.getCell("K4").value = "อัตราเงินเพิ่ม(บาท/เดือน)";
+  worksheet.getCell("I5").value = "กลุ่มที่";
+  worksheet.getCell("J5").value = "ข้อ";
+
+  worksheet.mergeCells("L3:L5");
+  worksheet.getCell("L3").value = "หมายเหตุ";
 
   [3, 4, 5].forEach((r) => {
     const row = worksheet.getRow(r);
@@ -158,19 +196,19 @@ export async function generateDetailReport(
     const r = worksheet.getRow(currentRow);
 
     r.getCell(1).value = seq++;
-    r.getCell(2).value =
-      `${row.first_name || ""} ${row.last_name || ""}`.trim();
-    r.getCell(3).value = row.position_name;
-    r.getCell(4).value = Number(row.base_rate);
-    r.getCell(5).value = Number(row.current_receive);
-    r.getCell(6).value = Number(row.retro);
-    r.getCell(7).value = Number(row.total);
-    r.getCell(8).value = row.group_no;
-    r.getCell(9).value = row.item_no || "-";
-    r.getCell(10).value = Number(row.base_rate);
-    r.getCell(11).value = row.remark;
+    r.getCell(2).value = row.title;
+    r.getCell(3).value = row.first_name;
+    r.getCell(4).value = row.last_name;
+    r.getCell(5).value = row.position_name;
+    r.getCell(6).value = Number(row.base_rate);
+    r.getCell(7).value = Number(row.retro);
+    r.getCell(8).value = Number(row.total);
+    r.getCell(9).value = row.group_no;
+    r.getCell(10).value = row.item_no || "-";
+    r.getCell(11).value = Number(row.base_rate);
+    r.getCell(12).value = row.remark;
 
-    [4, 5, 6, 7, 10].forEach((c) => {
+    [6, 7, 8, 11].forEach((c) => {
       r.getCell(c).numFmt = "#,##0.00";
       r.getCell(c).alignment = { horizontal: "right" };
     });
@@ -187,25 +225,18 @@ export async function generateDetailReport(
 
   const footerRow = worksheet.getRow(currentRow);
   footerRow.getCell(1).value = "รวมทั้งสิ้น";
-  worksheet.mergeCells(`A${currentRow}:F${currentRow}`);
+  worksheet.mergeCells(`A${currentRow}:G${currentRow}`);
   footerRow.getCell(1).alignment = { horizontal: "center" };
   footerRow.getCell(1).font = FONT_HEADER;
 
-  footerRow.getCell(7).value = sumTotal;
-  footerRow.getCell(7).numFmt = "#,##0.00";
-  footerRow.getCell(7).font = { ...FONT_HEADER, underline: true };
+  footerRow.getCell(8).value = sumTotal;
+  footerRow.getCell(8).numFmt = "#,##0.00";
+  footerRow.getCell(8).font = { ...FONT_HEADER, underline: true };
 
   footerRow.eachCell(
     { includeEmpty: true },
     (cell: ExcelJS.Cell) => (cell.border = BORDER_STYLE),
   );
-
-  currentRow += 3;
-  const signRow = worksheet.getRow(currentRow);
-  signRow.getCell(2).value =
-    "ลงชื่อ ........................................................... ผู้จัดทำ";
-  signRow.getCell(7).value =
-    "ลงชื่อ ........................................................... ผู้ตรวจสอบ";
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
@@ -331,14 +362,6 @@ export async function generateSummaryReport(
     (cell: ExcelJS.Cell) => (cell.border = BORDER_STYLE),
   );
 
-  currentRow += 4;
-  worksheet.mergeCells(`B${currentRow}:D${currentRow}`);
-  const signCell = worksheet.getCell(`B${currentRow}`);
-  signCell.value =
-    "ลงชื่อ ........................................................... ผู้อำนวยการโรงพยาบาล";
-  signCell.alignment = { horizontal: "center" };
-  signCell.font = FONT_BODY;
-
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
 }
@@ -346,7 +369,7 @@ export async function generateSummaryReport(
 export async function generateDetailReportCsv(
   params: ReportParams,
 ): Promise<Buffer> {
-  const { year, month, professionCode } = params;
+  const { year, month, professionCode, groupNo } = params;
   const periodId = await ReportRepository.getPeriodId(year, month);
   const payoutData = await getPayoutDataForReport(periodId);
   const payouts = payoutData.data as PayoutRow[];
@@ -379,6 +402,7 @@ export async function generateDetailReportCsv(
       };
     })
     .filter((row) => !professionCode || row.profession_code === professionCode)
+    .filter((row) => groupNo === undefined || Number(row.group_no) === Number(groupNo))
     .sort((a, b) => a.first_name.localeCompare(b.first_name, "th"));
 
   return buildCsv(

@@ -2,9 +2,13 @@
 
 import * as React from "react"
 import { usePathname, useRouter } from "next/navigation"
+import { isAxiosError } from "axios"
 import api from "@/shared/api/axios"
 import { User } from "@/types/auth"
 import type { ApiResponse } from "@/shared/api/types"
+import {
+  FRONTEND_HEAD_SCOPE_BASE_PATH,
+} from "@/shared/utils/role-label"
 
 type LoginCredentials = {
   citizen_id: string
@@ -21,6 +25,32 @@ interface AuthContextType {
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined)
 const TOKEN_COOKIE_KEY = "phts_token"
 
+type AuthUserPayload = Omit<User, "head_scope_roles"> & {
+  head_scope_roles?: string[]
+}
+
+function normalizeHeadScopeRoles(
+  headScopeRoles?: AuthUserPayload["head_scope_roles"],
+): User["head_scope_roles"] {
+  if (!headScopeRoles?.length) return undefined
+  const normalized = headScopeRoles
+    .map((role) => {
+      if (role === "WARD_SCOPE") return "WARD_SCOPE"
+      if (role === "DEPT_SCOPE") return "DEPT_SCOPE"
+      return null
+    })
+    .filter((role): role is NonNullable<User["head_scope_roles"]>[number] => role !== null)
+
+  return normalized.length > 0 ? normalized : undefined
+}
+
+function normalizeUser(user: AuthUserPayload): User {
+  return {
+    ...user,
+    head_scope_roles: normalizeHeadScopeRoles(user.head_scope_roles),
+  }
+}
+
 function setTokenCookie(token: string) {
   if (typeof document === "undefined") return
   const secure = window.location.protocol === "https:" ? "; Secure" : ""
@@ -36,10 +66,8 @@ function getRoleHomePath(role: User["role"]): string {
   switch (role) {
     case "USER":
       return "/user"
-    case "HEAD_WARD":
-      return "/head-ward"
-    case "HEAD_DEPT":
-      return "/head-dept"
+    case "HEAD_SCOPE":
+      return FRONTEND_HEAD_SCOPE_BASE_PATH
     case "PTS_OFFICER":
       return "/pts-officer"
     case "DIRECTOR":
@@ -81,15 +109,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setTokenCookie(token)
 
-    const { data } = await api.get<ApiResponse<User>>("/auth/me")
+    const { data } = await api.get<ApiResponse<AuthUserPayload>>("/auth/me")
     if (!data.success || !data.data) {
       throw new Error("Failed to fetch user")
     }
 
-    setUser(data.data)
-    localStorage.setItem(userKey, JSON.stringify(data.data))
-    return data.data
+    const normalizedUser = normalizeUser(data.data)
+    setUser(normalizedUser)
+    localStorage.setItem(userKey, JSON.stringify(normalizedUser))
+    return normalizedUser
   }, [tokenKey, userKey])
+
+  const isExpectedAuthRefreshError = React.useCallback((error: unknown): boolean => {
+    if (!isAxiosError(error)) return false
+    const status = error.response?.status
+    return status === 401 || status === 404
+  }, [])
 
   // 1. Check User on Mount
   React.useEffect(() => {
@@ -97,7 +132,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await refreshCurrentUser()
       } catch (error) {
-        console.error("Token expired or invalid:", error)
+        if (!isExpectedAuthRefreshError(error)) {
+          console.error("Failed to initialize auth:", error)
+        }
         logout()
       } finally {
         setIsLoading(false)
@@ -105,7 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     void initAuth()
-  }, [logout, refreshCurrentUser])
+  }, [isExpectedAuthRefreshError, logout, refreshCurrentUser])
 
   // 2. Refresh user on tab focus / visibility to detect role changes from backend.
   React.useEffect(() => {
@@ -152,32 +189,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 4. Login Function
   const login = async (credentials: LoginCredentials) => {
-    try {
-      // credentials should contain { citizen_id, password }
-      const { data } = await api.post<ApiResponse<{ token: string; user: User }>>("/auth/login", credentials)
+    // credentials should contain { citizen_id, password }
+    const { data } = await api.post<ApiResponse<{ token: string; user: AuthUserPayload }>>("/auth/login", credentials)
 
-      // Backend returns { success, token, user } (no nested data)
-      if (data.success) {
-        const token = (data as unknown as { token?: string }).token ?? data.data?.token
-        const user = (data as unknown as { user?: User }).user ?? data.data?.user
-        if (!token || !user) {
-          throw new Error("Login response missing token or user")
-        }
-
-        localStorage.setItem(tokenKey, token)
-        localStorage.setItem(userKey, JSON.stringify(user))
-        setTokenCookie(token)
-
-        setUser(user)
-
-        // Redirect based on current role
-        router.push(getRoleHomePath(user.role))
-      } else {
-         throw new Error(data.error || "Login failed");
+    // Backend returns { success, token, user } (no nested data)
+    if (data.success) {
+      const token = (data as unknown as { token?: string }).token ?? data.data?.token
+      const user = (data as unknown as { user?: AuthUserPayload }).user ?? data.data?.user
+      if (!token || !user) {
+        throw new Error("Login response missing token or user")
       }
 
-    } catch (error: unknown) {
-      throw error
+      localStorage.setItem(tokenKey, token)
+      const normalizedUser = normalizeUser(user)
+      localStorage.setItem(userKey, JSON.stringify(normalizedUser))
+      setTokenCookie(token)
+
+      setUser(normalizedUser)
+
+      // Redirect based on current role
+      router.push(getRoleHomePath(normalizedUser.role))
+    } else {
+      throw new Error(data.error || "Login failed")
     }
   }
 

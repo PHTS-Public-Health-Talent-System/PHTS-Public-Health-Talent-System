@@ -4,9 +4,8 @@
  * Manages official holidays configuration.
  */
 
-import { RowDataPacket, ResultSetHeader } from "mysql2/promise";
-import { query } from '@config/database.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
+import { MasterDataRepository } from '@/modules/master-data/repositories/master-data.repository.js';
 
 type HolidayType = "national" | "special" | "substitution";
 
@@ -42,32 +41,16 @@ const hasHolidayTypeColumn = async (): Promise<boolean> => {
   if (holidayTypeColumnAvailable !== null) {
     return holidayTypeColumnAvailable;
   }
-  const rows = await query<RowDataPacket[]>(
-    `SELECT 1
-     FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = 'cfg_holidays'
-       AND COLUMN_NAME = 'holiday_type'
-     LIMIT 1`,
-  );
-  holidayTypeColumnAvailable = rows.length > 0;
+  holidayTypeColumnAvailable = await MasterDataRepository.hasHolidayTypeColumn();
   return holidayTypeColumnAvailable;
 };
 
 export const getHolidays = async (year?: string | number): Promise<any[]> => {
   const hasTypeColumn = await hasHolidayTypeColumn();
-  let sql = hasTypeColumn
-    ? "SELECT holiday_date, holiday_name, is_active, holiday_type FROM cfg_holidays WHERE is_active = 1"
-    : "SELECT holiday_date, holiday_name, is_active, NULL AS holiday_type FROM cfg_holidays WHERE is_active = 1";
-  const params: any[] = [];
-
-  if (year) {
-    sql += " AND YEAR(holiday_date) = ?";
-    params.push(year);
-  }
-  sql += " ORDER BY holiday_date DESC";
-
-  const holidays = await query<RowDataPacket[]>(sql, params);
+  const holidays = await MasterDataRepository.findActiveHolidays({
+    year,
+    hasHolidayTypeColumn: hasTypeColumn,
+  });
   return holidays.map((row) => ({
     ...row,
     holiday_date: normalizeHolidayDate((row as any).holiday_date),
@@ -82,22 +65,12 @@ export const addHoliday = async (
   actorId?: number,
 ): Promise<void> => {
   const hasTypeColumn = await hasHolidayTypeColumn();
-  if (hasTypeColumn) {
-    await query<ResultSetHeader>(
-      `INSERT INTO cfg_holidays (holiday_date, holiday_name, holiday_type, is_active)
-       VALUES (?, ?, ?, 1)
-       ON DUPLICATE KEY UPDATE
-         holiday_name = VALUES(holiday_name),
-         holiday_type = VALUES(holiday_type),
-         is_active = 1`,
-      [date, name, type ?? resolveHolidayTypeFromName(name)],
-    );
-  } else {
-    await query<ResultSetHeader>(
-      "INSERT INTO cfg_holidays (holiday_date, holiday_name, is_active) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE holiday_name = VALUES(holiday_name), is_active = 1",
-      [date, name],
-    );
-  }
+  await MasterDataRepository.upsertHoliday({
+    date,
+    name,
+    type: type ?? resolveHolidayTypeFromName(name),
+    hasHolidayTypeColumn: hasTypeColumn,
+  });
 
   await emitAuditEvent({
     eventType: AuditEventType.HOLIDAY_UPDATE,
@@ -122,21 +95,13 @@ export const updateHoliday = async (
   actorId?: number,
 ): Promise<void> => {
   const hasTypeColumn = await hasHolidayTypeColumn();
-  if (hasTypeColumn) {
-    await query<ResultSetHeader>(
-      `UPDATE cfg_holidays
-       SET holiday_date = ?, holiday_name = ?, holiday_type = ?, is_active = 1
-       WHERE holiday_date = ? OR DATE(holiday_date) = ?`,
-      [date, name, type ?? resolveHolidayTypeFromName(name), originalDate, originalDate],
-    );
-  } else {
-    await query<ResultSetHeader>(
-      `UPDATE cfg_holidays
-       SET holiday_date = ?, holiday_name = ?, is_active = 1
-       WHERE holiday_date = ? OR DATE(holiday_date) = ?`,
-      [date, name, originalDate, originalDate],
-    );
-  }
+  await MasterDataRepository.updateHoliday({
+    originalDate,
+    date,
+    name,
+    type: type ?? resolveHolidayTypeFromName(name),
+    hasHolidayTypeColumn: hasTypeColumn,
+  });
 
   await emitAuditEvent({
     eventType: AuditEventType.HOLIDAY_UPDATE,
@@ -158,10 +123,7 @@ export const deleteHoliday = async (
   date: string,
   actorId?: number,
 ): Promise<void> => {
-  await query<ResultSetHeader>(
-    "UPDATE cfg_holidays SET is_active = 0 WHERE holiday_date = ? OR DATE(holiday_date) = ?",
-    [date, date],
-  );
+  await MasterDataRepository.deactivateHoliday(date);
 
   await emitAuditEvent({
     eventType: AuditEventType.HOLIDAY_UPDATE,

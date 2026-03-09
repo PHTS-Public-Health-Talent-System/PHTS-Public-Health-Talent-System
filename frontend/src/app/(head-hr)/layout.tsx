@@ -1,5 +1,5 @@
 import React from "react"
-import { HeadHRSidebar } from "@/features/navigation/components/head-hr-sidebar"
+import { HeadHRSidebar } from "@/features/navigation/components"
 
 export default function HeadHRLayout({
   children,

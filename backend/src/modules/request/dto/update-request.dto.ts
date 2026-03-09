@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PersonnelType, RequestType, WorkAttributes } from '@/modules/request/request.types.js';
+import { PersonnelType, RequestType, WorkAttributes } from '@/modules/request/contracts/request.types.js';
 
 /**
  * DTO for updating an existing request

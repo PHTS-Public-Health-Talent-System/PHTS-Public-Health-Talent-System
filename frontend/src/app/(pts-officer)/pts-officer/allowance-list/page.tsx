@@ -4,11 +4,21 @@ export const dynamic = 'force-dynamic';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input'; // ต้องมี Input component
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Users, Banknote, BriefcaseMedical, Search, LayoutGrid, ArrowRight, type LucideIcon } from 'lucide-react';
-import { useEligibilitySummary } from '@/features/request/hooks';
+import {
+  Users,
+  Banknote,
+  BriefcaseMedical,
+  Search,
+  LayoutGrid,
+  ArrowRight,
+  AlertCircle,
+  ShieldAlert,
+  type LucideIcon,
+} from 'lucide-react';
+import { useEligibilitySummary } from '@/features/request';
 import { resolveProfessionLabel } from './utils';
 import { formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
 
@@ -24,6 +34,13 @@ export default function AllowanceListPage() {
         label: resolveProfessionLabel(row.profession_code, row.profession_code),
         count: row.people_count,
         amount: row.total_rate_amount,
+        alerts: {
+          any: row.people_with_alerts ?? 0,
+          error: row.critical_people ?? 0,
+          noLicense: row.no_license_people ?? 0,
+          duplicate: row.duplicate_people ?? 0,
+          upcomingChange: row.upcoming_change_people ?? 0,
+        },
       }))
       .sort((a, b) => b.count - a.count);
   }, [summary?.by_profession]);
@@ -38,9 +55,14 @@ export default function AllowanceListPage() {
 
   const totalPeople = summary?.total_people ?? 0;
   const totalAmount = summary?.total_rate_amount ?? 0;
-  const updatedAt = summary?.updated_at
-    ? formatThaiDateTime(summary.updated_at)
-    : null;
+  const overallAlertSummary = summary?.alert_summary ?? {
+    people_with_alerts: 0,
+    critical_people: 0,
+    no_license_people: 0,
+    duplicate_people: 0,
+    upcoming_change_people: 0,
+  };
+  const updatedAt = summary?.updated_at ? formatThaiDateTime(summary.updated_at) : null;
 
   if (isLoading) {
     return <DashboardSkeleton />;
@@ -52,10 +74,10 @@ export default function AllowanceListPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground tracking-tight">
-            ตรวจสอบสิทธิ์ค่าตอบแทน
+            ตรวจสอบผู้มีสิทธิ์ พ.ต.ส.
           </h1>
           <p className="mt-2 text-muted-foreground">
-            เลือกวิชาชีพที่ต้องการตรวจสอบรายชื่อและสถานะผู้มีสิทธิ์ (พ.ต.ส.)
+            เลือกวิชาชีพเพื่อดูรายชื่อและสถานะผู้มีสิทธิ์
           </p>
           {updatedAt && (
             <div className="mt-2 inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
@@ -65,8 +87,8 @@ export default function AllowanceListPage() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      {/* Summary Cards - ปรับ Grid ให้รองรับ Responsive อย่างเหมาะสม */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
         <SummaryCard
           title="ผู้มีสิทธิ์ทั้งหมด"
           value={`${formatThaiNumber(totalPeople)} คน`}
@@ -88,6 +110,20 @@ export default function AllowanceListPage() {
           className="bg-purple-50/50 border-purple-100"
           iconColor="text-purple-600"
         />
+        <SummaryCard
+          title="มีการเตือน"
+          value={`${formatThaiNumber(overallAlertSummary.people_with_alerts)} คน`}
+          icon={AlertCircle}
+          className="bg-amber-50/50 border-amber-100"
+          iconColor="text-amber-600"
+        />
+        <SummaryCard
+          title="รายการสำคัญ"
+          value={`${formatThaiNumber(overallAlertSummary.critical_people)} คน`}
+          icon={ShieldAlert}
+          className="bg-rose-50/50 border-rose-100"
+          iconColor="text-rose-600"
+        />
       </div>
 
       {/* Main Content Area */}
@@ -108,27 +144,37 @@ export default function AllowanceListPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 items-stretch">
           {/* "ALL" Card - Highlighted */}
           {!searchTerm && (
             <Link
               href="/pts-officer/allowance-list/profession/all"
-              className="group relative flex flex-col justify-between rounded-xl border-2 border-primary/20 bg-primary/5 p-5 transition-all hover:border-primary/50 hover:shadow-md hover:-translate-y-0.5"
+              className="group relative flex flex-col justify-between rounded-xl border-2 border-primary/20 bg-primary/5 p-5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 h-full"
             >
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-primary uppercase tracking-wider">
-                    Overview
+                    ภาพรวม
                   </span>
                   <ArrowRight className="h-4 w-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 <p className="text-lg font-bold text-foreground">ทุกวิชาชีพ (รวม)</p>
               </div>
-              <div className="mt-4 pt-4 border-t border-primary/10 flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">รวมทั้งหมด</span>
-                <span className="font-semibold text-primary">
-                  {formatThaiNumber(totalPeople)} คน
-                </span>
+              <div className="mt-auto">
+                <div className="pt-4 border-t border-primary/10 flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">รวมทั้งหมด</span>
+                  <span className="font-semibold text-primary">
+                    {formatThaiNumber(totalPeople)} คน
+                  </span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant="outline" className="border-amber-200 text-amber-700 bg-white/50">
+                  เตือน {formatThaiNumber(overallAlertSummary.people_with_alerts)}
+                  </Badge>
+                  <Badge variant="outline" className="border-rose-200 text-rose-700 bg-white/50">
+                  รายการสำคัญ {formatThaiNumber(overallAlertSummary.critical_people)}
+                  </Badge>
+                </div>
               </div>
             </Link>
           )}
@@ -138,7 +184,7 @@ export default function AllowanceListPage() {
             <Link
               key={profession.code}
               href={`/pts-officer/allowance-list/profession/${profession.code}`}
-              className="group flex flex-col justify-between rounded-xl border bg-card p-5 transition-all hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5"
+              className="group flex flex-col justify-between rounded-xl border bg-card p-5 transition-all hover:border-primary/50 hover:shadow-md hover:-translate-y-0.5 h-full"
             >
               <div>
                 <div className="flex items-start justify-between gap-2 mb-2">
@@ -146,7 +192,7 @@ export default function AllowanceListPage() {
                     {profession.code}
                   </Badge>
                   <Badge variant="secondary" className="bg-secondary/50">
-                    {profession.count} คน
+                    {formatThaiNumber(profession.count)} คน
                   </Badge>
                 </div>
                 <p className="text-base font-semibold text-foreground group-hover:text-primary transition-colors">
@@ -154,12 +200,28 @@ export default function AllowanceListPage() {
                 </p>
               </div>
 
-              <div className="mt-4 pt-4 border-t border-dashed flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">ยอดรวม</span>
-                <span className="font-medium tabular-nums">
-                  {formatThaiNumber(profession.amount)}
-                  <span className="text-xs text-muted-foreground ml-1">บ.</span>
-                </span>
+              <div className="mt-auto">
+                <div className="pt-4 border-t border-dashed flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">ยอดรวม</span>
+                  <span className="font-medium tabular-nums">
+                    {formatThaiNumber(profession.amount)}
+                    <span className="text-xs text-muted-foreground ml-1">บ.</span>
+                  </span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant="outline" className="border-amber-200 text-amber-700">
+                    เตือน {formatThaiNumber(profession.alerts.any)}
+                  </Badge>
+                  <Badge variant="outline" className="border-rose-200 text-rose-700">
+                    รายการสำคัญ {formatThaiNumber(profession.alerts.error)}
+                  </Badge>
+                  {/* แสดงเฉพาะกรณีที่มีรายการไม่มีใบอนุญาต เพื่อประหยัดพื้นที่ */}
+                  {profession.alerts.noLicense > 0 && (
+                    <Badge variant="outline" className="border-slate-200 text-slate-700">
+                      ไม่มีใบอนุญาต {formatThaiNumber(profession.alerts.noLicense)}
+                    </Badge>
+                  )}
+                </div>
               </div>
             </Link>
           ))}
@@ -167,6 +229,7 @@ export default function AllowanceListPage() {
           {filteredProfessions.length === 0 && (
             <div className="col-span-full py-12 text-center text-muted-foreground bg-muted/10 rounded-lg border border-dashed">
               ไม่พบวิชาชีพที่ค้นหา &quot;{searchTerm}&quot;
+              
             </div>
           )}
         </div>
@@ -191,11 +254,13 @@ function SummaryCard({ title, value, icon: Icon, className, iconColor }: Summary
       <CardContent className="p-6">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="text-2xl font-bold tracking-tight">{value}</p>
+            <p className="text-sm font-medium text-muted-foreground line-clamp-1" title={title}>
+              {title}
+            </p>
+            <p className="text-xl md:text-2xl font-bold tracking-tight">{value}</p>
           </div>
-          <div className={`p-3 rounded-full bg-white/60 ${iconColor ?? ''}`}>
-            <Icon className="h-6 w-6" />
+          <div className={`p-3 rounded-full bg-white/60 shrink-0 ${iconColor ?? ''}`}>
+            <Icon className="h-5 w-5 md:h-6 md:w-6" />
           </div>
         </div>
       </CardContent>
@@ -207,22 +272,27 @@ function DashboardSkeleton() {
   return (
     <div className="p-8 space-y-8">
       <div className="space-y-2">
-        <Skeleton className="h-8 w-1/3" />
-        <Skeleton className="h-4 w-1/4" />
+        <Skeleton className="h-8 w-[250px] md:w-1/3" />
+        <Skeleton className="h-4 w-[300px] md:w-1/4" />
       </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-32 rounded-xl" />
+
+      {/* แก้ไข Grid และจำนวนให้ตรงกับของจริง */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <Skeleton key={i} className="h-28 rounded-xl" />
         ))}
       </div>
+
       <div className="space-y-4">
-        <div className="flex justify-between">
+        <div className="flex flex-col md:flex-row justify-between gap-4">
           <Skeleton className="h-8 w-32" />
-          <Skeleton className="h-10 w-[300px]" />
+          <Skeleton className="h-10 w-full md:w-[300px]" />
         </div>
-        <div className="grid gap-4 md:grid-cols-4">
+
+        {/* แก้ไข Grid ของ Card ให้ตรงกับของจริง */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-            <Skeleton key={i} className="h-40 rounded-xl" />
+            <Skeleton key={i} className="h-[200px] rounded-xl" />
           ))}
         </div>
       </div>

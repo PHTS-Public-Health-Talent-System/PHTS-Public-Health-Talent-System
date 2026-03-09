@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import path from "node:path";
 import { query } from "@config/database.js";
-import { requestQueryService } from "@/modules/request/services/query.service.js";
+import { requestQueryService } from "@/modules/request/read/services/query.service.js";
 
 function normalizeUploadPath(rawPath: string): string {
   const decoded = decodeURIComponent(rawPath || "");
@@ -61,6 +61,23 @@ export async function authorizeUploadAccess(
 
     if (supportAttachments.length > 0) {
       if (Number(supportAttachments[0].user_id) !== req.user.userId) {
+        res.status(403).json({ success: false, error: "Forbidden" });
+        return;
+      }
+      next();
+      return;
+    }
+
+    const eligibilityAttachments = await query<Array<{ eligibility_id: number }>>(
+      `SELECT a.eligibility_id
+       FROM eligibility_attachments a
+       WHERE a.file_path = ?
+       LIMIT 1`,
+      [normalizedPath],
+    ).catch(() => []);
+
+    if (eligibilityAttachments.length > 0) {
+      if (req.user.role !== "PTS_OFFICER") {
         res.status(403).json({ success: false, error: "Forbidden" });
         return;
       }

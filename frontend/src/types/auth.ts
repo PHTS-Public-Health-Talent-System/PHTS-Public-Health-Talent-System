@@ -1,7 +1,6 @@
 export type Role =
   | 'USER'
-  | 'HEAD_WARD'
-  | 'HEAD_DEPT'
+  | 'HEAD_SCOPE'
   | 'PTS_OFFICER'
   | 'HEAD_HR'
   | 'HEAD_FINANCE'
@@ -9,10 +8,13 @@ export type Role =
   | 'DIRECTOR'
   | 'ADMIN';
 
+export type HeadScopeCategory = 'WARD_SCOPE' | 'DEPT_SCOPE';
+
 export interface User {
   id: string;
   username: string;
   role: Role;
+  head_scope_roles?: HeadScopeCategory[];
   firstName?: string;
   lastName?: string;
   first_name?: string;

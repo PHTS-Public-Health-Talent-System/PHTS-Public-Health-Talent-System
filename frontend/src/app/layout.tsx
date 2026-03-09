@@ -1,5 +1,6 @@
 import React from "react"
 import type { Metadata } from 'next'
+import { AntdRegistry } from '@ant-design/nextjs-registry'
 import { Sarabun } from 'next/font/google'
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/components/providers/auth-provider"
@@ -26,18 +27,20 @@ export default function RootLayout({
   return (
     <html lang="th" suppressHydrationWarning>
       <body className={`${sarabun.variable} font-sans antialiased`}>
-        <ReactQueryProvider>
-          <AuthProvider>
-            <ThemeProvider
-              attribute="class"
-              defaultTheme="system"
-              enableSystem
-              disableTransitionOnChange
-            >
-              {children}
-            </ThemeProvider>
-          </AuthProvider>
-        </ReactQueryProvider>
+        <AntdRegistry>
+          <ReactQueryProvider>
+            <AuthProvider>
+              <ThemeProvider
+                attribute="class"
+                defaultTheme="system"
+                enableSystem
+                disableTransitionOnChange
+              >
+                {children}
+              </ThemeProvider>
+            </AuthProvider>
+          </ReactQueryProvider>
+        </AntdRegistry>
       </body>
     </html>
   )

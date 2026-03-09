@@ -1,8 +1,8 @@
 'use client';
 
 import { use } from 'react';
-import { PayrollDetailContent } from '@/features/payroll/components/PayrollDetailContent';
-import { usePayrollReviewProgress } from '@/features/payroll/usePayrollReviewProgress';
+import { PayrollDetailContent } from '@/features/payroll/components';
+import { usePayrollReviewProgress } from '@/features/payroll/hooks';
 
 export default function DirectorPayrollDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);

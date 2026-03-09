@@ -52,6 +52,28 @@ export const periodIdParamSchema = z.object({
   params: periodIdParam,
 });
 
+export const periodLeavesQuerySchema = z.object({
+  params: periodIdParam,
+  query: z.object({
+    leave_type: z.string().optional(),
+    profession_code: z.string().optional(),
+    pending_report: z
+      .preprocess((value) => {
+        if (typeof value === "string") {
+          if (value.toLowerCase() === "true") return true;
+          if (value.toLowerCase() === "false") return false;
+        }
+        return value;
+      }, z.boolean())
+      .optional(),
+    search: z.string().optional(),
+    limit: z.coerce.number().int().positive().max(500).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+    sort_by: z.enum(["start_date", "name"]).optional(),
+    sort_dir: z.enum(["asc", "desc"]).optional(),
+  }),
+});
+
 export const periodItemParamSchema = z.object({
   params: periodIdParam.merge(itemIdParam),
 });

@@ -3,8 +3,7 @@ import { UserRole } from '@/types/auth.js';
 export { UserRole };
 
 export const APPROVER_ROLES: UserRole[] = [
-  UserRole.HEAD_WARD,
-  UserRole.HEAD_DEPT,
+  UserRole.HEAD_SCOPE,
   UserRole.PTS_OFFICER,
   UserRole.HEAD_HR,
   UserRole.HEAD_FINANCE,

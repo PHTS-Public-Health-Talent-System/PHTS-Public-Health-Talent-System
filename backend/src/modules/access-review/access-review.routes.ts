@@ -11,9 +11,14 @@ import { validate } from '@shared/validate.middleware.js';
 import { UserRole } from '@/types/auth.js';
 import * as accessReviewController from '@/modules/access-review/access-review.controller.js';
 import {
+  autoReviewCycleSchema,
+  bulkResolveQueueItemsSchema,
   getCyclesSchema,
   getCycleSchema,
   getItemsSchema,
+  getQueueEventsSchema,
+  getQueueSchema,
+  resolveQueueItemSchema,
   updateItemSchema,
   completeCycleSchema,
 } from '@/modules/access-review/access-review.schema.js';
@@ -50,11 +55,44 @@ router.get(
   accessReviewController.getItems,
 );
 
+// Get global review queue
+router.get(
+  "/queue",
+  validate(getQueueSchema),
+  accessReviewController.getQueue,
+);
+
+// Get queue events by queue id
+router.get(
+  "/queue/:id/events",
+  validate(getQueueEventsSchema),
+  accessReviewController.getQueueEvents,
+);
+
+// Resolve/dismiss queue item
+router.post(
+  "/queue/bulk-resolve",
+  validate(bulkResolveQueueItemsSchema),
+  accessReviewController.bulkResolveQueueItems,
+);
+
+router.post(
+  "/queue/:id/resolve",
+  validate(resolveQueueItemSchema),
+  accessReviewController.resolveQueueItem,
+);
+
 // Complete a review cycle
 router.post(
   "/cycles/:id/complete",
   validate(completeCycleSchema),
   accessReviewController.completeCycle,
+);
+
+router.post(
+  "/cycles/:id/auto-review",
+  validate(autoReviewCycleSchema),
+  accessReviewController.autoReviewCycle,
 );
 
 // Update review result for a user
@@ -63,11 +101,5 @@ router.put(
   validate(updateItemSchema),
   accessReviewController.updateItem,
 );
-
-// Manual trigger for auto-disable job
-router.post("/auto-disable", accessReviewController.runAutoDisable);
-
-// Send review reminders
-router.post("/send-reminders", accessReviewController.sendReminders);
 
 export default router;

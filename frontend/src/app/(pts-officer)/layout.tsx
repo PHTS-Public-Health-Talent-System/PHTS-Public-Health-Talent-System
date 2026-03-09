@@ -1,5 +1,5 @@
 import React from "react"
-import { PtsOfficerSidebar } from "@/features/navigation/components/pts-officer-sidebar"
+import { PtsOfficerSidebar } from "@/features/navigation/components"
 
 export const dynamic = 'force-dynamic'
 
