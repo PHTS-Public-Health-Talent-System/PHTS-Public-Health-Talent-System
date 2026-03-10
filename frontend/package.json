@@ -8,6 +8,7 @@
     "lint": "eslint",
     "start": "TZ=Asia/Bangkok next start",
     "test": "vitest",
+    "test:smoke": "vitest --run src/features/leave-management/screens/pts-officer/LeaveManagementScreen.integration.test.tsx src/features/request/detail/timeline/ApprovalTimelineCard.test.tsx src/features/request/detail/timeline/OfficerCreatedRequestTimelineCard.test.tsx src/features/request/create/hooks/useRequestForm.test.tsx",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -52,7 +53,6 @@
     "input-otp": "1.4.1",
     "lucide-react": "^0.563.0",
     "next": "16.1.6",
-    "next-themes": "^0.4.6",
     "react": "19.2.3",
     "react-day-picker": "^9.13.0",
     "react-dom": "19.2.3",
