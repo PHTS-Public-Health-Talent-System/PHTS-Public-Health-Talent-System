@@ -117,7 +117,7 @@ const hasIndex = async (
     const name = String(row.INDEX_NAME);
     const nonUnique = Number(row.NON_UNIQUE);
     const cols = String(row.cols ?? "");
-    const uniqueMatches = Boolean(spec.unique) ? nonUnique === 0 : true;
+    const uniqueMatches = spec.unique ? nonUnique === 0 : true;
     return name === spec.name && uniqueMatches && cols === expectedCols;
   });
 };

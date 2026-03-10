@@ -181,13 +181,13 @@ export function HeadScopeMyRequestDetailPage({
     [ocrPrecheck?.results, visibleAttachmentFileNames],
   );
   const assignmentOrderSummary = useMemo(() => {
-    if (!requesterName || requesterName === '-' || ocrDocuments.length === 0) {
+    if (requesterName === '-' || ocrDocuments.length === 0) {
       return null;
     }
     return findAssignmentOrderSummary(ocrDocuments, requesterName);
   }, [ocrDocuments, requesterName]);
   const memoSummary = useMemo(() => {
-    if (!requesterName || requesterName === '-' || ocrDocuments.length === 0) {
+    if (requesterName === '-' || ocrDocuments.length === 0) {
       return null;
     }
     return findMemoSummary(ocrDocuments, requesterName);

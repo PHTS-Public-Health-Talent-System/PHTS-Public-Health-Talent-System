@@ -237,7 +237,7 @@ export const findMemoSummary = (
     if (!summary.personMatched) continue;
 
     const score =
-      (summary.personMatched ? 100 : 0) +
+      100 +
       (summary.subject ? 10 : 0) +
       (summary.documentNo ? 5 : 0) +
       (summary.addressedTo ? 3 : 0);

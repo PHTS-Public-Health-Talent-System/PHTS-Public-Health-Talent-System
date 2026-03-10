@@ -95,7 +95,9 @@ const run = async () => {
   } catch (error) {
     try {
       await conn.rollback();
-    } catch {}
+    } catch (rollbackError) {
+      console.error('[backfill-wife-help] rollback failed:', rollbackError);
+    }
     throw error;
   } finally {
     conn.release();
@@ -110,4 +112,3 @@ run()
     console.error('[backfill-wife-help] failed:', error);
     process.exit(1);
   });
-

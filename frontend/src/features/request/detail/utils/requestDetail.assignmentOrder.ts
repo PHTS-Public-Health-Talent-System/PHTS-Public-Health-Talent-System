@@ -153,7 +153,7 @@ export const findAssignmentOrderSummary = (
     if (!summary) continue;
     if (!summary.personMatched) continue;
     const score =
-      (summary.personMatched ? 100 : 0) +
+      100 +
       (summary.sectionTitle ? 20 : 0) +
       summary.dutyHighlights.length * 5 +
       (summary.subject ? 3 : 0) +

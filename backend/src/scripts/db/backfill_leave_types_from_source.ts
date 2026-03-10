@@ -96,7 +96,9 @@ const run = async () => {
   } catch (error) {
     try {
       await conn.rollback();
-    } catch {}
+    } catch (rollbackError) {
+      console.error('[backfill-leave-types] rollback failed:', rollbackError);
+    }
     throw error;
   } finally {
     conn.release();

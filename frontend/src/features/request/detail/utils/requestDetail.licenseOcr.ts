@@ -297,19 +297,19 @@ export function findLicenseOcrSummary(params: {
 
     const checks: LicenseOcrCheck[] = [];
 
-    if (expectedName !== '-' && expectedName) {
+    if (expectedName && expectedName !== '-') {
       checks.push({
         label: 'ชื่อผู้ถือใบอนุญาต',
-        expectedValue: expectedName || '-',
+        expectedValue: expectedName,
         extractedValue: extractedName || '-',
         status: isClosePersonNameMatch(expectedName, extractedName) ? 'match' : 'review',
       });
     }
 
-    if (expectedLicenseNo !== '-' && expectedLicenseNo) {
+    if (expectedLicenseNo && expectedLicenseNo !== '-') {
       checks.push({
         label: 'เลขที่ใบอนุญาต',
-        expectedValue: expectedLicenseNo || '-',
+        expectedValue: expectedLicenseNo,
         extractedValue: extractedLicenseNo || '-',
         status: evaluateLicenseNumberStatus(expectedLicenseNo, extractedLicenseNo),
       });

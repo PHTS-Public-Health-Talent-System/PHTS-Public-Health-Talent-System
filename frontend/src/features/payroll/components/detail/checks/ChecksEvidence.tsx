@@ -63,7 +63,7 @@ type EvidenceGridItem = {
   colSpan?: 1 | 2;
 };
 
-function formatGenericEvidenceValue(key: string, value: unknown): React.ReactNode {
+function formatGenericEvidenceValue(_key: string, value: unknown): React.ReactNode {
   return <span className="break-words">{String(value)}</span>;
 }
 

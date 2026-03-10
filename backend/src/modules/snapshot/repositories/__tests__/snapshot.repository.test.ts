@@ -1,5 +1,3 @@
-import db from '@config/database.js';
-
 const queryMock = jest.fn();
 
 jest.mock('@config/database.js', () => ({
