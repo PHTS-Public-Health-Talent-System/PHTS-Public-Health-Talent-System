@@ -111,7 +111,7 @@ async function insertEligibilityFromPeriod(
 async function main(): Promise<void> {
   const periodId = parsePeriodIdArg();
   if (!periodId) {
-    throw new Error("กรุณาระบุ period_id เช่น: npx tsx src/scripts/db/apply_payroll_period_to_req_eligibility.ts 37");
+    throw new Error("กรุณาระบุ period_id เช่น: npx tsx src/scripts/archive/manual/apply_payroll_period_to_req_eligibility.ts 37");
   }
 
   const conn = await getConnection();

@@ -3,7 +3,7 @@
 ## Migration Files
 
 ```
-backend/src/scripts/migrations/
+backend/src/scripts/db/migrations/archive/legacy-rename/
 ├── rename_tables.sql           # Main migration (run first)
 ├── rename_tables_views.sql     # Update views (run second)
 ├── rollback_rename_tables.sql  # Rollback if needed
