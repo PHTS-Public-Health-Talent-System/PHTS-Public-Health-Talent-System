@@ -5,6 +5,11 @@ import { OcrRequestRepository } from "@/modules/ocr/repositories/ocr-request.rep
 import { requestRepository } from "@/modules/request/data/repositories/request.repository.js";
 import { requestQueryService } from "@/modules/request/read/services/query.service.js";
 import { RequestCommandService } from "@/modules/request/services/command.service.js";
+import {
+  makeDbConnectionMock,
+  mockOfficerTargetCitizenLookup,
+  mockUniqueRequestNo,
+} from "./command.officer-on-behalf.test-helpers.js";
 
 jest.mock("@config/database.js", () => ({
   getConnection: jest.fn(),
@@ -31,27 +36,18 @@ jest.mock("@/modules/ocr/services/ocr-precheck.service.js", () => ({
 
 describe("RequestCommandService officer on behalf flow", () => {
   let service: RequestCommandService;
-
-  const connection = {
-    beginTransaction: jest.fn(),
-    commit: jest.fn(),
-    rollback: jest.fn(),
-    release: jest.fn(),
-  };
+  const connection = makeDbConnectionMock();
 
   beforeEach(() => {
     jest.restoreAllMocks();
     jest.clearAllMocks();
     service = new RequestCommandService();
     (getConnection as jest.Mock).mockResolvedValue(connection);
+    mockUniqueRequestNo();
   });
 
   it("creates request for selected personnel when PTS_OFFICER submits on behalf", async () => {
-    jest.spyOn(requestRepository, "findUserCitizenId").mockImplementation(async (userId: number) => {
-      if (userId === 9001) return "3640500458749";
-      if (userId === 2001) return "1100702579863";
-      return null;
-    });
+    mockOfficerTargetCitizenLookup();
     jest.spyOn(requestRepository, "findSignatureIdByUserId").mockResolvedValue(null);
     jest.spyOn(requestRepository, "findEmployeeProfile").mockResolvedValue({
       citizen_id: "1100702579863",
@@ -116,11 +112,7 @@ describe("RequestCommandService officer on behalf flow", () => {
   });
 
   it("submits officer-created request by approving immediately and creating eligibility", async () => {
-    jest.spyOn(requestRepository, "findUserCitizenId").mockImplementation(async (userId: number) => {
-      if (userId === 9001) return "3640500458749";
-      if (userId === 2001) return "1100702579863";
-      return null;
-    });
+    mockOfficerTargetCitizenLookup();
     jest
       .spyOn(requestRepository, "findById")
       .mockResolvedValueOnce({
@@ -239,11 +231,7 @@ describe("RequestCommandService officer on behalf flow", () => {
   });
 
   it("submits legacy officer-created draft identified from create audit log", async () => {
-    jest.spyOn(requestRepository, "findUserCitizenId").mockImplementation(async (userId: number) => {
-      if (userId === 9001) return "3640500458749";
-      if (userId === 2001) return "1100702579863";
-      return null;
-    });
+    mockOfficerTargetCitizenLookup();
     jest
       .spyOn(requestRepository, "findById")
       .mockResolvedValueOnce({

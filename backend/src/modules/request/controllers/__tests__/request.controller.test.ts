@@ -3,6 +3,7 @@ import { requestRepository } from '@/modules/request/data/repositories/request.r
 import { requestQueryService } from '@/modules/request/read/services/query.service.js';
 import * as reassignService from '@/modules/request/reassign/application/reassign.service.js';
 import { requestCommandService } from '@/modules/request/services/command.service.js';
+import { makeJsonRes, makeNext, makeStatusJsonRes, makeUser } from './request.controller.test-helpers.js';
 
 jest.mock('@/modules/request/services/command.service.js', () => ({
   requestCommandService: {
@@ -32,10 +33,6 @@ jest.mock('@/modules/request/data/repositories/request.repository.js', () => ({
 jest.mock('@/modules/request/reassign/application/reassign.service.js', () => ({
   getReassignmentHistory: jest.fn(),
 }));
-
-const makeJsonRes = () => ({
-  json: jest.fn(),
-});
 
 describe('request.controller', () => {
   beforeEach(() => {
@@ -67,10 +64,7 @@ describe('request.controller', () => {
         user: { userId: 9001, citizenId: '3640500458749', role: 'PTS_OFFICER' },
       };
 
-      const res: any = {
-        status: jest.fn().mockReturnThis(),
-        json: jest.fn(),
-      };
+      const res: any = makeStatusJsonRes();
 
       (requestRepository.findUserCitizenId as jest.Mock).mockResolvedValue('1100702579863');
       (requestRepository.findEmployeeExists as jest.Mock).mockResolvedValue(true);
@@ -80,7 +74,7 @@ describe('request.controller', () => {
         citizen_id: '1100702579863',
       });
 
-      const next = jest.fn();
+      const next = makeNext();
 
       await (requestController.createRequest as any)(req, res, next);
 
@@ -109,7 +103,7 @@ describe('request.controller', () => {
           failed_count: 0,
           results: [{ name: 'license.pdf', ok: true, markdown: 'ocr text' }],
         },
-        user: { userId: 46941, role: 'PTS_OFFICER' },
+        user: makeUser(),
       };
       const res: any = makeJsonRes();
 
@@ -117,7 +111,7 @@ describe('request.controller', () => {
         saved: true,
       });
 
-      const next = jest.fn();
+      const next = makeNext();
       await (requestController.persistManualOcrPrecheck as any)(req, res, next);
 
       expect(requestCommandService.persistManualOcrPrecheck).toHaveBeenCalledWith(
@@ -148,7 +142,7 @@ describe('request.controller', () => {
           failed_count: 0,
           results: [{ name: 'memo.pdf', ok: true, markdown: 'ocr text' }],
         },
-        user: { userId: 46941, role: 'PTS_OFFICER' },
+        user: makeUser(),
       };
       const res: any = makeJsonRes();
 
@@ -156,7 +150,7 @@ describe('request.controller', () => {
         saved: true,
       });
 
-      const next = jest.fn();
+      const next = makeNext();
       await (requestController.persistEligibilityManualOcrPrecheck as any)(req, res, next);
 
       expect(requestCommandService.persistEligibilityManualOcrPrecheck).toHaveBeenCalledWith(
@@ -183,7 +177,7 @@ describe('request.controller', () => {
             { attachment_id: 22, source: 'request' },
           ],
         },
-        user: { userId: 46941, role: 'PTS_OFFICER' },
+        user: makeUser(),
       };
       const res: any = makeJsonRes();
 
@@ -195,7 +189,7 @@ describe('request.controller', () => {
         results: [],
       });
 
-      const next = jest.fn();
+      const next = makeNext();
       await (requestController.runEligibilityAttachmentsOcr as any)(req, res, next);
 
       expect(requestCommandService.runEligibilityAttachmentsOcr).toHaveBeenCalledWith(
@@ -291,7 +285,7 @@ describe('request.controller', () => {
           license_status: 'expiring',
           alert_filter: 'error',
         },
-        user: { userId: 10, role: 'PTS_OFFICER' },
+        user: makeUser({ userId: 10 }),
       };
 
       const res: any = makeJsonRes();
@@ -321,7 +315,7 @@ describe('request.controller', () => {
         ],
       });
 
-      const next = jest.fn();
+      const next = makeNext();
 
       await (requestController.getEligibilitySummary as any)(req, res, next);
 
@@ -352,10 +346,10 @@ describe('request.controller', () => {
     it('rejects ADMIN from request workflow history endpoint', async () => {
       const req: any = {
         params: { id: '123' },
-        user: { userId: 1, role: 'ADMIN' },
+        user: makeUser({ userId: 1, role: 'ADMIN' }),
       };
       const res: any = makeJsonRes();
-      const next = jest.fn();
+      const next = makeNext();
 
       await (requestController.getReassignHistory as any)(req, res, next);
 
@@ -367,10 +361,10 @@ describe('request.controller', () => {
     it('returns history for non-admin with access', async () => {
       const req: any = {
         params: { id: '123' },
-        user: { userId: 10, role: 'PTS_OFFICER' },
+        user: makeUser({ userId: 10 }),
       };
       const res: any = makeJsonRes();
-      const next = jest.fn();
+      const next = makeNext();
 
       (requestQueryService.getRequestById as jest.Mock).mockResolvedValue({ request_id: 123 });
       (reassignService.getReassignmentHistory as jest.Mock).mockResolvedValue([{ actionId: 1 }]);
@@ -391,7 +385,7 @@ describe('request.controller', () => {
           qualification_check: { passed: true },
           evidence_check: { passed: true },
         },
-        user: { userId: 10, role: 'PTS_OFFICER' },
+        user: makeUser({ userId: 10 }),
       };
 
       const res: any = makeJsonRes();
@@ -401,7 +395,7 @@ describe('request.controller', () => {
         status: 'PENDING',
       });
 
-      const next = jest.fn();
+      const next = makeNext();
 
       await (requestController.updateVerificationChecks as any)(req, res, next);
 
