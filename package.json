@@ -4,23 +4,16 @@
   "description": "PHTS Project Root - Management scripts",
   "private": true,
   "scripts": {
-    "install:all": "npm install --prefix backend && npm install --prefix frontend",
     "build:all": "npm run build --prefix backend && npm run build --prefix frontend",
     "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "npm run dev --prefix backend",
-    "dev:frontend": "npm run dev --prefix frontend"
+    "dev:frontend": "npm run dev --prefix frontend",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "lint:all": "npm run lint --prefix backend && npm run lint --prefix frontend",
+    "test:all": "npm run test --prefix backend && npm run test --prefix frontend",
+    "typecheck:all": "npm run typecheck --prefix backend && npm run typecheck --prefix frontend"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "concurrently": "^8.2.2",
-    "tailwindcss": "^4",
-    "tailwindcss-animate": "^1.0.7"
-  },
-  "dependencies": {
-    "@hookform/resolvers": "^5.2.2",
-    "date-fns": "^4.1.0",
-    "framer-motion": "^12.27.5",
-    "react-hook-form": "^7.71.1",
-    "zod": "^4.3.5"
+    "concurrently": "^8.2.2"
   }
 }
