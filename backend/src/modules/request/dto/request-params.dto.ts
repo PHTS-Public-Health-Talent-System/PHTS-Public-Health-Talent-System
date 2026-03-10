@@ -17,8 +17,8 @@ const idOrNoParam = z.object({
   id: z
     .string()
     .regex(
-      /^(\d+|REQ-\d{4}-\d+)$/i,
-      "id ต้องเป็นตัวเลขหรือรูปแบบ REQ-YYYY-xxxxx",
+      /^(\d+|REQ-[A-Z0-9-]+)$/i,
+      "id ต้องเป็นตัวเลขหรือรูปแบบเลขคำขอที่ถูกต้อง",
     ),
 });
 

@@ -84,7 +84,7 @@ const formatThaiMonthYear = (month: number, year: number) => {
 };
 
 const getRequestDisplayId = (request: RequestWithDetails) =>
-  request.request_no || `REQ-${request.request_id}`;
+  request.request_no ?? "-";
 
 const mapSlaStatus = (
   info?: Pick<

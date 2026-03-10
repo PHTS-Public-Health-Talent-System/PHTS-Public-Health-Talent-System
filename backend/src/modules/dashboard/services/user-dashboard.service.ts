@@ -141,16 +141,6 @@ const mapPriority = (priority?: string | null): "high" | "normal" | "low" => {
 const getPrimaryDate = (request: RequestWithDetails) =>
   request.created_at || request.updated_at || request.effective_date || "";
 
-const buildDisplayId = (
-  requestId: number,
-  createdAt?: DateInput,
-) => {
-  const createdDate = createdAt ? new Date(createdAt) : new Date();
-  const beYear = createdDate.getFullYear() + 543;
-  const seq = String(Math.abs(Math.trunc(requestId))).padStart(4, "0");
-  return `REQ-${beYear}-${seq}`;
-};
-
 export const buildUserDashboard = (params: {
   requests: RequestWithDetails[];
   unreadCount: number;
@@ -201,7 +191,7 @@ export const buildUserDashboard = (params: {
     .slice(0, 3)
     .map((request) => ({
       request_id: request.request_id,
-      display_id: buildDisplayId(request.request_id, request.created_at),
+      display_id: request.request_no ?? "-",
       month_label: formatThaiMonthYear(request.effective_date),
       amount: request.requested_amount
         ? Number(request.requested_amount).toLocaleString("th-TH")

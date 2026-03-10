@@ -5,6 +5,7 @@ import {
   PTSRequest,
   RequestWithDetails,
 } from '@/modules/request/contracts/request.types.js';
+import { randomBytes } from 'node:crypto';
 
 export const REQUESTER_FIELDS = `
   u.citizen_id as requester_citizen_id,
@@ -97,16 +98,28 @@ export const getRequestLinkForRole = (
   return `/dashboard/approver/requests/${requestId}`;
 };
 
+const REQUEST_NO_TOKEN_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const REQUEST_NO_TOKEN_LENGTH = 8;
+
+const generateRequestNoToken = (): string => {
+  const bytes = randomBytes(REQUEST_NO_TOKEN_LENGTH);
+  let token = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    token += REQUEST_NO_TOKEN_CHARS[bytes[i] % REQUEST_NO_TOKEN_CHARS.length];
+  }
+  return token;
+};
+
 export const generateRequestNoFromId = (
-  requestId: number,
+  _requestId: number,
   createdAt: Date | string = new Date(),
 ): string => {
   const createdDate = createdAt instanceof Date ? createdAt : new Date(createdAt);
   const adYear = Number.isNaN(createdDate.getTime())
     ? new Date().getFullYear()
     : createdDate.getFullYear();
-  const beYear = adYear + 543;
-  return `REQ-${beYear}-${Math.abs(Math.trunc(requestId))}`;
+  const beYearShort = String((adYear + 543) % 100).padStart(2, '0');
+  return `REQ-${beYearShort}-${generateRequestNoToken()}`;
 };
 
 export const normalizeDateToYMD = (date: string | Date): string => {

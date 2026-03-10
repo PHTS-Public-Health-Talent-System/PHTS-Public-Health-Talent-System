@@ -603,6 +603,18 @@ export class RequestRepository {
     return (rows[0] as RequestSubmissionEntity) || null;
   }
 
+  async existsByRequestNo(
+    requestNo: string,
+    connection?: PoolConnection,
+  ): Promise<boolean> {
+    const db = this.getDb(connection);
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT 1 AS found FROM req_submissions WHERE request_no = ? LIMIT 1`,
+      [requestNo],
+    );
+    return rows.length > 0;
+  }
+
   async findByUserId(userId: number): Promise<RequestSubmissionEntity[]> {
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT r.*, u.citizen_id, u.role
@@ -1394,13 +1406,13 @@ export class RequestRepository {
     const [rows] = await db.query<RowDataPacket[]>(
       `
         SELECT s.signature_id
-        FROM sig_images s
-        LEFT JOIN users u ON u.id = ?
-        WHERE s.user_id = ?
-           OR (u.citizen_id IS NOT NULL AND s.citizen_id = u.citizen_id)
+        FROM users u
+        JOIN sig_images s ON s.citizen_id = u.citizen_id
+        WHERE u.id = ?
+          AND u.citizen_id IS NOT NULL
         LIMIT 1
       `,
-      [userId, userId],
+      [userId],
     );
     return rows.length ? (rows[0].signature_id as number) : null;
   }

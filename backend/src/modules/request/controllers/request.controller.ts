@@ -109,16 +109,17 @@ const parsePositiveInt = (value: unknown): number | null => {
 };
 
 const resolveRequestIdFromParam = async (rawId: string): Promise<number> => {
-  const requestId = Number(rawId);
-  if (!Number.isNaN(requestId) && Number.isFinite(requestId)) {
+  const normalized = rawId.trim();
+  if (!normalized) {
+    throw new ValidationError("Invalid Request ID");
+  }
+  if (/^\d+$/.test(normalized)) {
+    const requestId = Number(normalized);
     return requestId;
   }
-  if (/^REQ-\d{4}-\d+$/i.test(rawId)) {
-    const request = await requestRepository.findByRequestNo(rawId);
-    if (!request) throw new ValidationError("Request not found");
-    return request.request_id;
-  }
-  throw new ValidationError("Invalid Request ID");
+  const request = await requestRepository.findByRequestNo(normalized);
+  if (!request) throw new ValidationError("Request not found");
+  return request.request_id;
 };
 
 export class RequestController {

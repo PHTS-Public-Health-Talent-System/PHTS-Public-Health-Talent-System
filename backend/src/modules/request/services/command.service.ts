@@ -50,6 +50,21 @@ import { getActiveHeadScopeRoles } from '@/modules/request/scope/application/sco
 
 export class RequestCommandService {
   private legacyOfficerCreatorCache = new Map<number, number | null>();
+  private static readonly REQUEST_NO_MAX_RETRIES = 10;
+
+  private async generateUniqueRequestNo(
+    requestId: number,
+    connection: PoolConnection,
+  ): Promise<string> {
+    for (let attempt = 0; attempt < RequestCommandService.REQUEST_NO_MAX_RETRIES; attempt += 1) {
+      const candidate = generateRequestNoFromId(requestId);
+      const exists = await requestRepository.existsByRequestNo(candidate, connection);
+      if (!exists) {
+        return candidate;
+      }
+    }
+    throw new ConflictError('ไม่สามารถสร้างเลขคำขอใหม่ได้ กรุณาลองอีกครั้ง');
+  }
 
   private containsThai(text: string): boolean {
     return /[\u0E00-\u0E7F]/.test(text);
@@ -1289,7 +1304,7 @@ export class RequestCommandService {
         connection,
       );
 
-      const requestNo = generateRequestNoFromId(requestId);
+      const requestNo = await this.generateUniqueRequestNo(requestId, connection);
       await requestRepository.updateRequestNo(requestId, requestNo, connection);
 
       await this.insertAttachments(connection, requestId, files);
