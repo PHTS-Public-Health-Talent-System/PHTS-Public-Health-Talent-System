@@ -149,7 +149,6 @@ export function Step4RateMapping({ data, updateData }: Step4Props) {
       if (found) break;
     }
 
-    if (!found) found = hierarchyData.find((p: ProfessionDef) => p.id === 'ALLIED');
     if (!found) found = hierarchyData.find((p: ProfessionDef) => p.id === 'OTHERS');
     if (found) return { ...found, icon: ICON_MAP[found.id] || Users };
     return null;
@@ -157,8 +156,6 @@ export function Step4RateMapping({ data, updateData }: Step4Props) {
 
   const fallbackProfData = useMemo(() => {
     if (!hierarchyData?.length) return null;
-    const allied = hierarchyData.find((p: ProfessionDef) => p.id === 'ALLIED');
-    if (allied) return { ...allied, icon: ICON_MAP[allied.id] || Users };
     const others = hierarchyData.find((p: ProfessionDef) => p.id === 'OTHERS');
     if (others) return { ...others, icon: ICON_MAP[others.id] || Users };
     const firstWithGroup = hierarchyData.find(

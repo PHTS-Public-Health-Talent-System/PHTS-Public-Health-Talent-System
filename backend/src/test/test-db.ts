@@ -617,18 +617,21 @@ export async function resetSnapshotSchema(): Promise<void> {
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS emp_profiles (
         citizen_id VARCHAR(20) PRIMARY KEY,
+        title VARCHAR(20) NULL,
         first_name VARCHAR(100) NULL,
         last_name VARCHAR(100) NULL,
         department VARCHAR(255) NULL,
         position_name VARCHAR(255) NULL
       )
     `);
+    await ensureColumn(conn, "emp_profiles", "title", "VARCHAR(20) NULL");
     await ensureColumn(conn, "emp_profiles", "department", "VARCHAR(255) NULL");
     await ensureColumn(conn, "emp_profiles", "position_name", "VARCHAR(255) NULL");
 
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS emp_support_staff (
         citizen_id VARCHAR(20) PRIMARY KEY,
+        title VARCHAR(20) NULL,
         first_name VARCHAR(100) NULL,
         last_name VARCHAR(100) NULL,
         department VARCHAR(255) NULL,
@@ -638,6 +641,7 @@ export async function resetSnapshotSchema(): Promise<void> {
         last_synced_at DATETIME NULL
       )
     `);
+    await ensureColumn(conn, "emp_support_staff", "title", "VARCHAR(20) NULL");
     await ensureColumn(conn, "emp_support_staff", "department", "VARCHAR(255) NULL");
     await ensureColumn(conn, "emp_support_staff", "position_name", "VARCHAR(255) NULL");
     await ensureColumn(conn, "emp_support_staff", "original_status", "VARCHAR(255) NULL");

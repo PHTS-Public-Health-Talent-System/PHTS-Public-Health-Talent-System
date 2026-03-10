@@ -99,5 +99,4 @@ export const PROFESSION_NAME_MAP: Record<string, string> = {
   SPEECH_THERAPIST: "นักแก้ไขความผิดปกติการสื่อความหมาย",
   SPECIAL_EDU: "นักวิชาการศึกษาพิเศษ",
   CARDIO_TECH: "นักเทคโนโลยีหัวใจและทรวงอก",
-  ALLIED: "สหวิชาชีพ (อื่นๆ)",
 };

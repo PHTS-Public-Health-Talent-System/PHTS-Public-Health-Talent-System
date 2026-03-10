@@ -170,7 +170,6 @@ export const getRateHierarchy = async (): Promise<ProfessionNode[]> => {
     DENTIST: "กลุ่มทันตแพทย์",
     PHARMACIST: "กลุ่มเภสัชกร",
     NURSE: "กลุ่มพยาบาลวิชาชีพ",
-    ALLIED: "กลุ่มสหวิชาชีพ",
     SPECIAL_EDU: "กลุ่มการศึกษาพิเศษ",
   };
   const hierarchy: ProfessionNode[] = [];

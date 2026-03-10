@@ -56,7 +56,6 @@ const professionCodeSchema = z.enum([
   "OCC_THERAPY",
   "CLIN_PSY",
   "CARDIO_TECH",
-  "ALLIED",
 ]);
 
 const nullableTrimmedString = z

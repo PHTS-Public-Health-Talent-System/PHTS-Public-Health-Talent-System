@@ -143,7 +143,6 @@ const RATE_PROFESSION_CODES = [
   'OCC_THERAPY',
   'CLIN_PSY',
   'CARDIO_TECH',
-  'ALLIED',
 ] as const;
 
 // 🎨 ยกระดับ StatCard ให้ดู Modern และมี Accent สีด้านซ้าย
