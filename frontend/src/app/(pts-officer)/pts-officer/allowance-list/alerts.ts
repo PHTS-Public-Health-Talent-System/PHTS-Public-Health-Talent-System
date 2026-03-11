@@ -1,5 +1,6 @@
 import { ELIGIBILITY_EXPIRING_DAYS } from "@/features/request";
 import { formatThaiDate as formatThaiDateValue } from "@/shared/utils/thai-locale";
+import { isPermanentLicenseDate } from "@/shared/utils/license";
 
 export type AllowanceAlert = {
   title: string;
@@ -61,12 +62,12 @@ export function buildAllowanceAlerts(
   } else if (licenseStatus && licenseStatus !== "ACTIVE") {
     alerts.push({
       title: "ใบอนุญาตไม่พร้อมใช้งาน",
-      detail: validUntil
+      detail: validUntil && !isPermanentLicenseDate(validUntil)
         ? `สถานะ ${getLicenseStatusLabel(licenseStatus)} (สิ้นสุด ${formatThaiDate(validUntil)})`
         : `สถานะ ${getLicenseStatusLabel(licenseStatus)}`,
       severity: "error",
     });
-  } else if (validUntil) {
+  } else if (validUntil && !isPermanentLicenseDate(validUntil)) {
     const expiry = new Date(validUntil);
     if (!Number.isNaN(expiry.getTime())) {
       const diffDays = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));

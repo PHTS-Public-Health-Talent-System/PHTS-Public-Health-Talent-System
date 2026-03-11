@@ -73,6 +73,7 @@ import {
   formatThaiDate as formatThaiDateValue,
   formatThaiNumber,
 } from '@/shared/utils/thai-locale';
+import { isPermanentLicenseDate } from '@/shared/utils/license';
 import { toast } from 'sonner';
 import type { RequestWithDetails } from '@/types/request.types';
 
@@ -198,6 +199,7 @@ const getLicenseStatusClass = (status?: string | null) => {
 
 function resolveLicenseStatus(expiryDate?: string | null): 'active' | 'expiring' | 'expired' {
   if (!expiryDate) return 'active';
+  if (isPermanentLicenseDate(expiryDate)) return 'active';
   const expiry = new Date(expiryDate);
   if (Number.isNaN(expiry.getTime())) return 'active';
   const now = new Date();
@@ -368,6 +370,7 @@ export default function AllowanceEligibilityDetailPage({
     data?.sub_item_no !== null && data?.sub_item_no !== undefined ? String(data.sub_item_no) : null;
   const itemLabel = formatRateItemLabel(itemNo, subItemNo);
   const rateAmount = Number(data?.rate_amount ?? 0);
+  const isPermanentLicense = isPermanentLicenseDate(license?.valid_until ?? null);
   const licenseStatusKey = resolveLicenseBadgeStatus(license);
   const licenseStatus = licenseStatusConfig[licenseStatusKey];
 
@@ -672,7 +675,7 @@ export default function AllowanceEligibilityDetailPage({
           </div>
 
           {/* ย้าย Alert มาเป็น Full-width Banner เพื่อการมองเห็นที่ชัดเจนที่สุด */}
-          {licenseStatusKey === 'expiring' && (
+          {licenseStatusKey === 'expiring' && !isPermanentLicense && (
             <div className="flex gap-3 p-4 mt-2 border border-amber-200 bg-amber-50 rounded-lg items-start">
               <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
               <div>
@@ -769,12 +772,14 @@ export default function AllowanceEligibilityDetailPage({
                     icon={Calendar}
                     isMono
                   />
-                  <InfoItem
-                    label="วันที่หมดอายุ"
-                    value={formatThaiDate(license.valid_until)}
-                    icon={Calendar}
-                    isMono
-                  />
+                  {!isPermanentLicense ? (
+                    <InfoItem
+                      label="วันที่หมดอายุ"
+                      value={formatThaiDate(license.valid_until)}
+                      icon={Calendar}
+                      isMono
+                    />
+                  ) : null}
                   <div className="sm:col-span-2 mt-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium text-muted-foreground">สถานะ:</span>

@@ -86,6 +86,7 @@ import {
 } from "@/features/request/detail/utils";
 import { MemoSummaryCard } from "@/features/request/detail/cards";
 import { formatThaiNumber } from "@/shared/utils/thai-locale";
+import { isPermanentLicenseDate } from "@/shared/utils/license";
 import { getOnBehalfMetadata } from "@/features/request";
 import {
   buildAllowanceAttachmentOcrPolicy,
@@ -674,6 +675,7 @@ export default function RequestDetailPage({
   const licenseName = request?.requester?.license_name?.trim() || "-";
   const licenseValidFrom = request?.requester?.license_valid_from ?? null;
   const licenseValidUntil = request?.requester?.license_valid_until ?? null;
+  const isPermanentLicense = isPermanentLicenseDate(licenseValidUntil);
   const licenseStatus = request?.requester?.license_status ?? null;
 
   const personnelTypeLabel = request?.personnel_type
@@ -1251,10 +1253,12 @@ export default function RequestDetailPage({
                   label="วันที่เริ่มมีผล"
                   value={formatThaiDate(licenseValidFrom)}
                 />
-                <InfoItem
-                  label="วันที่หมดอายุ"
-                  value={formatThaiDate(licenseValidUntil)}
-                />
+                {!isPermanentLicense ? (
+                  <InfoItem
+                    label="วันที่หมดอายุ"
+                    value={formatThaiDate(licenseValidUntil)}
+                  />
+                ) : null}
                 <div className="sm:col-span-2">
                   <dt className="text-xs font-medium text-muted-foreground mb-1">
                     สถานะใบอนุญาต

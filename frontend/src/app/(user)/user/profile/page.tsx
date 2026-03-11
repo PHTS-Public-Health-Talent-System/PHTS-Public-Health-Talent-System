@@ -24,6 +24,7 @@ import { useCurrentUser } from '@/features/auth/hooks';
 import type { ApiResponse } from '@/shared/api/types';
 import type { User as AuthUser } from '@/types/auth';
 import { formatThaiDate as formatThaiDateValue } from '@/shared/utils/thai-locale';
+import { isPermanentLicenseDate } from '@/shared/utils/license';
 
 type UserProfile = AuthUser & {
   first_name?: string;
@@ -88,6 +89,7 @@ export default function ProfilePage() {
     const last = (user?.lastName || user?.last_name || '').charAt(0).toUpperCase();
     return first + last || 'U';
   }, [user]);
+  const isPermanentLicense = isPermanentLicenseDate(user?.license_valid_until ?? null);
 
   return (
     <div className="container max-w-5xl mx-auto p-6 lg:p-8 space-y-8">
@@ -274,17 +276,19 @@ export default function ProfilePage() {
                       </p>
                       <p className="text-base font-medium">{user?.license_name || '-'}</p>
                     </div>
-                    <div className="space-y-1 sm:col-span-2">
-                      <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                        <CalendarDays className="h-4 w-4" />
-                        <span className="text-xs font-medium uppercase tracking-wide">
-                          วันหมดอายุ
-                        </span>
+                    {!isPermanentLicense ? (
+                      <div className="space-y-1 sm:col-span-2">
+                        <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                          <CalendarDays className="h-4 w-4" />
+                          <span className="text-xs font-medium uppercase tracking-wide">
+                            วันหมดอายุ
+                          </span>
+                        </div>
+                        <p className="text-lg font-medium">
+                          {formatThaiDate(user?.license_valid_until)}
+                        </p>
                       </div>
-                      <p className="text-lg font-medium">
-                        {formatThaiDate(user?.license_valid_until)}
-                      </p>
-                    </div>
+                    ) : null}
                   </div>
                 </div>
               )}
