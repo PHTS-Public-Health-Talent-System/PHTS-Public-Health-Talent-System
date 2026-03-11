@@ -349,10 +349,16 @@ if (process.env.NODE_ENV !== 'test') {
     gracefulShutdown('uncaughtException');
   });
 
-  // Handle unhandled promise rejections
+  // Handle unhandled promise rejections.
+  // In development, keep the process alive so transient async failures
+  // don't tear down the API server and break frontend proxy connections.
   process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    gracefulShutdown('unhandledRejection');
+    if (NODE_ENV === 'production') {
+      gracefulShutdown('unhandledRejection');
+      return;
+    }
+    console.warn('[Server] unhandledRejection captured in development; server kept alive.');
   });
 }
 
