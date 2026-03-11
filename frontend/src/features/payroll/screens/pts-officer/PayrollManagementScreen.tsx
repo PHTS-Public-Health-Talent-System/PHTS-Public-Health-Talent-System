@@ -508,10 +508,11 @@ export function PayrollManagementScreen() {
               <CardContent className="p-6 flex-1 flex flex-col">
                 <div className="relative mb-8">
                   <div className="absolute left-[10%] right-[10%] top-4 hidden h-0.5 bg-border sm:block" />
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-5 sm:gap-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-5 sm:gap-3">
                   {PAY_PERIOD_STATUS_STEPS.map((step, idx) => {
-                    const isCompleted = idx < currentStepIndex;
-                    const isCurrent = idx === currentStepIndex;
+                    const isFinalClosed = currentPeriod.status === 'CLOSED';
+                    const isCompleted = isFinalClosed ? idx <= currentStepIndex : idx < currentStepIndex;
+                    const isCurrent = !isFinalClosed && idx === currentStepIndex;
 
                     return (
                       <div
