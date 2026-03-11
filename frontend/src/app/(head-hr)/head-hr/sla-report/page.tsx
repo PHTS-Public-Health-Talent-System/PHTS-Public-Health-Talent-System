@@ -141,6 +141,18 @@ function calculateGrade(percentage: number) {
   };
 }
 
+function mapErrorCategoryLabel(category: string) {
+  const normalized = String(category || "").toUpperCase();
+  const categoryMap: Record<string, string> = {
+    OTHER: "อื่น ๆ",
+    ATTACHMENT_ISSUE: "ปัญหาเอกสารแนบ",
+    OCR_PARSE_FAILED: "อ่านข้อมูลเอกสารไม่สำเร็จ",
+    DOCUMENT_MISSING: "ไม่พบเอกสาร",
+    INVALID_DATA: "ข้อมูลไม่ถูกต้อง",
+  };
+  return categoryMap[normalized] ?? category;
+}
+
 export default function HeadHRSLAReportPage() {
   const [range, setRange] = useState("current");
 
@@ -198,7 +210,7 @@ export default function HeadHRSLAReportPage() {
       const config = configMap.get(step);
       return {
         step,
-        label: fallbackLabel || row?.role || `Step ${step}`,
+        label: fallbackLabel || row?.role || `ขั้นตอน ${step}`,
         targetDays: config?.sla_days ?? 0,
         avgDays: Number(row?.median_days ?? 0),
         p90Days: Number(row?.p90_days ?? 0),
@@ -280,8 +292,7 @@ export default function HeadHRSLAReportPage() {
             รายงานตัวชี้วัดและกำหนดเวลา
           </h1>
           <p className="text-muted-foreground mt-1">
-            วิเคราะห์ประสิทธิภาพ (Efficiency) และคุณภาพ (Quality)
-            ของกระบวนการอนุมัติ
+            วิเคราะห์ประสิทธิภาพและคุณภาพของกระบวนการอนุมัติ
           </p>
         </div>
         <div>
@@ -310,7 +321,7 @@ export default function HeadHRSLAReportPage() {
           </div>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Activity className="w-4 h-4" /> ประสิทธิภาพรวม (Efficiency)
+              <Activity className="w-4 h-4" /> ประสิทธิภาพรวม
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -496,7 +507,7 @@ export default function HeadHRSLAReportPage() {
                         className="text-muted-foreground truncate max-w-[200px]"
                         title={row.category}
                       >
-                        {row.category}
+                        {mapErrorCategoryLabel(row.category)}
                       </span>
                       <div className="flex items-center gap-2">
                         <div className="w-24 h-2 bg-secondary rounded-full overflow-hidden">
@@ -628,7 +639,7 @@ export default function HeadHRSLAReportPage() {
         <CardHeader className="py-4 px-6 border-b bg-muted/10">
           <CardTitle className="text-lg font-semibold flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-destructive" />
-            รายการที่ต้องเร่งดำเนินการ (Critical List)
+            รายการที่ต้องเร่งดำเนินการ
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -705,13 +716,13 @@ export default function HeadHRSLAReportPage() {
           <div className="border-t px-4 py-2 bg-muted/20">
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
               <span>
-                Aging Backlog:{" "}
+                งานค้างตามช่วงอายุ:{" "}
                 {(backlogAging.buckets ?? [])
                   .map((b) => `${b.bucket}วัน(${b.count})`)
                   .join(" | ")}
               </span>
               <span className="flex items-center gap-1">
-                <Undo2 className="w-3 h-3" /> Closed w/o submit:{" "}
+                <Undo2 className="w-3 h-3" /> ปิดงานโดยไม่พบการส่งคำขอ:{" "}
                 {Number(dataQuality.closed_without_submit ?? 0)}
               </span>
             </div>
