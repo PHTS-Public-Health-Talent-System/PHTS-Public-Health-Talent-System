@@ -69,13 +69,25 @@ export const errorHandler = (
       requestId: req.requestId,
     });
   } else if (process.env.NODE_ENV !== "production") {
-    // Operational error in development - log for debugging
-    console.error("[ERROR]", {
-      message: normalizedError.message,
-      method: req.method,
-      path: req.originalUrl,
-      requestId: req.requestId,
-    });
+    const statusCode =
+      normalizedError instanceof AppError ? normalizedError.statusCode : 500;
+
+    // Avoid noisy logs for expected 4xx (especially frequent 404 from stale links).
+    if (statusCode >= 500) {
+      console.error("[ERROR]", {
+        message: normalizedError.message,
+        method: req.method,
+        path: req.originalUrl,
+        requestId: req.requestId,
+      });
+    } else if (statusCode !== 404) {
+      console.warn("[WARN]", {
+        message: normalizedError.message,
+        method: req.method,
+        path: req.originalUrl,
+        requestId: req.requestId,
+      });
+    }
   }
 
   // Determine status code

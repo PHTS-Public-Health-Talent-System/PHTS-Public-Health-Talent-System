@@ -1,7 +1,8 @@
 import rateLimit from "express-rate-limit";
 
+const isDevelopment = process.env.NODE_ENV === "development";
 const windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000);
-const max = Number(process.env.RATE_LIMIT_MAX || 300);
+const max = Number(process.env.RATE_LIMIT_MAX || (isDevelopment ? 1000 : 300));
 const authWindowMs = Number(
   process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000,
 );
@@ -10,11 +11,39 @@ const isRateLimitDisabled = () =>
   // Evaluate on each request so `.env.local` hot-reload/dev restarts always reflect latest flag.
   String(process.env.DEMO_DISABLE_RATE_LIMIT || "").toLowerCase() === "true";
 
+const firstHeaderValue = (value: string | string[] | undefined): string | null => {
+  if (Array.isArray(value)) return value[0]?.trim() || null;
+  if (typeof value === "string") return value.trim() || null;
+  return null;
+};
+
+const getClientKey = (req: { headers?: Record<string, string | string[] | undefined>; ip?: string }) => {
+  const cfIp = firstHeaderValue(req.headers?.["cf-connecting-ip"]);
+  if (cfIp) return `ip:${cfIp}`;
+
+  const realIp = firstHeaderValue(req.headers?.["x-real-ip"]);
+  if (realIp) return `ip:${realIp}`;
+
+  const forwarded = firstHeaderValue(req.headers?.["x-forwarded-for"]);
+  const forwardedIp = forwarded?.split(",")[0]?.trim();
+  if (forwardedIp) return `ip:${forwardedIp}`;
+
+  const ip = (req.ip || "").trim();
+  return `ip:${ip || "unknown"}`;
+};
+
+type RateLimitedRequest = {
+  rateLimit?: {
+    resetTime?: Date;
+  };
+};
+
 export const apiRateLimiter = rateLimit({
   windowMs,
   max,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => getClientKey(req),
   skip: (req) =>
     process.env.NODE_ENV === "test" ||
     isRateLimitDisabled() ||
@@ -30,12 +59,14 @@ export const authRateLimiter = rateLimit({
   max: authMax,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => getClientKey(req),
   skip: () => process.env.NODE_ENV === "test" || isRateLimitDisabled(),
   handler: (req, res) => {
+    const requestWithRateLimit = req as typeof req & RateLimitedRequest;
     const now = Date.now();
     const resetTime =
-      req.rateLimit?.resetTime instanceof Date
-        ? req.rateLimit.resetTime.getTime()
+      requestWithRateLimit.rateLimit?.resetTime instanceof Date
+        ? requestWithRateLimit.rateLimit.resetTime.getTime()
         : now + authWindowMs;
     const retryAfterSeconds = Math.max(1, Math.ceil((resetTime - now) / 1000));
     const retryAfterMinutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));

@@ -116,4 +116,23 @@ describe('rateLimiter', () => {
     expect(payload.retry_after_seconds).toBeGreaterThan(0);
     expect(payload.retry_after_minutes).toBeGreaterThan(0);
   });
+
+  it('uses forwarded headers for rate-limit key generation', async () => {
+    const { apiConfig, authConfig } = await getConfigs();
+
+    const reqFromCloudflare = {
+      headers: { 'cf-connecting-ip': '198.51.100.12' },
+      ip: '127.0.0.1',
+    } as any;
+    const reqFromForwardedFor = {
+      headers: { 'x-forwarded-for': '203.0.113.7, 10.0.0.2' },
+      ip: '127.0.0.1',
+    } as any;
+    const reqFallback = { headers: {}, ip: '127.0.0.1' } as any;
+
+    expect(apiConfig.keyGenerator(reqFromCloudflare)).toBe('ip:198.51.100.12');
+    expect(apiConfig.keyGenerator(reqFromForwardedFor)).toBe('ip:203.0.113.7');
+    expect(apiConfig.keyGenerator(reqFallback)).toBe('ip:127.0.0.1');
+    expect(authConfig.keyGenerator(reqFromCloudflare)).toBe('ip:198.51.100.12');
+  });
 });
