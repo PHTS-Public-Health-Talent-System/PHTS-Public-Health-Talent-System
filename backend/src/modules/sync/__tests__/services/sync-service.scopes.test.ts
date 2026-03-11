@@ -63,6 +63,18 @@ describe('buildScopesFromSpecialPosition', () => {
     });
   });
 
+  test('parses head prefixes with optional separator/spacing and normalizes dept label', async () => {
+    const mod = await loadModule();
+    const build = (mod as any).buildScopesFromSpecialPosition ?? null;
+
+    const result = build?.('หัวหน้ากลุ่มงานการเงิน; หัวหน้าตึก/หัวหน้างาน - ICU Neuro.');
+
+    expect(result).toEqual({
+      wardScopes: ['ICU Neuro.'],
+      deptScopes: ['กลุ่มงานการเงิน'],
+    });
+  });
+
   test('returns empty scopes for empty input', async () => {
     const mod = await loadModule();
     const build = (mod as any).buildScopesFromSpecialPosition ?? null;

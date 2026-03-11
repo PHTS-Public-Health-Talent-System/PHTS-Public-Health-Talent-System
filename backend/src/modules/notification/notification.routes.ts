@@ -23,6 +23,7 @@ router.get(
   notifCtrl.getMyNotifications,
 );
 router.put("/:id/read", validate(markReadSchema), notifCtrl.markRead);
+router.get("/unread-count", notifCtrl.getUnreadCount);
 router.delete(
   "/read",
   validate(deleteReadSchema),

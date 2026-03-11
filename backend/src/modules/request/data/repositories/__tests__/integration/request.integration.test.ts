@@ -154,9 +154,9 @@ describe("RequestRepository (integration)", () => {
       requestId = Number(reqRes.insertId);
       await conn.execute(
         `INSERT INTO req_approvals
-         (request_id, actor_id, action, created_at)
-         VALUES (?, ?, 'APPROVE', NOW())`,
-        [requestId, actorId],
+         (request_id, actor_id, step_no, action, created_at)
+         VALUES (?, ?, ?, 'APPROVE', NOW())`,
+        [requestId, actorId, 4],
       );
     } finally {
       await conn.end();

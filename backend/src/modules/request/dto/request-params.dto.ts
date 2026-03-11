@@ -13,6 +13,11 @@ const eligibilityAttachmentParam = z.object({
   attachmentId: z.string().regex(/^\d+$/, "attachmentId ต้องเป็นตัวเลข"),
 });
 
+const requestAttachmentParam = z.object({
+  id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
+  attachmentId: z.string().regex(/^\d+$/, "attachmentId ต้องเป็นตัวเลข"),
+});
+
 const idOrNoParam = z.object({
   id: z
     .string()
@@ -36,6 +41,10 @@ export const requestEligibilityIdParamSchema = z.object({
 
 export const requestEligibilityAttachmentParamSchema = z.object({
   params: eligibilityAttachmentParam,
+});
+
+export const requestAttachmentParamSchema = z.object({
+  params: requestAttachmentParam,
 });
 
 export const requestEligibilityQuerySchema = z.object({
@@ -158,25 +167,6 @@ export const requestReassignSchema = z.object({
     target_officer_id: z.coerce.number().int().positive(),
     remark: z.string().min(1).max(1000),
   }),
-});
-
-export const requestAdjustLeaveSchema = z.object({
-  params: idParam,
-  body: z
-    .object({
-      manual_start_date: z.string().min(1),
-      manual_end_date: z.string().min(1),
-      manual_duration_days: z.coerce.number().int().min(0),
-      remark: z.string().max(1000).optional(),
-    })
-    .refine(
-      (data) =>
-        new Date(data.manual_start_date) <= new Date(data.manual_end_date),
-      {
-        message: "manual_start_date must be before or equal to manual_end_date",
-        path: ["manual_end_date"],
-      },
-    ),
 });
 
 export const requestApproveBatchSchema = z.object({

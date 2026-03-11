@@ -1,13 +1,35 @@
 import { FileType } from '@/modules/request/contracts/request.types.js';
 import {
   OCR_QUEUE_KEY,
+  type OcrBatchResultItem,
   type OcrQueueJob,
 } from '@/modules/ocr/entities/ocr-precheck.entity.js';
 import { OcrHttpProvider } from '@/modules/ocr/providers/ocr-http.provider.js';
-import { runStoredFileOcrBatch } from '@/modules/ocr/services/ocr-batch-runner.service.js';
+import {
+  mergeOcrResultsByFileName,
+  runStoredFileOcrBatch,
+} from '@/modules/ocr/services/ocr-batch-runner.service.js';
 import { saveOcrPrecheck } from '@/modules/ocr/services/ocr-precheck-store.service.js';
 import { OcrRequestRepository } from '@/modules/ocr/repositories/ocr-request.repository.js';
 import redis from '@config/redis.js';
+
+const isFastFirstEnabled = (): boolean => process.env.OCR_FAST_FIRST !== 'false';
+
+const toArabicDigits = (value: string): string =>
+  value.replace(/[๐-๙]/g, (char) => String('๐๑๒๓๔๕๖๗๘๙'.indexOf(char)));
+
+const hasSuspiciousOrderNo = (markdown?: string): boolean => {
+  const normalized = toArabicDigits(String(markdown ?? ''));
+  return /(?:ที่|ที)\s*[0-9]{1,4}\s*\/\s*[0-9]{5,}/.test(normalized);
+};
+
+const shouldEnhanceWithPaddle = (item: OcrBatchResultItem): boolean =>
+  item.ok === true &&
+  item.suppressed !== true &&
+  (item.quality?.passed === false ||
+    ((item.engine_used ?? '').toLowerCase().includes('tesseract') &&
+      (/(พ\.ศ\.\s*(?:25[0-3]\d|๒๕[๐-๓][๐-๙]))/.test(String(item.markdown ?? '')) ||
+        hasSuspiciousOrderNo(item.markdown))));
 
 export const processRequestOcrPrecheck = async (requestId: number): Promise<void> => {
   const ocrBase = OcrHttpProvider.getServiceBase();
@@ -43,12 +65,20 @@ export const processRequestOcrPrecheck = async (requestId: number): Promise<void
       return;
     }
 
-    const summary = await runStoredFileOcrBatch(
-      candidates.map((attachment) => ({
+    const files = candidates.map((attachment) => ({
         file_name: attachment.file_name,
         file_path: attachment.file_path,
-      })),
+      }));
+    const fastFirstEnabled = isFastFirstEnabled();
+
+    const summary = await runStoredFileOcrBatch(
+      files,
       ocrBase,
+      fastFirstEnabled
+        ? {
+            disableFallbackChain: true,
+          }
+        : undefined,
     );
 
     await saveOcrPrecheck({ kind: 'request', id: requestId }, {
@@ -60,6 +90,60 @@ export const processRequestOcrPrecheck = async (requestId: number): Promise<void
       failed_count: summary.failed_count,
       results: summary.results,
     });
+
+    if (!fastFirstEnabled) {
+      return;
+    }
+
+    const paddleBase = OcrHttpProvider.getPaddleServiceBase();
+    if (!paddleBase || paddleBase === ocrBase) {
+      return;
+    }
+
+    const filePathByName = new Map<string, string>();
+    for (const file of files) {
+      const key = String(file.file_name ?? '').trim().toLowerCase();
+      if (!key) continue;
+      filePathByName.set(key, file.file_path);
+    }
+
+    const filesToEnhance = summary.results
+      .filter(shouldEnhanceWithPaddle)
+      .map((item) => {
+        const fileName = String(item.name ?? '').trim();
+        const filePath = filePathByName.get(fileName.toLowerCase());
+        if (!fileName || !filePath) return null;
+        return {
+          file_name: fileName,
+          file_path: filePath,
+        };
+      })
+      .filter((item): item is { file_name: string; file_path: string } => Boolean(item));
+
+    if (filesToEnhance.length === 0) {
+      return;
+    }
+
+    try {
+      const enhanced = await runStoredFileOcrBatch(filesToEnhance, paddleBase, {
+        disableFallbackChain: true,
+      });
+      const mergedResults = mergeOcrResultsByFileName(summary.results, enhanced.results);
+      const successCount = mergedResults.filter((item) => item.ok).length;
+      const failedCount = mergedResults.length - successCount;
+
+      await saveOcrPrecheck({ kind: 'request', id: requestId }, {
+        status: successCount > 0 ? 'completed' : 'failed',
+        finished_at: new Date().toISOString(),
+        service_url: summary.service_url,
+        count: mergedResults.length,
+        success_count: successCount,
+        failed_count: failedCount,
+        results: mergedResults,
+      });
+    } catch (error) {
+      console.error('[OCRQueue] paddle enhancement failed:', error);
+    }
   } catch (error) {
     await saveOcrPrecheck({ kind: 'request', id: requestId }, {
       status: 'failed',

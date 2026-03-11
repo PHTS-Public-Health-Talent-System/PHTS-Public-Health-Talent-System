@@ -34,7 +34,6 @@ jest.mock("@/modules/payroll/payroll.controller.js", () => ({
   getPeriodDetail: (_req: any, res: any) => res.json({ success: true, data: { period: {} } }),
   getPeriodPayouts: (_req: any, res: any) => res.json({ success: true, data: [] }),
   getPayoutDetail: (_req: any, res: any) => res.json({ success: true, data: {} }),
-  getPeriodReport: (_req: any, res: any) => res.status(200).send("pdf"),
   getPeriodStatus: jest.fn(),
   getPeriodLeaves: jest.fn(),
   getPeriodLeaveProfessionSummary: jest.fn(),
@@ -73,6 +72,5 @@ describe("payroll routes", () => {
     await request(app).get("/api/payroll/period/38").expect(200);
     await request(app).get("/api/payroll/period/38/payouts").expect(200);
     await request(app).get("/api/payroll/payout/1/detail").expect(200);
-    await request(app).get("/api/payroll/period/38/report").expect(200);
   });
 });

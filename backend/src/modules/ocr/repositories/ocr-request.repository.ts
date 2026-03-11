@@ -8,6 +8,30 @@ import type {
 } from '@/modules/ocr/entities/ocr-precheck.entity.js';
 
 export class OcrRequestRepository {
+  static async findStaleProcessingRequestIds(staleMinutes: number): Promise<number[]> {
+    const connection = await getConnection();
+    try {
+      const safeMinutes = Number.isFinite(staleMinutes) ? Math.max(1, Math.floor(staleMinutes)) : 30;
+      const [rows] = await connection.query<RowDataPacket[]>(
+        `
+          SELECT request_id
+          FROM req_ocr_prechecks
+          WHERE status = 'processing'
+            AND finished_at IS NULL
+            AND started_at IS NOT NULL
+            AND started_at < (NOW() - INTERVAL ? MINUTE)
+          ORDER BY started_at ASC
+        `,
+        [safeMinutes],
+      );
+      return rows
+        .map((row) => Number(row.request_id))
+        .filter((value) => Number.isInteger(value) && value > 0);
+    } finally {
+      connection.release();
+    }
+  }
+
   static async findRequestById(requestId: number) {
     return requestRepository.findById(requestId);
   }

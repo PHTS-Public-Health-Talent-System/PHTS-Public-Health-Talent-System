@@ -559,6 +559,25 @@ export class RequestController {
       res.json({ success: true, data: updated });
   });
 
+  removeRequestAttachment = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
+      const requestId = parseInt(req.params.id);
+      const attachmentId = Number(req.params.attachmentId);
+      if (!Number.isFinite(requestId) || !Number.isFinite(attachmentId)) {
+        throw new ValidationError("Invalid attachment identifier");
+      }
+
+      const updated = await requestCommandService.removeRequestAttachment(
+        requestId,
+        attachmentId,
+        req.user.userId,
+        req.user.role,
+      );
+
+      res.json({ success: true, data: updated, message: "ลบไฟล์แนบสำเร็จ" });
+  });
+
   createVerificationSnapshot = catchAsync(
     async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
@@ -662,26 +681,6 @@ export class RequestController {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
       const officers = await reassignService.getAvailableOfficers(req.user.userId);
       res.json({ success: true, data: officers });
-  });
-
-  adjustLeaveRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
-    if (!req.user) throw new AuthenticationError("Unauthorized");
-    const requestId = parseInt(req.params.id);
-    const { manual_start_date, manual_end_date, manual_duration_days, remark } = req.body;
-
-    // Use user ID and Role as editor identifier
-    const editorName = `User ${req.user.userId} (${req.user.role})`;
-
-    await requestCommandService.adjustLeaveRequest(
-        requestId,
-        manual_start_date,
-        manual_end_date,
-        manual_duration_days,
-        remark,
-        editorName
-    );
-
-    res.json({ success: true, message: "Leave request adjusted successfully" });
   });
 
   // --- OTHER ---

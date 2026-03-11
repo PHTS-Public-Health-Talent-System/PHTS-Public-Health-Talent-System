@@ -26,6 +26,7 @@ describe('WorkforceComplianceRepository movement listing and manual movement gua
     const [sql] = queryMock.mock.calls[0] ?? [];
     expect(sql).toContain("CASE WHEN m.source_movement_id IS NULL THEN 1 ELSE 0 END AS is_manual_entry");
     expect(sql).not.toContain("AND m.source_movement_id IS NULL");
+    expect(sql).toContain("COLLATE utf8mb4_unicode_ci");
   });
 
   test('updates only manual movement rows', async () => {

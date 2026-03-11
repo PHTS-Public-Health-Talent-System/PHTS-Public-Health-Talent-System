@@ -15,7 +15,10 @@ export const apiRateLimiter = rateLimit({
   max,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => process.env.NODE_ENV === "test" || isRateLimitDisabled(),
+  skip: (req) =>
+    process.env.NODE_ENV === "test" ||
+    isRateLimitDisabled() ||
+    String(req.path ?? "").startsWith("/auth"),
   message: {
     success: false,
     error: "Too many requests, please try again later.",
@@ -28,8 +31,22 @@ export const authRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => process.env.NODE_ENV === "test" || isRateLimitDisabled(),
-  message: {
-    success: false,
-    error: "Too many login attempts, please try again later.",
+  handler: (req, res) => {
+    const now = Date.now();
+    const resetTime =
+      req.rateLimit?.resetTime instanceof Date
+        ? req.rateLimit.resetTime.getTime()
+        : now + authWindowMs;
+    const retryAfterSeconds = Math.max(1, Math.ceil((resetTime - now) / 1000));
+    const retryAfterMinutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
+    res.setHeader("Retry-After", String(retryAfterSeconds));
+    res.status(429).json({
+      success: false,
+      code: "AUTH_RATE_LIMIT_EXCEEDED",
+      error: "Too many login attempts, please try again later.",
+      message: `Too many login attempts. Please try again in about ${retryAfterMinutes} minute(s).`,
+      retry_after_seconds: retryAfterSeconds,
+      retry_after_minutes: retryAfterMinutes,
+    });
   },
 });

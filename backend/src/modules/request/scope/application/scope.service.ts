@@ -350,7 +350,7 @@ function normalizeScopeValue(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
 
-function resolveMemberRoleForScope(
+export function resolveMemberRoleForScope(
   scope: DisplayScope,
   memberDepartment: string | null,
   memberSubDepartment: string | null,
@@ -388,6 +388,7 @@ function resolveMemberRoleForScope(
 
   if (scope.type === "DEPT") {
     if (hasDeptScopeForCurrentScope) return "DEPT_SCOPE";
+    if (hasWardScopeForCurrentScope) return "WARD_SCOPE";
     if (hasWardScope) return "WARD_SCOPE";
     if (hasDeptScope) return "DEPT_SCOPE";
     return "USER";
@@ -417,7 +418,7 @@ function mapUserRoleToThaiLabel(role: string | null): string {
     case "DEPT_SCOPE":
       return "หัวหน้ากลุ่มงาน";
     case "HEAD_SCOPE":
-      return "หัวหน้าหน่วยงาน";
+      return "หัวหน้างาน";
     case "USER":
       return "ผู้ใช้งานทั่วไป";
     default:

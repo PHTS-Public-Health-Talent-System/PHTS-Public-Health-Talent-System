@@ -12,7 +12,6 @@ import type {
   CreatePeriodDto,
   CalculatePeriodDto,
 } from "@/modules/payroll/dto/index.js";
-import { buildPeriodReport } from "@/modules/payroll/report/payroll-report.service.js";
 
 const getCurrentRole = (req: Request): string | null => {
   return ((req.user as any)?.role as string | undefined) ?? null;
@@ -663,52 +662,6 @@ export const searchPayouts = async (req: Request, res: Response) => {
     res.json({ success: true, data: rows });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-export const getPeriodReport = async (req: Request, res: Response) => {
-  try {
-    const { periodId } = req.params;
-    await PayrollService.ensurePeriodVisibleForRole(
-      Number(periodId),
-      getCurrentRole(req),
-    );
-    const buffer = await buildPeriodReport(Number(periodId));
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="period-${periodId}-report.pdf"`,
-    );
-    res.send(buffer);
-  } catch (error: any) {
-    const message = error?.message || "เกิดข้อผิดพลาดในการสร้างรายงาน";
-    if (message === "Period not found") {
-      res.status(404).json({ success: false, error: message });
-      return;
-    }
-    if (message === "Forbidden period access") {
-      res
-        .status(403)
-        .json({
-          success: false,
-          error: "You do not have permission to view this period",
-        });
-      return;
-    }
-    if (
-      message === "SNAPSHOT_NOT_READY" ||
-      message === "Report is available only for closed and frozen periods" ||
-      message === "Report requires frozen snapshot" ||
-      message === "Snapshot not found for frozen period"
-    ) {
-      res.status(409).json({
-        success: false,
-        error: "Snapshot is not ready for this period",
-        data: { code: "SNAPSHOT_NOT_READY" },
-      });
-      return;
-    }
-    res.status(500).json({ success: false, error: message });
   }
 };
 

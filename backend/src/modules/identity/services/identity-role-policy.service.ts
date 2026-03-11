@@ -54,12 +54,11 @@ function isAssistant(position: string): boolean {
   return includesAny(position, ASSISTANT_TOKENS);
 }
 
-function isHeadWard(position: string): boolean {
-  return position.includes("หัวหน้าตึก") && !isAssistant(position);
-}
-
-function isHeadDept(position: string): boolean {
-  return includesAny(position, DEPT_SCOPE_TOKENS) && !isAssistant(position);
+function splitSpecialPositions(raw: string): string[] {
+  return raw
+    .split(/[;,]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 export function normalizeText(value?: string | null): string {
@@ -68,10 +67,18 @@ export function normalizeText(value?: string | null): string {
 
 function deriveRole(row: HrUserRow): string {
   const specialPosition = normalizeText(row.special_position);
+  const entries = splitSpecialPositions(specialPosition);
 
   // Auto role assignment supports DEPT_SCOPE + WARD_SCOPE.
-  if (isHeadDept(specialPosition)) return UserRole.DEPT_SCOPE;
-  if (isHeadWard(specialPosition)) return UserRole.WARD_SCOPE;
+  const hasHeadDept = entries.some(
+    (entry) => includesAny(entry, DEPT_SCOPE_TOKENS) && !isAssistant(entry),
+  );
+  if (hasHeadDept) return UserRole.DEPT_SCOPE;
+
+  const hasHeadWard = entries.some(
+    (entry) => entry.includes("หัวหน้าตึก") && !isAssistant(entry),
+  );
+  if (hasHeadWard) return UserRole.WARD_SCOPE;
 
   // All non-head roles stay USER and must be set manually when needed.
   return UserRole.USER;

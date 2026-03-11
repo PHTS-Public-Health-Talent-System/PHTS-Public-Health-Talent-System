@@ -55,7 +55,9 @@ export class AnnouncementService {
               type,
             ),
           ),
-        );
+        ).catch((error) => {
+          console.error('[Notification] enqueue failed after announcement create:', error);
+        });
       }
 
       return announcementId;
@@ -127,7 +129,9 @@ export class AnnouncementService {
         roles.map((role) =>
           NotificationService.notifyRole(role, "ประกาศใหม่", "มีประกาศใหม่ในระบบ", "/dashboard", type),
         ),
-      );
+      ).catch((error) => {
+        console.error('[Notification] enqueue failed after announcement activation:', error);
+      });
     }
   }
 }

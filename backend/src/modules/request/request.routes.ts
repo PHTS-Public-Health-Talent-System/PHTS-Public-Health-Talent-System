@@ -15,7 +15,7 @@ import { validate } from '@shared/validate.middleware.js';
 import { actionSchema, verificationSchema } from '@/modules/request/dto/update-status.dto.js'; // Use correct DTO file
 import { verificationSnapshotSchema } from '@/modules/request/dto/verification-snapshot.dto.js';
 import {
-  requestAdjustLeaveSchema,
+  requestAttachmentParamSchema,
   requestEligibilityAttachmentParamSchema,
   requestEligibilityAttachmentOcrSchema,
   requestEligibilityOcrClearSchema,
@@ -281,6 +281,12 @@ router.put(
   requestController.updateRequest,
 );
 
+router.delete(
+  "/:id/attachments/:attachmentId",
+  validate(requestAttachmentParamSchema),
+  requestController.removeRequestAttachment,
+);
+
 // Update verification checks (qualification/evidence)
 router.put(
   "/:id/verification",
@@ -390,12 +396,5 @@ router.post(
 
 // Get reassignment history for a request
 router.get("/:id/reassign-history", validate(requestIdParamSchema), requestController.getReassignHistory);
-// Adjust leave details (PTS_OFFICER only)
-router.put(
-  "/:id/adjust-leave",
-  restrictTo(UserRole.PTS_OFFICER),
-  validate(requestAdjustLeaveSchema),
-  requestController.adjustLeaveRequest,
-);
 
 export default router;

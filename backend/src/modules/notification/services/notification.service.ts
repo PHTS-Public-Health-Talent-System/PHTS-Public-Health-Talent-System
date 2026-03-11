@@ -11,6 +11,7 @@ import {
   NotificationType,
   NotificationWithCount,
   NotificationSettings,
+  normalizeNotificationType,
 } from '@/modules/notification/entities/notification.entity.js';
 import {
   NotificationTemplateKey,
@@ -26,11 +27,10 @@ export class NotificationService {
     title: string,
     message: string,
     link = "#",
-    type = "SYSTEM",
+    type: NotificationType | string = NotificationType.SYSTEM,
     connection?: PoolConnection,
   ): Promise<number> {
-    const notificationType =
-      (type as NotificationType) || NotificationType.SYSTEM;
+    const notificationType = normalizeNotificationType(type);
     return NotificationOutboxService.enqueue(
       {
         kind: "USER",
@@ -52,9 +52,10 @@ export class NotificationService {
     title: string,
     message: string,
     link = "#",
-    type = NotificationType.SYSTEM,
+    type: NotificationType | string = NotificationType.SYSTEM,
     connection?: PoolConnection,
   ): Promise<number> {
+    const notificationType = normalizeNotificationType(type);
     return NotificationOutboxService.enqueue(
       {
         kind: "ROLE",
@@ -62,7 +63,7 @@ export class NotificationService {
         title,
         message,
         link,
-        type,
+        type: notificationType,
       },
       connection,
     );

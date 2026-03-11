@@ -158,4 +158,93 @@ export class NotificationOutboxRepository {
   static async getConnection(): Promise<PoolConnection> {
     return db.getConnection();
   }
+
+  static async findOutboxRows(params: {
+    page: number;
+    limit: number;
+    status?: "PENDING" | "PROCESSING" | "FAILED" | "SENT" | "DEAD_LETTER";
+    maxAttempts: number;
+  }): Promise<{ rows: NotificationOutboxRecord[]; total: number; page: number; limit: number }> {
+    const safePage = Math.max(1, Math.floor(params.page || 1));
+    const safeLimit = Math.max(1, Math.min(Math.floor(params.limit || 10), 100));
+    const safeOffset = (safePage - 1) * safeLimit;
+    const safeMaxAttempts = Math.max(1, Math.floor(params.maxAttempts));
+
+    let whereSql = "";
+    const whereValues: Array<string | number> = [];
+    if (params.status) {
+      if (params.status === "DEAD_LETTER") {
+        whereSql = "WHERE status = 'FAILED' AND attempts >= ?";
+        whereValues.push(safeMaxAttempts);
+      } else {
+        whereSql = "WHERE status = ?";
+        whereValues.push(params.status);
+      }
+    }
+
+    const [countRows] = await db.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS count
+       FROM ntf_outbox
+       ${whereSql}`,
+      whereValues,
+    );
+    const total = Number((countRows[0] as any)?.count ?? 0);
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT outbox_id, payload, status, attempts, last_error, available_at, created_at, processed_at
+       FROM ntf_outbox
+       ${whereSql}
+       ORDER BY created_at DESC
+       LIMIT ${safeLimit}
+       OFFSET ${safeOffset}`,
+      whereValues,
+    );
+
+    return {
+      rows: rows.map((row: any) => ({
+        outbox_id: row.outbox_id,
+        payload: this.parsePayload(row.payload),
+        status: row.status as NotificationOutboxStatus,
+        attempts: Number(row.attempts || 0),
+        last_error: row.last_error ?? null,
+        available_at: row.available_at,
+        created_at: row.created_at,
+        processed_at: row.processed_at ?? null,
+      })),
+      total,
+      page: safePage,
+      limit: safeLimit,
+    };
+  }
+
+  static async retryOutboxRow(outboxId: number): Promise<boolean> {
+    const [result] = await db.execute<ResultSetHeader>(
+      `UPDATE ntf_outbox
+       SET status = 'PENDING',
+           attempts = 0,
+           available_at = NOW(),
+           processed_at = NULL,
+           last_error = NULL
+       WHERE outbox_id = ?
+         AND status = 'FAILED'`,
+      [outboxId],
+    );
+    return Number(result.affectedRows ?? 0) > 0;
+  }
+
+  static async retryDeadLetterRows(maxAttempts: number): Promise<number> {
+    const safeMaxAttempts = Math.max(1, Math.floor(maxAttempts));
+    const [result] = await db.execute<ResultSetHeader>(
+      `UPDATE ntf_outbox
+       SET status = 'PENDING',
+           attempts = 0,
+           available_at = NOW(),
+           processed_at = NULL,
+           last_error = NULL
+       WHERE status = 'FAILED'
+         AND attempts >= ?`,
+      [safeMaxAttempts],
+    );
+    return Number(result.affectedRows ?? 0);
+  }
 }

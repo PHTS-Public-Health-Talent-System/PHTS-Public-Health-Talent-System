@@ -165,10 +165,17 @@ export class OcrHttpProvider {
     return getOcrServiceBase();
   }
 
+  static getPaddleServiceBase(): string {
+    return getPaddleServiceBase();
+  }
+
   static async processSingleFile(
     fileName: string,
     fileBuffer: Buffer,
     ocrBase: string,
+    options?: {
+      disableFallbackChain?: boolean;
+    },
   ): Promise<OcrBatchResultItem> {
     const effectiveOcrBase = ocrBase?.trim() ? ocrBase.trim() : getOcrServiceBase();
     const timeoutMs = getPerFileTimeoutMs();
@@ -180,6 +187,7 @@ export class OcrHttpProvider {
     const fallbackBases = [paddleBase, typhoonBase].filter(
       (base): base is string => Boolean(base) && base !== normalizedPrimaryBase,
     );
+    const disableFallbackChain = options?.disableFallbackChain === true;
 
     try {
       const primaryResult = await callOcrWithRetry(
@@ -189,6 +197,10 @@ export class OcrHttpProvider {
         timeoutMs,
         retryCount,
       );
+
+      if (disableFallbackChain) {
+        return { ...primaryResult, fallback_used: primaryResult.fallback_used ?? false };
+      }
 
       let currentResult = primaryResult;
       let fallbackUsed = false;

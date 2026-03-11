@@ -76,3 +76,21 @@ export const retrySnapshotOutboxSchema = z.object({
 });
 
 export type RetrySnapshotOutboxParams = z.infer<typeof retrySnapshotOutboxSchema>["params"];
+
+export const getNotificationOutboxSchema = z.object({
+  query: z.object({
+    page: z.string().regex(/^\d+$/, "page ต้องเป็นตัวเลข").optional().default("1"),
+    limit: z.string().regex(/^\d+$/, "limit ต้องเป็นตัวเลข").optional().default("10"),
+    status: z.enum(["PENDING", "PROCESSING", "FAILED", "SENT", "DEAD_LETTER"]).optional(),
+  }),
+});
+
+export type GetNotificationOutboxQuery = z.infer<typeof getNotificationOutboxSchema>["query"];
+
+export const retryNotificationOutboxSchema = z.object({
+  params: z.object({
+    outboxId: z.string().regex(/^\d+$/, "outboxId ต้องเป็นตัวเลข"),
+  }),
+});
+
+export type RetryNotificationOutboxParams = z.infer<typeof retryNotificationOutboxSchema>["params"];

@@ -33,7 +33,7 @@ describe('buildUserDashboard', () => {
     expect(result.stats.approved).toBe(1);
     expect(result.stats.unread).toBe(4);
     expect(result.stats.total_trend).toBe('0 เดือนนี้');
-    expect(result.stats.pending_trend).toBe('Step 1, Step 2');
+    expect(result.stats.pending_trend).toBe('รอหัวหน้าตึก/หัวหน้างาน, รอหัวหน้ากลุ่มงาน');
     expect(result.stats.approved_trend).toBe('อนุมัติแล้ว 1 รายการ');
     expect(result.stats.unread_trend).toBe('วันนี้ 2 รายการ');
   });
@@ -87,6 +87,6 @@ describe('buildUserDashboard', () => {
     expect(result.announcements).toHaveLength(3);
     expect(result.announcements[0].title).toBe('D');
     expect(result.stats.total_trend).toBe('+2 เดือนนี้');
-    expect(result.stats.pending_trend).toBe('Step 1, Step 2');
+    expect(result.stats.pending_trend).toBe('รอหัวหน้าตึก/หัวหน้างาน, รอหัวหน้ากลุ่มงาน');
   });
 });

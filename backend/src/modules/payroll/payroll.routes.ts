@@ -19,7 +19,6 @@ import {
   getPayoutDetail,
   getPeriodReviewProgress,
   getPeriodSummaryByProfession,
-  getPeriodReport,
   listPeriods,
   deletePeriod,
   removePeriodItem,
@@ -163,19 +162,6 @@ router.delete(
   restrictTo(UserRole.PTS_OFFICER),
   validate(periodIdParamSchema),
   deletePeriod,
-);
-router.get(
-  "/period/:periodId/report",
-  protect,
-  restrictTo(
-    UserRole.PTS_OFFICER,
-    UserRole.HEAD_HR,
-    UserRole.HEAD_FINANCE,
-    UserRole.FINANCE_OFFICER,
-    UserRole.DIRECTOR,
-  ),
-  validate(periodIdParamSchema),
-  getPeriodReport,
 );
 router.get(
   "/period/:periodId/summary-by-profession",

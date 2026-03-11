@@ -162,6 +162,39 @@ const parseLicenseFields = (_markdown: string, lines: string[]): Record<string, 
 };
 
 const parseAssignmentOrderFields = (markdown: string, lines: string[]): Record<string, unknown> => {
+  const extractOrdinal = (line: string): number | null => {
+    const match = normalizeWhitespace(line).match(/^([0-9๑๒๓๔๕๖๗๘๙]+)\.\s+/);
+    if (!match?.[1]) return null;
+    const parsed = Number(normalizeThaiDigits(match[1]));
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return Math.floor(parsed);
+  };
+
+  const hasSkippedDutyOrdinal = (): boolean => {
+    const dutyAnchorIndex = lines.findIndex((line) => /โดยมีหน้าที่/.test(line));
+    if (dutyAnchorIndex < 0) return false;
+
+    let lastOrdinal: number | null = null;
+    for (let i = dutyAnchorIndex + 1; i < lines.length; i += 1) {
+      const line = normalizeWhitespace(lines[i] || '');
+      if (!line) continue;
+      if (/^[0-9๑๒๓๔๕๖๗๘๙]+\.\s*งาน/.test(line) && lastOrdinal !== null) {
+        break;
+      }
+
+      const ordinal = extractOrdinal(line);
+      if (ordinal === null) continue;
+      if (lastOrdinal !== null && ordinal > lastOrdinal + 1) {
+        return true;
+      }
+      if (lastOrdinal !== null && ordinal <= lastOrdinal) {
+        break;
+      }
+      lastOrdinal = ordinal;
+    }
+    return false;
+  };
+
   const personLine =
     lines.find((line) =>
       /^[0-9๑๒๓๔๕๖๗๘๙]+\.[0-9๑๒๓๔๕๖๗๘๙]+(?:\.[0-9๑๒๓๔๕๖๗๘๙]+)*\s+/.test(line),
@@ -173,6 +206,7 @@ const parseAssignmentOrderFields = (markdown: string, lines: string[]): Record<s
     subject: extractFirst(markdown, [/เรื่อง\s+([^\n]+)/]),
     person_name: personLine,
     section_title: sectionTitle,
+    duty_sequence_valid: !hasSkippedDutyOrdinal(),
   };
 };
 
@@ -213,6 +247,10 @@ export const evaluateOcrFields = (
     const value = fields[key];
     return value === null || value === undefined || String(value).trim() === '';
   });
+
+  if (fields.duty_sequence_valid === false && !missing_fields.includes('duty_sequence')) {
+    missing_fields.push('duty_sequence');
+  }
 
   return {
     missing_fields,

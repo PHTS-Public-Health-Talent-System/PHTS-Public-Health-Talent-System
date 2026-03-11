@@ -360,10 +360,13 @@ export async function resetRequestSchema(): Promise<void> {
 
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS req_approvals (
-        approval_id INT AUTO_INCREMENT PRIMARY KEY,
+        action_id INT AUTO_INCREMENT PRIMARY KEY,
         request_id INT NOT NULL,
         actor_id INT NOT NULL,
-        action VARCHAR(20) NOT NULL,
+        step_no INT NOT NULL,
+        action VARCHAR(30) NOT NULL,
+        comment TEXT NULL,
+        signature_snapshot LONGBLOB NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);

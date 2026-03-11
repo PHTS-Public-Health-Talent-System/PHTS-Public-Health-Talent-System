@@ -78,6 +78,55 @@ const envOrigins = (process.env.FRONTEND_URL || '')
 
 const defaultOrigins = ['http://localhost:3000'];
 const allowedOrigins = [...new Set([...envOrigins, ...defaultOrigins])];
+const defaultTunnelSuffixes = ['.ngrok-free.app', '.ngrok.app', '.trycloudflare.com'];
+const devTunnelAllowedSuffixes = (process.env.CORS_DEV_TUNNEL_SUFFIXES || defaultTunnelSuffixes.join(','))
+  .split(',')
+  .map((suffix) => suffix.trim().toLowerCase())
+  .filter(Boolean)
+  .map((suffix) => (suffix.startsWith('.') ? suffix : `.${suffix}`));
+
+const isOriginAllowed = (origin: string): boolean => {
+  const normalizedOrigin = origin.trim();
+  if (!normalizedOrigin) return true;
+
+  let originUrl: URL;
+  try {
+    originUrl = new URL(normalizedOrigin);
+  } catch {
+    return false;
+  }
+
+  if (NODE_ENV !== 'production') {
+    if (devTunnelAllowedSuffixes.some((suffix) => originUrl.hostname.toLowerCase().endsWith(suffix))) {
+      return true;
+    }
+  }
+
+  return allowedOrigins.some((allowed) => {
+    const rule = allowed.trim();
+    if (!rule) return false;
+
+    if (rule === normalizedOrigin || normalizedOrigin.startsWith(`${rule}/`)) {
+      return true;
+    }
+
+    if (rule.startsWith('*.')) {
+      const domain = rule.slice(2);
+      return originUrl.hostname === domain || originUrl.hostname.endsWith(`.${domain}`);
+    }
+
+    try {
+      const allowedUrl = new URL(rule);
+      return (
+        allowedUrl.protocol === originUrl.protocol &&
+        allowedUrl.hostname === originUrl.hostname &&
+        allowedUrl.port === originUrl.port
+      );
+    } catch {
+      return false;
+    }
+  });
+};
 
 /**
  * Security Middleware
@@ -98,9 +147,7 @@ app.use(
 app.use(
   cors({
     origin: (origin, callback) => {
-      const isAllowed =
-        !origin ||
-        allowedOrigins.some((allowed) => origin === allowed || origin.startsWith(`${allowed}/`));
+      const isAllowed = !origin || isOriginAllowed(origin);
 
       if (isAllowed) {
         return callback(null, true);

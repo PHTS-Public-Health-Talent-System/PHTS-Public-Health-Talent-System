@@ -61,6 +61,31 @@ describe('ocr gateway analysis', () => {
     });
   });
 
+  test('flags assignment order with skipped duty ordinal as low quality', () => {
+    const enriched = enrichOcrBatchResult({
+      name: 'page-5-6.pdf',
+      ok: true,
+      markdown: `
+คำสั่งกลุ่มงานเภสัชกรรม
+ที่ 1/568
+เรื่อง ยกเลิกและมอบหมายเจ้าหน้าที่รับผิดชอบในการปฏิบัติงาน
+๑. งานเตรียมหรือผลิตยาเคมีบำบัดและการบริบาลเภสัชกรรมผู้ป่วยที่ได้รับยาเคมีบำบัด
+๑.๒ นางสาวจริยา ใจใหญ่
+โดยมีหน้าที่ ดังนี้
+๑. ตรวจสอบวิเคราะห์คำสั่งการใช้ยาเคมีบำบัด
+๒. คำนวณขนาดยา ปริมาณยา และเตรียมยาให้พร้อมใช้
+๓. ให้การบริบาลเภสัชกรรมผู้ป่วยที่ได้รับยาเคมีบำบัด
+๕. ปฏิบัติงาน อื่น ๆ ตามที่ได้รับมอบหมาย
+๒. งานบริบาลเภสัชกรรมผู้ป่วย HIV ในคลินิกเฉพาะโรค
+      `,
+    });
+
+    expect(enriched.document_kind).toBe('assignment_order');
+    expect(enriched.missing_fields).toEqual(expect.arrayContaining(['duty_sequence']));
+    expect(enriched.fallback_reason).toBe('missing_required_fields');
+    expect(enriched.quality?.passed).toBe(false);
+  });
+
   test('classifies license documents from OCR text', () => {
     expect(
       classifyOcrDocument({

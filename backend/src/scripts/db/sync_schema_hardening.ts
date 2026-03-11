@@ -45,8 +45,8 @@ const PHASE1_INDEXES: IndexSpec[] = [
   },
   {
     table: "hrms_data_issues",
-    name: "idx_hrms_data_issues_code_batch_view",
-    columns: ["issue_code", "batch_id", "target_view"],
+    name: "idx_hrms_data_issues_code_batch_table",
+    columns: ["issue_code", "batch_id", "target_table"],
   },
   {
     table: "user_sync_state_audits",
@@ -201,7 +201,7 @@ const ensurePhase1 = async (conn: PoolConnection): Promise<void> => {
     await conn.query(`
       ALTER TABLE hrms_data_issues
       ADD CONSTRAINT ux_hrms_data_issues_active_key
-      UNIQUE (target_view, source_key, issue_code)
+      UNIQUE (target_table, source_key, issue_code)
     `);
     console.log("  - add unique ux_hrms_data_issues_active_key");
   } else {

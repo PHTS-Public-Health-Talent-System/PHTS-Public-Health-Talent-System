@@ -119,6 +119,7 @@ export const buildApproverDashboard = (params: {
 
   const pendingItems = pendingRequests.slice(0, 4).map((request) => {
     const submission = parseSubmission(request.submission_data) as {
+      title?: string;
       first_name?: string;
       last_name?: string;
       position_name?: string;
@@ -126,7 +127,7 @@ export const buildApproverDashboard = (params: {
       sub_department?: string;
     };
     const name =
-      `${submission.first_name ?? ""} ${submission.last_name ?? ""}`.trim() ||
+      `${submission.title ?? ""} ${submission.first_name ?? ""} ${submission.last_name ?? ""}`.trim() ||
       "-";
     const position = submission.position_name ?? "-";
     const department =

@@ -202,7 +202,6 @@ function countWardMatches(
 
     if (
       scopeType === "DEPT" &&
-      !requestSubDept &&
       scopeMatches(scope, requestDept)
     ) {
       dept += 1;

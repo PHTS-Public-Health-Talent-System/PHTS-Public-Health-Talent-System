@@ -4,7 +4,7 @@
  * Core request tables: req_submissions, req_approvals, req_attachments
  * Related tables: req_eligibility
  * External tables (read-only joins): users, emp_profiles, emp_support_staff,
- *   sig_images, cfg_payment_rates, legacy cfg_classification_rules, leave_records
+ *   sig_images, cfg_payment_rates, legacy cfg_classification_rules
  */
 
 // ─── req_submissions ─────────────────────────────────────────────────────────
@@ -113,18 +113,3 @@ export interface PaymentRateEntity {
 }
 
 // ClassificationRuleEntity removed
-
-// ─── leave_records (read-only, for adjustments) ──────────────────────────────
-
-export interface LeaveRecordEntity {
-  id: number;
-  citizen_id: string;
-  leave_type: string;
-  start_date: Date;
-  end_date: Date;
-  manual_start_date: string | null;
-  manual_end_date: string | null;
-  manual_duration_days: number | null;
-  is_adjusted: boolean;
-  remark: string | null;
-}

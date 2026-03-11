@@ -16,6 +16,27 @@ export enum NotificationType {
   OTHER = "OTHER",
 }
 
+const LEGACY_NOTIFICATION_TYPE_MAP: Record<string, NotificationType> = {
+  INFO: NotificationType.SYSTEM,
+  SUCCESS: NotificationType.PAYMENT,
+  WARNING: NotificationType.REMINDER,
+  ERROR: NotificationType.OTHER,
+  SLA_REMINDER: NotificationType.REMINDER,
+};
+
+export const normalizeNotificationType = (
+  raw: unknown,
+  fallback: NotificationType = NotificationType.SYSTEM,
+): NotificationType => {
+  if (typeof raw !== "string") return fallback;
+  const candidate = raw.trim().toUpperCase();
+  if (!candidate) return fallback;
+  if (Object.values(NotificationType).includes(candidate as NotificationType)) {
+    return candidate as NotificationType;
+  }
+  return LEGACY_NOTIFICATION_TYPE_MAP[candidate] ?? fallback;
+};
+
 // ─── ntf_messages table ───────────────────────────────────────────────────────
 
 export interface Notification {

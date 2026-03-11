@@ -20,5 +20,7 @@ describe("eligibility alert enrichment sql", () => {
     expect(sql).toContain("FROM emp_retirements");
     expect(sql).toContain("FROM emp_movements");
     expect(sql).toContain("INTERVAL 90 DAY");
+    expect(sql).toContain("COLLATE utf8mb4_unicode_ci");
+    expect(sql).toContain("CAST(citizen_id AS CHAR CHARACTER SET utf8mb4)");
   });
 });

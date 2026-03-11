@@ -126,7 +126,9 @@ export async function reassignRequest(
       `คำขอเลขที่ ${requestEntity.request_no} ถูกโอนมาให้คุณดูแล`,
       getRequestLinkForRole('PTS_OFFICER', requestId),
       'INFO',
-    );
+    ).catch((error) => {
+      console.error('[Notification] enqueue failed after reassign:', error);
+    });
 
     return {
       requestId,

@@ -1734,38 +1734,6 @@ export class RequestRepository {
     ]);
   }
 
-  // [NEW] Update Leave Adjustment
-  async updateLeaveAdjustment(
-    leaveRecordId: number,
-    data: {
-      manual_start_date: string;
-      manual_end_date: string;
-      manual_duration_days: number;
-      remark: string;
-    },
-    connection?: PoolConnection,
-  ): Promise<void> {
-    const db = this.getDb(connection);
-    await db.execute(
-      `INSERT INTO leave_record_extensions (
-        leave_record_id,
-        document_start_date,
-        document_end_date,
-        note
-      ) VALUES (?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        document_start_date = VALUES(document_start_date),
-        document_end_date = VALUES(document_end_date),
-        note = VALUES(note)`,
-      [
-        leaveRecordId,
-        data.manual_start_date,
-        data.manual_end_date,
-        data.remark,
-      ],
-    );
-  }
-
   // --- REASSIGN Operations ---
 
   async findAvailableOfficers(

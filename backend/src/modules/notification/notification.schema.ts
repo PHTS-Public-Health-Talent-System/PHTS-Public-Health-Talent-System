@@ -3,7 +3,7 @@ import { z } from "zod";
 // GET /notifications
 export const listNotificationsSchema = z.object({
   query: z.object({
-    limit: z.coerce.number().int().min(1).max(200).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
   }),
 });
 

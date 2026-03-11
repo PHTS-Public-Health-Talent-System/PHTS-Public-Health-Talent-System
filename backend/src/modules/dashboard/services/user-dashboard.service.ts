@@ -141,6 +141,13 @@ const mapPriority = (priority?: string | null): "high" | "normal" | "low" => {
 const getPrimaryDate = (request: RequestWithDetails) =>
   request.created_at || request.updated_at || request.effective_date || "";
 
+const formatPendingStepsTrend = (steps: number[]): string | undefined => {
+  if (steps.length === 0) return undefined;
+  const labels = steps.map((step) => getPendingStepLabel(step));
+  if (labels.length <= 2) return labels.join(", ");
+  return `${labels.slice(0, 2).join(", ")} และอีก ${labels.length - 2} ขั้นตอน`;
+};
+
 export const buildUserDashboard = (params: {
   requests: RequestWithDetails[];
   unreadCount: number;
@@ -175,10 +182,7 @@ export const buildUserDashboard = (params: {
     );
   }).length;
   const totalTrend = `${totalThisMonth > 0 ? "+" : ""}${totalThisMonth} เดือนนี้`;
-  const pendingTrend =
-    pendingSteps.length > 0
-      ? pendingSteps.map((step) => `Step ${step}`).join(", ")
-      : undefined;
+  const pendingTrend = formatPendingStepsTrend(pendingSteps);
   const approvedTrend = `อนุมัติแล้ว ${approvedCount} รายการ`;
   const unreadTrend = `วันนี้ ${unreadToday} รายการ`;
 

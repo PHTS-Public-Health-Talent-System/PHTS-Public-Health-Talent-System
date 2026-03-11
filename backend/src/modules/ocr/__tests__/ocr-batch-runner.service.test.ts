@@ -43,28 +43,141 @@ describe('ocr batch runner service', () => {
         { name: 'b.pdf', ok: false, error: 'bad' },
       ],
     });
+
+    expect(OcrHttpProvider.processSingleFile).toHaveBeenNthCalledWith(
+      1,
+      'a.pdf',
+      expect.any(Buffer),
+      'local-tesseract',
+      undefined,
+    );
   });
 
-  it('merges OCR results by normalized file name and prefers incoming results', async () => {
+  it('merges OCR results by normalized file name and keeps existing when incoming is not clearly better', async () => {
     const { mergeOcrResultsByFileName } = await import(
       '@/modules/ocr/services/ocr-batch-runner.service.js'
     );
 
     const result = mergeOcrResultsByFileName(
       [
-        { name: ' Memo.PDF ', ok: true, markdown: 'old' },
+        { name: ' Memo.PDF ', ok: true, markdown: 'old primary markdown with enough text' },
         { name: 'order.pdf', ok: true, markdown: 'stay' },
       ],
       [
-        { name: 'memo.pdf', ok: true, markdown: 'new' },
+        { name: 'memo.pdf', ok: true, markdown: 'short incoming' },
         { name: 'fresh.pdf', ok: true, markdown: 'fresh' },
       ],
     );
 
     expect(result).toEqual([
-      { name: 'memo.pdf', ok: true, markdown: 'new' },
+      { name: ' Memo.PDF ', ok: true, markdown: 'old primary markdown with enough text' },
       { name: 'order.pdf', ok: true, markdown: 'stay' },
       { name: 'fresh.pdf', ok: true, markdown: 'fresh' },
+    ]);
+  });
+
+  it('replaces existing OCR result when incoming quality passes and existing does not', async () => {
+    const { mergeOcrResultsByFileName } = await import(
+      '@/modules/ocr/services/ocr-batch-runner.service.js'
+    );
+
+    const result = mergeOcrResultsByFileName(
+      [
+        {
+          name: 'memo.pdf',
+          ok: true,
+          markdown: 'old',
+          quality: { passed: false },
+          engine_used: 'tesseract',
+        },
+      ],
+      [
+        {
+          name: 'memo.pdf',
+          ok: true,
+          markdown: 'new better',
+          quality: { passed: true },
+          engine_used: 'paddle',
+        },
+      ],
+    );
+
+    expect(result).toEqual([
+      {
+        name: 'memo.pdf',
+        ok: true,
+        markdown: 'new better',
+        quality: { passed: true },
+        engine_used: 'paddle',
+      },
+    ]);
+  });
+
+  it('replaces existing OCR result when existing has suspicious old Thai year and incoming does not', async () => {
+    const { mergeOcrResultsByFileName } = await import(
+      '@/modules/ocr/services/ocr-batch-runner.service.js'
+    );
+
+    const result = mergeOcrResultsByFileName(
+      [
+        {
+          name: 'order.pdf',
+          ok: true,
+          markdown: 'ทั้งนี้ตั้งแต่วันที่ ๑ พฤศจิกายน พ.ศ. ๒๕๐๕',
+          engine_used: 'tesseract',
+        },
+      ],
+      [
+        {
+          name: 'order.pdf',
+          ok: true,
+          markdown: 'ทั้งนี้ตั้งแต่วันที่ 1 พฤศจิกายน พ.ศ. ๒๕๖๘',
+          engine_used: 'paddle',
+        },
+      ],
+    );
+
+    expect(result).toEqual([
+      {
+        name: 'order.pdf',
+        ok: true,
+        markdown: 'ทั้งนี้ตั้งแต่วันที่ 1 พฤศจิกายน พ.ศ. ๒๕๖๘',
+        engine_used: 'paddle',
+      },
+    ]);
+  });
+
+  it('replaces existing OCR result when existing has suspicious long order no suffix', async () => {
+    const { mergeOcrResultsByFileName } = await import(
+      '@/modules/ocr/services/ocr-batch-runner.service.js'
+    );
+
+    const result = mergeOcrResultsByFileName(
+      [
+        {
+          name: 'order.pdf',
+          ok: true,
+          markdown: 'คำสั่งกลุ่มงานเภสัชกรรม\nที่ ๑/ ๒๕๒๐๕',
+          engine_used: 'tesseract',
+        },
+      ],
+      [
+        {
+          name: 'order.pdf',
+          ok: true,
+          markdown: 'คำสั่งกลุ่มงานเภสัชกรรม\nที่ 1/568',
+          engine_used: 'paddle',
+        },
+      ],
+    );
+
+    expect(result).toEqual([
+      {
+        name: 'order.pdf',
+        ok: true,
+        markdown: 'คำสั่งกลุ่มงานเภสัชกรรม\nที่ 1/568',
+        engine_used: 'paddle',
+      },
     ]);
   });
 });

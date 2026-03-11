@@ -89,4 +89,22 @@ describe('IdentityRolePolicyService.deriveRole', () => {
     });
     expect(role).toBe('WARD_SCOPE');
   });
+
+  test('keeps WARD_SCOPE when valid ward head is mixed with assistant dept entry', () => {
+    const role = IdentityRolePolicyService.deriveRole({
+      citizen_id: '8',
+      special_position: 'หัวหน้าตึก/หัวหน้างาน-กลุ่มงานเภสัชกรรม,รองหัวหน้ากลุ่มงาน-กลุ่มงานเภสัชกรรม',
+      department: 'กลุ่มงานเภสัชกรรม',
+    });
+    expect(role).toBe('WARD_SCOPE');
+  });
+
+  test('supports semicolon-delimited special_position entries', () => {
+    const role = IdentityRolePolicyService.deriveRole({
+      citizen_id: '9',
+      special_position: 'หัวหน้าตึก/หัวหน้างาน-ICU;รองหัวหน้ากลุ่มงาน-กลุ่มงานอายุรกรรม',
+      department: 'กลุ่มงานอายุรกรรม',
+    });
+    expect(role).toBe('WARD_SCOPE');
+  });
 });

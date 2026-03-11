@@ -124,7 +124,7 @@ export class RequestApprovalService {
       : null;
     if (!signatureSnapshot) {
       throw new Error(
-        "Approver signature is required. Please set your signature before approving.",
+        "ต้องมีลายเซ็นผู้อนุมัติก่อนดำเนินการ กรุณาตั้งค่าลายเซ็นก่อนอนุมัติ",
       );
     }
     return signatureSnapshot;
@@ -372,7 +372,7 @@ export class RequestApprovalService {
           : null);
       if (!signatureFromStore) {
         throw new Error(
-          "Approver signature is required. Please set your signature before approving.",
+          "ต้องมีลายเซ็นผู้อนุมัติก่อนดำเนินการ กรุณาตั้งค่าลายเซ็นก่อนอนุมัติ",
         );
       }
 
@@ -637,6 +637,8 @@ export class RequestApprovalService {
         requestId,
         {
           status: RequestStatus.RETURNED,
+          current_step: 1,
+          assigned_officer_id: null,
           step_started_at: null,
         },
         connection,

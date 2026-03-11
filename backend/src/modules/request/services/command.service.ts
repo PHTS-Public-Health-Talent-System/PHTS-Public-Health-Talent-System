@@ -560,6 +560,114 @@ export class RequestCommandService {
     });
   }
 
+  private async removeRequestAttachmentOcrResultByFileName(
+    requestId: number,
+    fileName: string,
+  ): Promise<void> {
+    const normalizedFileName = String(fileName ?? "").trim().toLowerCase();
+    if (!normalizedFileName) return;
+
+    const existingResults = await getExistingOcrResults({ kind: 'request', id: requestId });
+    const nextResults = existingResults.filter(
+      (item) => String(item?.name ?? "").trim().toLowerCase() !== normalizedFileName,
+    );
+
+    if (nextResults.length === existingResults.length) {
+      return;
+    }
+
+    const activeResults = nextResults.filter((item) => !(item as any)?.suppressed);
+    const successCount = activeResults.filter((item) => item.ok).length;
+    const failedCount = activeResults.length - successCount;
+
+    await saveOcrPrecheck({ kind: 'request', id: requestId }, {
+      status: activeResults.length === 0 ? "queued" : successCount > 0 ? "completed" : "failed",
+      source: "MANUAL_VERIFY",
+      started_at: new Date().toISOString(),
+      finished_at: new Date().toISOString(),
+      count: activeResults.length,
+      success_count: successCount,
+      failed_count: failedCount,
+      error: null,
+      results: nextResults,
+    });
+  }
+
+  async removeRequestAttachment(
+    requestId: number,
+    attachmentId: number,
+    userId: number,
+    userRole: string,
+  ): Promise<RequestWithDetails> {
+    const requestEntity = await requestRepository.findById(requestId);
+    if (!requestEntity) {
+      throw new NotFoundError("ไม่พบคำขอ");
+    }
+
+    const officerCreatorId =
+      userRole === 'PTS_OFFICER'
+        ? await this.getOfficerCreatorIdWithFallback(requestEntity)
+        : null;
+    const isOwner = requestEntity.user_id === userId;
+    const isOfficerCreator = officerCreatorId === userId;
+
+    if (!isOwner && !isOfficerCreator) {
+      throw new AuthorizationError("คุณไม่มีสิทธิ์ลบไฟล์แนบของคำขอนี้");
+    }
+    if (
+      requestEntity.status !== RequestStatus.DRAFT &&
+      requestEntity.status !== RequestStatus.RETURNED
+    ) {
+      throw new ValidationError("สามารถลบไฟล์แนบได้เฉพาะคำขอสถานะ DRAFT หรือ RETURNED");
+    }
+
+    const attachment = await requestRepository.findAttachmentById(attachmentId);
+    if (!attachment) {
+      throw new NotFoundError("ไม่พบไฟล์แนบ");
+    }
+    if (Number(attachment.request_id) !== requestId) {
+      throw new ValidationError("ไฟล์แนบนี้ไม่ได้อยู่ในคำขอนี้");
+    }
+
+    const connection = await getConnection();
+    try {
+      await connection.beginTransaction();
+      await requestRepository.deleteAttachmentById(attachmentId, connection);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+
+    if (attachment.file_path) {
+      const absolutePath = path.isAbsolute(attachment.file_path)
+        ? attachment.file_path
+        : path.join(process.cwd(), attachment.file_path);
+      await unlink(absolutePath).catch(() => undefined);
+    }
+
+    await this.removeRequestAttachmentOcrResultByFileName(
+      requestId,
+      String(attachment.file_name ?? ""),
+    );
+
+    await emitAuditEvent({
+      eventType: AuditEventType.OTHER,
+      entityType: "request_attachment",
+      entityId: requestId,
+      actorId: userId,
+      actionDetail: {
+        request_id: requestId,
+        removed_attachment_id: attachmentId,
+        removed_file_name: attachment.file_name,
+      },
+    });
+
+    return requestQueryService.getRequestDetails(requestId);
+  }
+
   private getOfficerCreatorId(
     requestEntity: Awaited<ReturnType<typeof requestRepository.findById>>,
   ): number | null {
@@ -1507,9 +1615,9 @@ export class RequestCommandService {
         'มีคำขอใหม่รออนุมัติ',
         `มีคำขอเลขที่ ${requestRow.request_no} รอการตรวจสอบจากท่าน`,
         getRequestLinkForRole(nextRole, requestId),
-        undefined,
-        connection,
-      );
+      ).catch((error) => {
+        console.error('[Notification] enqueue failed after submit:', error);
+      });
 
       // Fire-and-forget OCR precheck enqueue (worker handles processing).
       void enqueueRequestOcrPrecheck(requestId).catch((error) => {
@@ -1726,29 +1834,6 @@ export class RequestCommandService {
     } finally {
       connection.release();
     }
-  }
-
-  // ============================================================================
-  // Data Correction (Admin/Officer Only)
-  // ============================================================================
-
-  async adjustLeaveRequest(
-    id: number,
-    manual_start_date: string,
-    manual_end_date: string,
-    manual_duration_days: number,
-    remark: string,
-    editorName: string,
-  ): Promise<void> {
-    const fullRemark = `${remark ?? ''} [Edited by ${editorName}]`;
-
-    // [REFACTOR] Use Repo
-    await requestRepository.updateLeaveAdjustment(id, {
-      manual_start_date,
-      manual_end_date,
-      manual_duration_days,
-      remark: fullRemark,
-    });
   }
 
   private resolvePreviousDateYmd(value: unknown): string {

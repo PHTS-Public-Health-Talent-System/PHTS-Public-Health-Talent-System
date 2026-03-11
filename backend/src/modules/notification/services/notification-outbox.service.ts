@@ -2,7 +2,7 @@ import { NotificationRepository } from '@/modules/notification/repositories/noti
 import { NotificationOutboxRepository } from '@/modules/notification/repositories/notification-outbox.repository.js';
 import type { NotificationOutboxPayload } from '@/modules/notification/entities/notification-outbox.entity.js';
 import type { PoolConnection } from "mysql2/promise";
-import { NotificationType } from '@/modules/notification/entities/notification.entity.js';
+import { NotificationType, normalizeNotificationType } from '@/modules/notification/entities/notification.entity.js';
 
 const DEFAULT_MAX_ATTEMPTS = 8;
 const DEFAULT_RETRY_BASE_SECONDS = 30;
@@ -119,7 +119,7 @@ export class NotificationOutboxService {
     const title = payload.title;
     const message = payload.message;
     const link = payload.link ?? "#";
-    const type = (payload.type as NotificationType) || NotificationType.SYSTEM;
+    const type = normalizeNotificationType(payload.type, NotificationType.SYSTEM);
 
     if (payload.kind === "USER") {
       await this.createForUser(payload.userId, title, message, link, type, conn);
@@ -143,6 +143,8 @@ export class NotificationOutboxService {
     if (!userId) {
       throw new Error("Missing userId for USER notification");
     }
+    const inAppEnabled = await NotificationRepository.isInAppEnabled(userId, conn);
+    if (!inAppEnabled) return;
     await NotificationRepository.create(userId, title, message, link, type, conn);
   }
 
@@ -157,7 +159,7 @@ export class NotificationOutboxService {
     if (!role) {
       throw new Error("Missing role for ROLE notification");
     }
-    const userIds = await NotificationRepository.findUserIdsByRole(role, conn);
+    const userIds = await NotificationRepository.findUserIdsByRoleForInApp(role, conn);
     if (userIds.length === 0) {
       return;
     }

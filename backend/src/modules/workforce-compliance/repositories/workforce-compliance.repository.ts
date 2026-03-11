@@ -3,6 +3,9 @@ import db from '@config/database.js';
 import type { PersonnelMovementRecord } from '@/modules/workforce-compliance/entities/workforce-compliance.entity.js';
 import { MOVEMENT_RETURN_TYPES } from '@/modules/workforce-compliance/constants/workforce-compliance-policy.js';
 
+const MOVEMENT_PROFILE_JOIN_CONDITION =
+  "e.citizen_id COLLATE utf8mb4_unicode_ci = m.citizen_id COLLATE utf8mb4_unicode_ci";
+
 export type MovementOutRow = {
   citizen_id: string;
   movement_type: string;
@@ -37,7 +40,7 @@ export class WorkforceComplianceRepository {
          e.position_name,
          e.department
        FROM emp_movements m
-       LEFT JOIN emp_profiles e ON e.citizen_id = m.citizen_id
+       LEFT JOIN emp_profiles e ON ${MOVEMENT_PROFILE_JOIN_CONDITION}
        WHERE m.movement_type IN ('RESIGN', 'TRANSFER_OUT')
        ORDER BY m.effective_date DESC, m.movement_id DESC
       `,

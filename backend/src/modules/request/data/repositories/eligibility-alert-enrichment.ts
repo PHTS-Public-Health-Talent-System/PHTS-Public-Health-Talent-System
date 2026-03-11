@@ -38,8 +38,8 @@ export function buildUpcomingPersonnelChangeJoinSql(
           ) AS rn
         FROM (
           SELECT
-            citizen_id,
-            'RETIREMENT' AS change_type,
+            CAST(citizen_id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+            CAST('RETIREMENT' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS change_type,
             retire_date AS effective_date
           FROM emp_retirements
           WHERE retire_date >= CURDATE()
@@ -48,8 +48,8 @@ export function buildUpcomingPersonnelChangeJoinSql(
           UNION ALL
 
           SELECT
-            citizen_id,
-            movement_type AS change_type,
+            CAST(citizen_id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+            CAST(movement_type AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS change_type,
             effective_date
           FROM emp_movements
           WHERE movement_type IN ('RESIGN', 'TRANSFER_OUT')

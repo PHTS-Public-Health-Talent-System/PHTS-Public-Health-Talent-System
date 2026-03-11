@@ -15,8 +15,10 @@ import {
   updateUserRoleSchema,
   toggleMaintenanceModeSchema,
   getSnapshotOutboxSchema,
+  getNotificationOutboxSchema,
+  retryNotificationOutboxSchema,
   retrySnapshotOutboxSchema,
-} from "@/modules/system/admin/admin.schema.js";
+  } from "@/modules/system/admin/admin.schema.js";
 
 const router = Router();
 
@@ -54,6 +56,23 @@ router.post(
 router.get("/maintenance", adminAuth, systemController.getMaintenanceMode);
 router.get("/jobs", adminAuth, systemController.getJobStatus);
 router.get("/version", adminAuth, systemController.getVersionInfo);
+router.get(
+  "/notification-outbox",
+  adminAuth,
+  validate(getNotificationOutboxSchema),
+  systemController.getNotificationOutbox,
+);
+router.post(
+  "/notification-outbox/retry-dead-letter",
+  adminAuth,
+  systemController.retryNotificationDeadLetters,
+);
+router.post(
+  "/notification-outbox/:outboxId/retry",
+  adminAuth,
+  validate(retryNotificationOutboxSchema),
+  systemController.retryNotificationOutbox,
+);
 router.get(
   "/snapshot-outbox",
   adminAuth,

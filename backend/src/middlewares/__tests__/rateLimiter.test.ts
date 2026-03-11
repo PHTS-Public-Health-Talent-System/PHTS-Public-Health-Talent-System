@@ -48,7 +48,7 @@ describe('rateLimiter', () => {
     expect(apiConfig.message.error).toContain('Too many requests');
     expect(authConfig.windowMs).toBe(20000);
     expect(authConfig.max).toBe(7);
-    expect(authConfig.message.error).toContain('Too many login attempts');
+    expect(typeof authConfig.handler).toBe('function');
   });
 
   it('skips limiting in test environment', async () => {
@@ -78,5 +78,42 @@ describe('rateLimiter', () => {
 
     expect(apiConfig.skip({}, {})).toBe(false);
     expect(authConfig.skip({}, {})).toBe(false);
+  });
+
+  it('skips api limiter for /api/auth routes to avoid double-limiting login', async () => {
+    process.env.NODE_ENV = 'development';
+    delete process.env.DEMO_DISABLE_RATE_LIMIT;
+
+    const { apiConfig, authConfig } = await getConfigs();
+
+    expect(apiConfig.skip({ path: '/auth/login' }, {})).toBe(true);
+    expect(apiConfig.skip({ path: '/auth/logout' }, {})).toBe(true);
+    expect(apiConfig.skip({ path: '/requests' }, {})).toBe(false);
+    expect(authConfig.skip({ path: '/auth/login' }, {})).toBe(false);
+  });
+
+  it('auth handler returns retry-after metadata for login rate limit', async () => {
+    process.env.NODE_ENV = 'development';
+    delete process.env.DEMO_DISABLE_RATE_LIMIT;
+
+    const { authConfig } = await getConfigs();
+    const req = {
+      rateLimit: {
+        resetTime: new Date(Date.now() + 90_000),
+      },
+    } as any;
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const setHeader = jest.fn();
+    const res = { status, setHeader } as any;
+
+    authConfig.handler(req, res);
+
+    expect(setHeader).toHaveBeenCalledWith('Retry-After', expect.any(String));
+    expect(status).toHaveBeenCalledWith(429);
+    const payload = json.mock.calls[0][0];
+    expect(payload.code).toBe('AUTH_RATE_LIMIT_EXCEEDED');
+    expect(payload.retry_after_seconds).toBeGreaterThan(0);
+    expect(payload.retry_after_minutes).toBeGreaterThan(0);
   });
 });

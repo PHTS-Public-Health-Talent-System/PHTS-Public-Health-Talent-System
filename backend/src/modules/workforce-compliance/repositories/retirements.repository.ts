@@ -2,6 +2,9 @@ import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import db from '@config/database.js';
 import type { RetirementInput, RetirementRecord } from '@/modules/workforce-compliance/entities/workforce-compliance.entity.js';
 
+const CITIZEN_ID_JOIN_CONDITION =
+  "e.citizen_id COLLATE utf8mb4_unicode_ci = r.citizen_id COLLATE utf8mb4_unicode_ci";
+
 export class RetirementsRepository {
   static async list(conn?: PoolConnection): Promise<RetirementRecord[]> {
     const executor = conn ?? db;
@@ -13,7 +16,7 @@ export class RetirementsRepository {
          e.position_name,
          e.department
        FROM emp_retirements r
-       LEFT JOIN emp_profiles e ON e.citizen_id = r.citizen_id
+       LEFT JOIN emp_profiles e ON ${CITIZEN_ID_JOIN_CONDITION}
        ORDER BY r.retire_date ASC`,
     );
     return rows as RetirementRecord[];
@@ -32,7 +35,7 @@ export class RetirementsRepository {
          e.position_name,
          e.department
        FROM emp_retirements r
-       LEFT JOIN emp_profiles e ON e.citizen_id = r.citizen_id
+       LEFT JOIN emp_profiles e ON ${CITIZEN_ID_JOIN_CONDITION}
        WHERE r.retirement_id = ?`,
       [retirementId],
     );
