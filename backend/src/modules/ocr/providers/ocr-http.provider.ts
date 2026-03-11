@@ -37,21 +37,11 @@ const toReadableOcrErrorMessage = (error: unknown): string => {
 };
 
 const getOcrServiceBase = (): string => {
-  const base = (process.env.OCR_SERVICE_URL || process.env.OCR_API_URL || '').trim();
-  if (!base) {
-    return LOCAL_TESSERACT_SERVICE_BASE;
-  }
-  return normalizeServiceBase(base);
+  return LOCAL_TESSERACT_SERVICE_BASE;
 };
 
 const getPaddleServiceBase = (): string => {
-  const base = (process.env.OCR_PADDLE_SERVICE_URL || '').trim();
-  if (!base) {
-    return process.env.OCR_PADDLE_LOCAL_ENABLED === 'false'
-      ? ''
-      : LOCAL_PADDLE_SERVICE_BASE;
-  }
-  return normalizeServiceBase(base);
+  return LOCAL_PADDLE_SERVICE_BASE;
 };
 
 const getTyphoonServiceBase = (): string => {
@@ -177,14 +167,25 @@ export class OcrHttpProvider {
       disableFallbackChain?: boolean;
     },
   ): Promise<OcrBatchResultItem> {
-    const effectiveOcrBase = ocrBase?.trim() ? ocrBase.trim() : getOcrServiceBase();
+    const typhoonBase = getTyphoonServiceBase();
+    const normalizedInputBase = ocrBase?.trim() ? normalizeServiceBase(ocrBase) : '';
+    const effectiveOcrBase =
+      normalizedInputBase === LOCAL_TESSERACT_SERVICE_BASE ||
+      normalizedInputBase === LOCAL_PADDLE_SERVICE_BASE ||
+      (typhoonBase && normalizedInputBase === typhoonBase)
+        ? normalizedInputBase
+        : getOcrServiceBase();
     const timeoutMs = getPerFileTimeoutMs();
     const retryCount = getRetryCount();
     const paddleBase = getPaddleServiceBase();
-    const typhoonBase = getTyphoonServiceBase();
     const normalizedPrimaryBase = normalizeServiceBase(effectiveOcrBase);
+    const prioritizeTyphoonFallback = Boolean(
+      typhoonBase && normalizedPrimaryBase !== typhoonBase,
+    );
 
-    const fallbackBases = [paddleBase, typhoonBase].filter(
+    const fallbackBases = (
+      prioritizeTyphoonFallback ? [typhoonBase, paddleBase] : [paddleBase, typhoonBase]
+    ).filter(
       (base): base is string => Boolean(base) && base !== normalizedPrimaryBase,
     );
     const disableFallbackChain = options?.disableFallbackChain === true;
@@ -204,6 +205,26 @@ export class OcrHttpProvider {
 
       let currentResult = primaryResult;
       let fallbackUsed = false;
+      let typhoonAttempted = false;
+
+      if (prioritizeTyphoonFallback && typhoonBase && shouldFallbackToTyphoon(currentResult)) {
+        try {
+          typhoonAttempted = true;
+          const typhoonResult = await callOcrWithRetry(
+            fileName,
+            fileBuffer,
+            typhoonBase,
+            timeoutMs,
+            retryCount,
+          );
+          return {
+            ...typhoonResult,
+            fallback_used: true,
+          };
+        } catch {
+          // Continue with local Paddle fallback when Typhoon is unavailable.
+        }
+      }
 
       if (paddleBase && shouldFallbackToPaddle(currentResult)) {
         try {
@@ -220,7 +241,7 @@ export class OcrHttpProvider {
         }
       }
 
-      if (typhoonBase && shouldFallbackToTyphoon(currentResult)) {
+      if (!typhoonAttempted && typhoonBase && shouldFallbackToTyphoon(currentResult)) {
         try {
           const typhoonResult = await callOcrWithRetry(
             fileName,

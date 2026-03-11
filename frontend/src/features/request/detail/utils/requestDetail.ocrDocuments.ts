@@ -68,6 +68,7 @@ export const isLikelyOcrNoiseLine = (line: string): boolean => {
 
 const ASSIGNMENT_ORDER_TITLE_PATTERN = /(?:คำสั่ง|คําสั่ง|คำสัง|คําสัง)/;
 const ASSIGNMENT_ORDER_ACTION_PATTERN = /(มอบหมาย|รับผิดชอบ|ปฏิบัติงาน)/;
+const THAI_DIGITS = "๐๑๒๓๔๕๖๗๘๙";
 
 const normalizeNameForMatch = (value: string) => {
   let normalized = normalizeOcrAnalysisText(value);
@@ -80,6 +81,20 @@ const normalizeNameForMatch = (value: string) => {
   return normalized.replace(/\s+/g, "").toLowerCase();
 };
 
+const splitNameTokensForMatch = (value: string): string[] => {
+  let normalized = normalizeOcrAnalysisText(value);
+  for (const title of PERSON_TITLES) {
+    if (normalized.startsWith(title)) {
+      normalized = normalized.slice(title.length).trim();
+      break;
+    }
+  }
+  return normalized
+    .split(/\s+/)
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean);
+};
+
 const extractFirst = (markdown: string, patterns: RegExp[]): string | null => {
   for (const pattern of patterns) {
     const match = markdown.match(pattern);
@@ -87,6 +102,62 @@ const extractFirst = (markdown: string, patterns: RegExp[]): string | null => {
     if (value) return value;
   }
   return null;
+};
+
+const toArabicDigits = (value: string): string =>
+  value.replace(/[๐-๙]/g, (char) => String(THAI_DIGITS.indexOf(char)));
+
+const normalizeMemoDepartment = (value: string | null): string | null => {
+  if (!value) return null;
+  return normalizeOcrAnalysisText(value).replace(/อตรดิตถ์/g, "อุตรดิตถ์");
+};
+
+const normalizeMemoSubject = (value: string | null): string | null => {
+  if (!value) return null;
+  return normalizeOcrAnalysisText(value)
+    .replace(/ส[ำํา]\s*เนา/g, "สำเนา")
+    .replace(/สํา\s*เนา/g, "สำเนา");
+};
+
+const normalizeMemoDocumentNo = (value: string | null): string | null => {
+  if (!value) return null;
+  const normalized = toArabicDigits(normalizeOcrAnalysisText(value))
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/\s+/g, " ");
+  const compact = normalized.replace(/\s+/g, "");
+  const match = compact.match(/^([ก-ฮ]{1,4})([0-9]{4})([0-9]{3})\/([0-9]{5})$/);
+  if (match?.[1] && match?.[2] && match?.[3] && match?.[4]) {
+    return `${match[1]} ${match[2]}.${match[3]}/${match[4]}`;
+  }
+  return normalized;
+};
+
+const detectContextMemoYear = (markdown: string): number | null => {
+  const normalized = toArabicDigits(markdown);
+  const years = Array.from(normalized.matchAll(/(?:พ\.ศ\.\s*)?([0-9]{4})/g))
+    .map((match) => Number(match[1]))
+    .filter((year) => Number.isFinite(year) && year >= 2550 && year <= 2600);
+  if (years.length === 0) return null;
+  const counts = new Map<number, number>();
+  for (const year of years) {
+    counts.set(year, (counts.get(year) ?? 0) + 1);
+  }
+  return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+};
+
+const normalizeMemoDocumentDate = (value: string | null, markdown: string): string | null => {
+  if (!value) return null;
+  const normalized = normalizeOcrAnalysisText(value);
+  const normalizedDigits = toArabicDigits(normalized);
+  const yearMatch = normalizedDigits.match(/([0-9]{4})/);
+  if (!yearMatch?.[1]) return normalizedDigits;
+  const year = Number(yearMatch[1]);
+  if (Number.isFinite(year) && year >= 2550 && year <= 2600) {
+    return normalizedDigits;
+  }
+  const contextYear = detectContextMemoYear(markdown);
+  if (!contextYear) return normalizedDigits;
+  return normalizedDigits.replace(/[0-9]{4}/, String(contextYear));
 };
 
 const extractMentionedPeople = (lines: string[]): string[] => {
@@ -112,7 +183,12 @@ const buildLines = (markdown: string) =>
   markdown
     .split(/\r?\n/)
     .map((line) => normalizeOcrAnalysisText(line))
-    .filter((line) => line.length > 0 && !isLikelyOcrNoiseLine(line));
+    .filter((line) => {
+      if (line.length === 0) return false;
+      if (!isLikelyOcrNoiseLine(line)) return true;
+      // Keep short Thai-only tokens as potential split surname lines from OCR.
+      return /^[ก-๙]{4,}$/.test(line);
+    });
 
 const looksLikeAssignmentOrderHeading = (lines: string[]) => {
   const headerWindow = lines.slice(0, 6);
@@ -130,10 +206,30 @@ const looksLikeAssignmentOrderHeading = (lines: string[]) => {
 const findPersonLine = (lines: string[], personName: string): string | null => {
   const normalizedPerson = normalizeNameForMatch(personName);
   if (!normalizedPerson) return null;
-  const line = lines.find((rawLine) =>
-    normalizeNameForMatch(rawLine).includes(normalizedPerson),
-  );
-  return line ? normalizeOcrAnalysisText(line) : null;
+  for (const rawLine of lines) {
+    if (normalizeNameForMatch(rawLine).includes(normalizedPerson)) {
+      return normalizeOcrAnalysisText(rawLine);
+    }
+  }
+
+  const [firstToken, ...restTokens] = splitNameTokensForMatch(personName);
+  const lastToken = restTokens.length > 0 ? restTokens[restTokens.length - 1] : null;
+  if (!firstToken || !lastToken) return null;
+
+  const normalizedLines = lines.map((line) => normalizeNameForMatch(line));
+  for (let index = 0; index < lines.length; index += 1) {
+    const current = normalizedLines[index] ?? "";
+    if (!current.includes(firstToken)) continue;
+
+    for (let near = Math.max(0, index - 2); near <= Math.min(lines.length - 1, index + 2); near += 1) {
+      if (near === index) continue;
+      const candidate = normalizedLines[near] ?? "";
+      if (!candidate.includes(lastToken)) continue;
+      return normalizeOcrAnalysisText(`${lines[index]} ${lines[near]}`);
+    }
+  }
+
+  return null;
 };
 
 export const detectOcrDocumentKind = (document: OcrDocument): OcrDocumentKind => {
@@ -245,13 +341,17 @@ export const parseMemoSummary = (
   const lines = buildLines(rawMarkdown);
   const markdown = lines.join("\n");
   const personLine = findPersonLine(lines, personName);
+  const documentNoRaw = extractFirst(markdown, [/^ที่\s+([^\n]+)/m]);
+  const subjectRaw = extractFirst(markdown, [/เรื่อง\s+([^\n]+)/]);
+  const departmentRaw = extractFirst(markdown, [/^ส่วนราชการ\s+([^\n]+?)(?:โทร|$)/m]);
+  const documentDateRaw = extractFirst(markdown, [/^วันที่\s+([^\n]+)/m]);
 
   return {
     fileName: document.fileName?.trim() || "เอกสาร OCR",
-    documentNo: extractFirst(markdown, [/^ที่\s+([^\n]+)/m]),
-    subject: extractFirst(markdown, [/เรื่อง\s+([^\n]+)/]),
-    department: extractFirst(markdown, [/^ส่วนราชการ\s+([^\n]+?)(?:โทร|$)/m]),
-    documentDate: extractFirst(markdown, [/^วันที่\s+([^\n]+)/m]),
+    documentNo: normalizeMemoDocumentNo(documentNoRaw),
+    subject: normalizeMemoSubject(subjectRaw),
+    department: normalizeMemoDepartment(departmentRaw),
+    documentDate: normalizeMemoDocumentDate(documentDateRaw, markdown),
     addressedTo: extractFirst(markdown, [/^เรียน\s+([^\n]+)/m]),
     personMatched: Boolean(personLine),
     personLine,

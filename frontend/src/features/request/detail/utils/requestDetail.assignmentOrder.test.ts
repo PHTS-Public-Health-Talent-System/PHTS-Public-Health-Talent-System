@@ -82,7 +82,7 @@ describe('parseAssignmentOrderSummary', () => {
     expect(summary).not.toBeNull()
     expect(summary?.personMatched).toBe(true)
     expect(summary?.personLine).toBe('1.6 นางสาวจริยา ใจใหญ่')
-    expect(summary?.signedDate).toBe('3 ตุลาคม 2568')
+    expect(summary?.signedDate).toBe('3 ตุลาคม พ.ศ. 2568')
     expect(summary?.signerName).toBe('นางมัณฑนา คันทะเรศร์')
     expect(summary?.signerTitle).toBe('หัวหน้ากลุ่มงานเภสัชกรรม')
   })
@@ -281,6 +281,32 @@ describe('parseAssignmentOrderSummary', () => {
     ])
   })
 
+  test('auto-corrects suspicious old years to a near modern year and keeps dates consistent', () => {
+    const summary = parseAssignmentOrderSummary(
+      {
+        fileName: 'page-5-6.pdf',
+        engineUsed: 'tesseract',
+        markdown: [
+          'คำสั่งกลุ่มงานเภสัชกรรม',
+          'ที่ ๑/ ๒๕๒๐๕',
+          'เรื่อง ยกเลิกและมอบหมายเจ้าหน้าที่รับผิดชอบในการปฏิบัติงาน',
+          '๑.๒ นางสาวจริยา ใจใหญ่ เภสัชกรปฏิบัติการ',
+          'ทั้งนี้ ตั้งแต่วันที่ ๑ พฤศจิกายน พ.ศ. ๒๕๐๕',
+          'สั่ง ณ วันที่ ๓ ตุลาคม ๒๕๒๕',
+          '(นางมัณฑนา คันทะเรศร์)',
+          'หัวหน้ากลุ่มงานเภสัชกรรม',
+        ].join('\n'),
+      },
+      'นางสาว จริยา ใจใหญ่',
+    )
+
+    expect(summary).not.toBeNull()
+    expect(summary?.signedDate).toContain('2568')
+    expect(summary?.effectiveDate).toContain('2568')
+    expect(summary?.warnings).toContain('ระบบปรับปี พ.ศ. ให้อัตโนมัติตามบริบทเอกสาร')
+    expect(summary?.warnings).toContain('ต้องยืนยันปีจากเอกสารต้นฉบับอีกครั้ง')
+  })
+
   test('matches person when tesseract line has OCR prefixes and split surname line', () => {
     const summary = parseAssignmentOrderSummary(
       {
@@ -396,6 +422,173 @@ describe('parseAssignmentOrderSummary', () => {
     expect(section3?.personMatched).toBe(true)
     expect(section3?.sectionTitle).toContain('งานบริบาลเภสัชกรรมผู้ป่วยวัณโรค')
     expect(section3?.dutyHighlights[0]).toContain('ผู้ป่วยวัณโรค')
+  })
+
+  test('keeps full duty list for HIV section when OCR text includes all items', () => {
+    const summary = parseAssignmentOrderSummary(
+      { fileName: 'page-5-6.pdf', markdown: FULL_ASSIGNMENT_TEXT },
+      'นางสาว อรจิตรา จันทร์ตระกูล',
+    )
+
+    expect(summary).not.toBeNull()
+    expect(summary?.personMatched).toBe(true)
+    expect(summary?.sectionTitle).toContain('งานบริบาลเภสัชกรรมผู้ป่วย HIV')
+    expect((summary?.dutyHighlights.length ?? 0) >= 7).toBe(true)
+    expect(summary?.dutyHighlights[2]).toContain('เฝ้าระวังอาการไม่พึงประสงค์จากการใช้ยา HIV')
+    expect(summary?.dutyHighlights[7]).toContain('ปฏิบัติงานอื่นๆ ตามที่ได้รับมอบหมาย')
+  })
+
+  test('normalizes malformed 5-digit order year using modern date context', () => {
+    const summary = parseAssignmentOrderSummary(
+      {
+        fileName: 'page-5-6.pdf',
+        markdown: [
+          'คำสั่งกลุ่มงานเภสัชกรรม',
+          'ที่ ๑/๒๕๒๐๕',
+          'เรื่อง ยกเลิกและมอบหมายเจ้าหน้าที่รับผิดชอบในการปฏิบัติงาน',
+          '๑.๑ นางสาวอรจิตรา จันทร์ตระกูล เภสัชกรชำนาญการ',
+          'ทั้งนี้ ตั้งแต่วันที่ ๑ พฤศจิกายน พ.ศ. ๒๕๖๘',
+          'สั่ง ณ วันที่ ๓ ตุลาคม พ.ศ. ๒๕๖๘',
+          '(นางมัณฑนา คันทะเรศร์)',
+          'หัวหน้ากลุ่มงานเภสัชกรรม',
+        ].join('\n'),
+      },
+      'นางสาว อรจิตรา จันทร์ตระกูล',
+    )
+
+    expect(summary).not.toBeNull()
+    expect(summary?.orderNo).toBe('1/2568')
+  })
+
+  test('cleans common OCR noise in assignment summary output from tesseract', () => {
+    const summary = parseAssignmentOrderSummary(
+      {
+        fileName: 'page-5-6.pdf',
+        engineUsed: 'tesseract',
+        markdown: [
+          'คำสั่งกลุ่มงานเภสัชกรรม',
+          'ที่ 1/568',
+          'เรื่อง ยกเลิกและมอบหมายเจ้าหน้าที่รับผิดชอบในการปฏิบัติงาน',
+          '๒2. งานบริบาลเภสัชกรรมผู้ป่วย HIV ในคลินิกเฉพาะโรค',
+          '๒.๑ นางสาวอรจิตรา จันทร์ตระกูล เภสัชกรชำนาญการ',
+          'โดยมีหน้าที่ ดังนี้',
+          '๑. ให้บริบาลเภสัชกรรมแก่ผู้ป่วย HIV โดยทบทวนข้อมูลการใช้ยา ประสานรายการยา ค้น ป ปัญหาการใช้ยาและร่วมแก้ไข ให้ความรู้ คำแนะนำเกี่ยวกับโรคและยาแก่ผู้ป่วยและญาติ',
+          '๒. ให้คำแนะนำการใช้ยาเทคนิคพิเศษต่างๆ แก่ผู้ป่วย HIV ในคลินิกเฉพาะ ๓.ประเมิน... ๒ -',
+          '๓. ประเมินติดตามและเฝ้าระวังอาการไม่พึงประสงค์จากการใช้ยา HIV',
+          '๔. ตรวจสอบและจ่ายยา ให้แก่ผู้ป่วย HIV ในคลินิก',
+          '๕. ดูแลประสานการเบิกจ่ายยาต้านไวรัส จาก สปสช. เพื่อให้ผู้ป่วยมียาที่เพียงพอ',
+          '6. ดูแลการเบิกจ่ายแลกเปลี่ยนยา HV ระหว่างโรงพยาบาลอุตรดิตถ์กับโรงพยาบาลข้างเคียง ๗). ลงข้อมูลผ้ป่วยนอก-ใน ในระบบ NAP Pus เพื่อใช้เป็นฐานข้อมูลใหญ่ของประเทศในการรักษาและส่งต่อข้อมูลผู้ป่วยระหว่างโรงพยาบาล',
+          '๗. ปฏิบัติงานอื่นๆ ตามที่ได้รับมอบหมาย',
+          'ทั้งนี้ ตั้งแต่วันที่ ๑ พฤศจิกายน พ.ศ. ๒๕๖๘',
+          'สั่ง ณ วันที่ ๓ ตุลาคม พ.ศ. ๒๕๖๘',
+          '(นางมัณทนา คันทะเรศร์)',
+          'หัวหน้ากลุ่มงานเภสัชกรรม',
+        ].join('\n'),
+      },
+      'นางสาวอรจิตรา จันทร์ตระกูล',
+    )
+
+    expect(summary).not.toBeNull()
+    expect(summary?.orderNo).toBe('1/2568')
+    expect(summary?.sectionTitle).toBe('๒. งานบริบาลเภสัชกรรมผู้ป่วย HIV ในคลินิกเฉพาะโรค')
+    expect((summary?.dutyHighlights.length ?? 0) >= 7).toBe(true)
+    expect(summary?.dutyHighlights[0]).toContain('ค้นปัญหาการใช้ยา')
+    expect(summary?.dutyHighlights.some((line) => /\.\.\.\s*[0-9๐-๙]{1,3}\s*-\s*$/.test(line))).toBe(false)
+    expect(
+      summary?.dutyHighlights.some((line) =>
+        /ดูแล.*เบิกจ่าย.*แลกเปลี่ยนยา.*(?:HIV|HV|อุตรดิตถ์)/.test(line),
+      ),
+    ).toBe(true)
+    expect(summary?.dutyHighlights.some((line) => line.includes('NAP Plus'))).toBe(true)
+  })
+
+  test('keeps TB section title and avoids pulling signature/date tail into duty lines', () => {
+    const summary = parseAssignmentOrderSummary(
+      {
+        fileName: 'page-5-6.pdf',
+        engineUsed: 'tesseract',
+        markdown: [
+          'คำสั่งกลุ่มงานเภสัชกรรม',
+          'ที่ 1/568',
+          'เรื่อง ยกเลิกและมอบหมายเจ้าหน้าที่รับผิดชอบในการปฏิบัติงาน',
+          '๓. งานบริบาลเภสัชกรรมผู้ป่วยวัณโรค ในคลินิกเฉพาะโรค',
+          '๓.๑ นางสาวณิชา ปินตา เภสัชกรปฏิบัติการ หัวหน้างาน',
+          'โดยมีหน้าที่ ดังนี้',
+          '๑. ให้บริบาลเภสัชกรรมแก่ผู้ป่วยวัณโรคโดยทบทวนข้อมูลการใช้ยา ประสานรายการยา คำนวณขนาดยาให้เหมาะสมกับผู้ป่วย คันหาปัญหาจากการใช้ยาและร่วมแก้ไข ให้ความรู้ คำแนะนำเกี่ยวกับโรคและยาแก่ผู้ป่วยและญาติ',
+          '๒. ให้คำแนะนำแก่ผู้ป่วยวัณโรคที่ได้รับยาเทคนิคพิเศษต่างๆ ในคลินิกวัณโรคและหอผู้ป่วย เฉพาะโรค ๓า. ดูแลประสานการเบิกจ่ายยาวัณ์โรค วัณโรคดื้อยาจาก สปสช. เพื่อให้ผ้ปวยมียาที่เพียงพอ',
+          '๔. ปฏิบัติงานอื่นๆ ตามที่ได้รับมอบหมาย',
+          'ทั้งนี้ ตั้งแต่วันที่ ๑ พฤศจิกายน พ.ศ. ๒๕๖๘',
+          'สั่ง ณ วันที่ ๓ ตุลาคม ๒๕๖๘',
+          '(นางมัณทนา คันทะเรศร์)',
+          'หัวหน้ากลุ่มงานเภสัชกรรม',
+        ].join('\n'),
+      },
+      'นางสาวณิชา ปินตา',
+    )
+
+    expect(summary).not.toBeNull()
+    expect(summary?.sectionTitle).toContain('งานบริบาลเภสัชกรรมผู้ป่วยวัณโรค')
+    expect(summary?.sectionTitle).not.toContain('ปฏิบัติงานอื่นๆ')
+    expect(summary?.dutyHighlights.some((line) => line.includes('สั่ง ณ วันที่'))).toBe(false)
+    expect(summary?.dutyHighlights.some((line) => line.includes('พฤศจิกายน'))).toBe(false)
+    expect(summary?.dutyHighlights.some((line) => line.includes('๓า.'))).toBe(false)
+    expect(summary?.dutyHighlights.some((line) => line.includes('หั้.ขี้ ยู'))).toBe(false)
+    expect(summary?.dutyHighlights.some((line) => /\sบ่?$/.test(line))).toBe(false)
+    expect(
+      summary?.dutyHighlights.some((line) => /ดูแล.*เบิกจ่ายยา.*(?:วัณโรค|วัณ์โรค|ดื้อยา)/.test(line)),
+    ).toBe(true)
+  })
+
+  test('does not treat duty item like "๘. ปฏิบัติงานอื่นๆ" as assigned work section title', () => {
+    const summary = parseAssignmentOrderSummary(
+      {
+        fileName: 'page-5-6.pdf',
+        engineUsed: 'tesseract',
+        markdown: [
+          'คำสั่งกลุ่มงานเภสัชกรรม',
+          'ที่ 1/568',
+          'เรื่อง ยกเลิกและมอบหมายเจ้าหน้าที่รับผิดชอบในการปฏิบัติงาน',
+          '๓.๑ นางสาวณิชา ปินตา เภสัชกรปฏิบัติการ หัวหน้างาน',
+          'โดยมีหน้าที่ ดังนี้',
+          '๑. ให้บริบาลเภสัชกรรมแก่ผู้ป่วยวัณโรคโดยทบทวนข้อมูลการใช้ยา',
+          '๒. ให้คำแนะนำแก่ผู้ป่วยวัณโรคที่ได้รับยาเทคนิคพิเศษต่างๆ ในคลินิกวัณโรคและหอผู้ป่วยเฉพาะโรค',
+          '๓. ดูแลประสานการเบิกจ่ายยาวัณโรค วัณโรคดื้อยา จาก สปสช. เพื่อให้ผู้ป่วยมียาที่เพียงพอ',
+          '๘. ปฏิบัติงานอื่นๆ ตามที่ได้รับมอบหมาย',
+          'ทั้งนี้ ตั้งแต่วันที่ ๑ พฤศจิกายน พ.ศ. ๒๕๖๘',
+          'สั่ง ณ วันที่ ๓ ตุลาคม พ.ศ. ๒๕๖๘',
+        ].join('\n'),
+      },
+      'นางสาวณิชา ปินตา',
+    )
+
+    expect(summary).not.toBeNull()
+    expect(summary?.sectionTitle ?? '').not.toContain('๘. ปฏิบัติงานอื่นๆ')
+    expect(summary?.dutyHighlights.some((line) => line.startsWith('๘. ปฏิบัติงานอื่นๆ'))).toBe(false)
+  })
+
+  test('matches person when OCR drops Thai tone/mark glyphs in name', () => {
+    const summary = parseAssignmentOrderSummary(
+      {
+        fileName: 'page-5-6.pdf',
+        engineUsed: 'tesseract',
+        markdown: [
+          'คำสั่งกลุ่มงานเภสัชกรรม',
+          'ที่ ๑/๒๕๖๔',
+          'เรื่อง ยกเลิกและมอบหมายเจ้าหน้าที่รับผิดชอบในการปฏิบัติงาน',
+          '๒. งานบริบาลเภสัชกรรมผู้ป่วย HIV ในคลินิกเฉพาะโรค',
+          '๒.๓ นางสาวพิชสินี ฝันจักรสาย เภสัชกรปฏิบัติการ',
+          'โดยมีหน้าที่ ดังนี้',
+          '๑. ให้บริบาลเภสัชกรรมแก่ผู้ป่วย HIV',
+          '๒. ให้คำแนะนำการใช้ยาเทคนิคพิเศษต่างๆ แก่ผู้ป่วย HIV ในคลินิกเฉพาะ',
+          '๓. ประเมินติดตามและเฝ้าระวังอาการไม่พึงประสงค์จากการใช้ยา HIV',
+        ].join('\n'),
+      },
+      'นางสาวพิชญ์สินี ฝั้นจักรสาย',
+    )
+
+    expect(summary).not.toBeNull()
+    expect(summary?.personMatched).toBe(true)
+    expect(summary?.personLine).toContain('พิชสินี')
   })
 
   test('removes short OCR noise tokens inside duty text', () => {

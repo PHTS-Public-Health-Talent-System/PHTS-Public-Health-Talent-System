@@ -53,7 +53,7 @@ export function AttachmentListCard<T>({
             ) : null}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
             {items.map((item, index) => renderItem(item, index))}
           </div>
         )}

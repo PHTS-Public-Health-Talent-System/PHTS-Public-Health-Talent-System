@@ -4,6 +4,7 @@ import {
   isLikelyOcrNoiseLine,
   normalizeOcrAnalysisText,
 } from "@/features/request/detail/utils";
+import { parseAssignmentOrderSummary } from "@/features/request/detail/utils";
 import { shouldSuppressAssignmentOrderOcrUi } from "@/features/request/detail/utils";
 import {
   getLicenseOcrNotice,
@@ -288,6 +289,7 @@ export function getAllowanceAttachmentOcrUiState(params: {
   result?: AllowanceAttachmentOcrLike | null;
   documentLabel?: string | null;
   suppressActions?: boolean;
+  forceRunOcr?: boolean;
   clearableFileNames: Set<string>;
 }): AllowanceAttachmentOcrUiState {
   const normalizedFileName = params.fileName.trim().toLowerCase();
@@ -301,6 +303,9 @@ export function getAllowanceAttachmentOcrUiState(params: {
       ? false
       : params.clearableFileNames.has(normalizedFileName);
   const canRunOcr =
+    params.forceRunOcr === true
+      ? true
+      :
     suppressActions || isLicenseDocument
       ? false
       : shouldShowAllowanceAttachmentOcrAction(params.result);
@@ -333,6 +338,17 @@ export function buildAllowanceAttachmentOcrPolicy(params: {
   const suppressAssignmentOrderOcrUi =
     ocrDocument &&
     shouldSuppressAssignmentOrderOcrUi(ocrDocument, personName);
+  const assignmentSummary =
+    ocrDocument && !suppressAssignmentOrderOcrUi
+      ? parseAssignmentOrderSummary(ocrDocument, personName)
+      : null;
+  const hasYearReviewWarning = Boolean(
+    assignmentSummary?.warnings?.some(
+      (warning) =>
+        warning.includes("ยืนยันปีจากเอกสารต้นฉบับ") ||
+        warning.includes("ปรับปี พ.ศ. ให้อัตโนมัติ"),
+    ),
+  );
   const suppressMemoOcrActions =
     ocrDocument && shouldSuppressMemoOcrActions(ocrDocument, personName);
   const suppressLicenseOcrUi = personName
@@ -344,6 +360,8 @@ export function buildAllowanceAttachmentOcrPolicy(params: {
 
   const notice = suppressAssignmentOrderOcrUi
     ? "เป็นคำสั่งมอบหมายงาน แต่ยังไม่พบชื่อบุคลากรคนนี้"
+    : hasYearReviewWarning
+      ? "OCR อ่านปีอาจคลาดเคลื่อน ระบบจัดเข้าคิวควรตรวจยืนยันปีจากเอกสารต้นฉบับ"
     : suppressMemoOcrActions
       ? "เป็นหนังสือนำส่ง แต่ยังไม่พบชื่อบุคลากรคนนี้"
       : personName
@@ -362,6 +380,7 @@ export function buildAllowanceAttachmentOcrPolicy(params: {
       Boolean(suppressAssignmentOrderOcrUi) ||
       Boolean(suppressMemoOcrActions) ||
       Boolean(suppressLicenseOcrUi),
+    forceRunOcr: hasYearReviewWarning,
     clearableFileNames: params.clearableFileNames,
   });
 

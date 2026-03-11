@@ -60,7 +60,7 @@ describe('OcrHttpProvider (local/base)', () => {
     process.env.OCR_SERVICE_URL = 'http://ocr.test///';
     const { OcrHttpProvider } = await import('@/modules/ocr/providers/ocr-http.provider.js');
 
-    expect(OcrHttpProvider.getServiceBase()).toBe('http://ocr.test');
+    expect(OcrHttpProvider.getServiceBase()).toBe('local-tesseract');
   });
 
   test('retries once and succeeds', async () => {

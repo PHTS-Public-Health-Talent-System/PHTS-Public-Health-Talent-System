@@ -104,7 +104,7 @@ describe('ocr precheck service', () => {
     (OcrHttpProvider.processSingleFile as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
-        markdown: 'low quality',
+        markdown: 'คำสั่งกลุ่มงานเภสัชกรรม\nที่ ๑/ ๒๕๒๐๕\nlow quality',
         name: 'a.pdf',
         quality: { passed: false, required_fields: 3, captured_fields: 1 },
       })
@@ -165,7 +165,8 @@ describe('ocr precheck service', () => {
     (OcrHttpProvider.processSingleFile as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
-        markdown: 'ทั้งนี้ตั้งแต่วันที่ ๑ พฤศจิกายน พ.ศ. ๒๕๐๕',
+        markdown:
+          'คำสั่งกลุ่มงานเภสัชกรรม\nที่ ๑/ ๒๕๒๐๕\nทั้งนี้ตั้งแต่วันที่ ๑ พฤศจิกายน พ.ศ. ๒๕๐๕\nสั่ง ณ วันที่ ๓ ตุลาคม ๒๕๒๕',
         name: 'a.pdf',
         engine_used: 'tesseract',
         quality: { passed: true, required_fields: 3, captured_fields: 3 },
@@ -232,6 +233,39 @@ describe('ocr precheck service', () => {
             name: 'a.pdf',
             engine_used: 'paddle',
             markdown: 'คำสั่งกลุ่มงานเภสัชกรรม\nที่ 1/568',
+          }),
+        ],
+      }),
+    );
+  });
+
+  test('keeps tesseract result for non-assignment documents even when year looks old', async () => {
+    const { OcrHttpProvider } = await import('@/modules/ocr/providers/ocr-http.provider.js');
+    const { OcrRequestRepository } = await import('@/modules/ocr/repositories/ocr-request.repository.js');
+    (OcrHttpProvider.getServiceBase as jest.Mock).mockReturnValue('http://ocr.test');
+    (OcrHttpProvider.getPaddleServiceBase as jest.Mock).mockReturnValue('http://paddle.test');
+    (OcrRequestRepository.findAttachments as jest.Mock).mockResolvedValue([
+      { file_type: 'OTHER', file_path: 'uploads/a.pdf', file_name: 'a.pdf' },
+    ]);
+    (OcrHttpProvider.processSingleFile as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      markdown: 'บันทึกข้อความ\nวันที่ ๑ มกราคม พ.ศ. ๒๕๐๕',
+      name: 'a.pdf',
+      engine_used: 'tesseract',
+      quality: { passed: true, required_fields: 3, captured_fields: 3 },
+    });
+
+    const { processRequestOcrPrecheck } = await import('@/modules/ocr/services/ocr-precheck.service.js');
+    await processRequestOcrPrecheck(16);
+
+    expect(OcrHttpProvider.processSingleFile).toHaveBeenCalledTimes(1);
+    expect(OcrRequestRepository.updateRequestPrecheck).toHaveBeenLastCalledWith(
+      16,
+      expect.objectContaining({
+        results: [
+          expect.objectContaining({
+            name: 'a.pdf',
+            engine_used: 'tesseract',
           }),
         ],
       }),

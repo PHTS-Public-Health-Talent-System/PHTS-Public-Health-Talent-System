@@ -261,7 +261,7 @@ export default function AllowanceEligibilityDetailPage({
     ? `/pts-officer/allowance-list/profession/${normalizedProfession}${sp.toString() ? `?${sp.toString()}` : ''}`
     : '/pts-officer/allowance-list';
 
-  const { data, isLoading } = useEligibilityDetail(id);
+  const { data, isLoading, refetch: refetchEligibilityDetail } = useEligibilityDetail(id);
   const { data: sourceRequest } = useRequestDetail(data?.request_id ?? undefined);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -441,6 +441,12 @@ export default function AllowanceEligibilityDetailPage({
       }),
     [data?.eligibility_ocr_precheck?.results, latestOcrResults, visibleAttachmentFileNames],
   );
+  const isUploadingAttachments = uploadEligibilityAttachments.isPending;
+  const isRunningOcr = runEligibilityAttachmentsOcr.isPending || ocrRunningAttachmentId !== null;
+  const isOcrProcessing = isUploadingAttachments || isRunningOcr;
+  const ocrProcessingMessage = isUploadingAttachments
+    ? 'กำลังอัปโหลดไฟล์และเริ่มตรวจ OCR อัตโนมัติ'
+    : 'กำลังตรวจ OCR จากไฟล์ที่สั่งงาน';
 
   if (isLoading) {
     return (
@@ -506,6 +512,15 @@ export default function AllowanceEligibilityDetailPage({
     );
   };
 
+  const schedulePostOcrRefresh = () => {
+    setTimeout(() => {
+      void refetchEligibilityDetail();
+    }, 2500);
+    setTimeout(() => {
+      void refetchEligibilityDetail();
+    }, 7000);
+  };
+
   const handleUploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(event.target.files ?? []);
     if (!data?.eligibility_id || selectedFiles.length === 0) return;
@@ -533,6 +548,7 @@ export default function AllowanceEligibilityDetailPage({
             },
           });
           mergeLatestOcrResults(ocrSummary.results ?? []);
+          schedulePostOcrRefresh();
           if (ocrSummary.count > 0) {
             toast.success(
               `ตรวจ OCR ไฟล์ใหม่ ${formatThaiNumber(ocrSummary.count)} ไฟล์ สำเร็จ ${formatThaiNumber(ocrSummary.success_count)} ไฟล์`,
@@ -583,6 +599,7 @@ export default function AllowanceEligibilityDetailPage({
         },
       });
       mergeLatestOcrResults(ocrSummary.results ?? []);
+      schedulePostOcrRefresh();
       toast.success(`ตรวจ OCR ไฟล์ ${file.file_name} เรียบร้อย`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'ไม่สามารถตรวจ OCR ไฟล์นี้ได้';
@@ -686,6 +703,18 @@ export default function AllowanceEligibilityDetailPage({
                     {formatThaiDate(license?.valid_until ?? null)}
                   </span>{' '}
                   โปรดตรวจสอบและส่งแจ้งเตือนเพื่อให้ดำเนินการต่ออายุใบอนุญาตให้ทันเวลา เพื่อไม่ให้สิทธินี้ถูกระงับชั่วคราว
+                </p>
+              </div>
+            </div>
+          )}
+
+          {isOcrProcessing && (
+            <div className="flex gap-3 p-4 border border-sky-200 bg-sky-50 rounded-lg items-start">
+              <Loader2 className="h-5 w-5 text-sky-700 mt-0.5 flex-shrink-0 animate-spin" />
+              <div>
+                <p className="font-bold text-sky-900">กำลังประมวลผล OCR</p>
+                <p className="text-sm text-sky-800 mt-1 leading-relaxed">
+                  {ocrProcessingMessage} ระหว่างนี้คุณสามารถดูข้อมูลส่วนอื่นในหน้านี้ได้
                 </p>
               </div>
             </div>

@@ -18,18 +18,42 @@ const isFastFirstEnabled = (): boolean => process.env.OCR_FAST_FIRST !== 'false'
 const toArabicDigits = (value: string): string =>
   value.replace(/[๐-๙]/g, (char) => String('๐๑๒๓๔๕๖๗๘๙'.indexOf(char)));
 
+const isAssignmentOrderCandidate = (item: OcrBatchResultItem): boolean => {
+  const kind = String(item.document_kind ?? '').trim().toLowerCase();
+  if (kind === 'assignment_order') return true;
+  const normalized = toArabicDigits(String(item.markdown ?? ''));
+  return (
+    /(?:คำสั่ง|คําสั่ง).*(?:มอบหมาย|รับผิดชอบ|ปฏิบัติงาน)/.test(normalized) ||
+    /(?:ที่|ที)\s*[0-9]{1,4}\s*\/\s*[0-9]{1,5}/.test(normalized)
+  );
+};
+
 const hasSuspiciousOrderNo = (markdown?: string): boolean => {
   const normalized = toArabicDigits(String(markdown ?? ''));
   return /(?:ที่|ที)\s*[0-9]{1,4}\s*\/\s*[0-9]{5,}/.test(normalized);
 };
 
+const hasSuspiciousAssignmentDates = (markdown?: string): boolean => {
+  const normalized = toArabicDigits(String(markdown ?? ''));
+  const signedYear = normalized.match(/(?:สั่ง\s*ณ\s*วันที่|สง\s*ณ\s*วันที่)[\s\S]{0,80}(25[0-9]{2})/);
+  const effectiveYear = normalized.match(/(?:ตั้งแต่วันที่|ต้งแต่วันที่)[\s\S]{0,80}(25[0-9]{2})/);
+  const signed = signedYear?.[1] ? Number(signedYear[1]) : null;
+  const effective = effectiveYear?.[1] ? Number(effectiveYear[1]) : null;
+  if (signed && signed < 2550) return true;
+  if (effective && effective < 2550) return true;
+  if (signed && effective && Math.abs(signed - effective) >= 3) return true;
+  return false;
+};
+
 const shouldEnhanceWithPaddle = (item: OcrBatchResultItem): boolean =>
+  isAssignmentOrderCandidate(item) &&
   item.ok === true &&
   item.suppressed !== true &&
   (item.quality?.passed === false ||
     ((item.engine_used ?? '').toLowerCase().includes('tesseract') &&
       (/(พ\.ศ\.\s*(?:25[0-3]\d|๒๕[๐-๓][๐-๙]))/.test(String(item.markdown ?? '')) ||
-        hasSuspiciousOrderNo(item.markdown))));
+        hasSuspiciousOrderNo(item.markdown) ||
+        hasSuspiciousAssignmentDates(item.markdown))));
 
 export const processRequestOcrPrecheck = async (requestId: number): Promise<void> => {
   const ocrBase = OcrHttpProvider.getServiceBase();

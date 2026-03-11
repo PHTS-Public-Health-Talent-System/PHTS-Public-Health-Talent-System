@@ -48,9 +48,130 @@ import {
 import path from 'node:path';
 import { getActiveHeadScopeRoles } from '@/modules/request/scope/application/scope.service.js';
 
+const toArabicDigits = (value: string): string =>
+  value.replace(/[๐-๙]/g, (char) => String('๐๑๒๓๔๕๖๗๘๙'.indexOf(char)));
+
+const isAssignmentOrderCandidate = (item: OcrBatchResultItem): boolean => {
+  const kind = String(item.document_kind ?? "").trim().toLowerCase();
+  if (kind === "assignment_order") return true;
+  const normalized = toArabicDigits(String(item.markdown ?? ""));
+  return (
+    /(?:คำสั่ง|คําสั่ง).*(?:มอบหมาย|รับผิดชอบ|ปฏิบัติงาน)/.test(normalized) ||
+    /(?:ที่|ที)\s*[0-9]{1,4}\s*\/\s*[0-9]{1,5}/.test(normalized)
+  );
+};
+
+const hasSuspiciousOrderNo = (markdown?: string): boolean => {
+  const normalized = toArabicDigits(String(markdown ?? ''));
+  return /(?:ที่|ที)\s*[0-9]{1,4}\s*\/\s*[0-9]{5,}/.test(normalized);
+};
+
+const hasSuspiciousAssignmentDates = (markdown?: string): boolean => {
+  const normalized = toArabicDigits(String(markdown ?? ""));
+  const signedYear = normalized.match(/(?:สั่ง\s*ณ\s*วันที่|สง\s*ณ\s*วันที่)[\s\S]{0,80}(25[0-9]{2})/);
+  const effectiveYear = normalized.match(/(?:ตั้งแต่วันที่|ต้งแต่วันที่)[\s\S]{0,80}(25[0-9]{2})/);
+  const signed = signedYear?.[1] ? Number(signedYear[1]) : null;
+  const effective = effectiveYear?.[1] ? Number(effectiveYear[1]) : null;
+  if (signed && signed < 2550) return true;
+  if (effective && effective < 2550) return true;
+  if (signed && effective && Math.abs(signed - effective) >= 3) return true;
+  return false;
+};
+
+const shouldEnhanceWithPaddle = (item: OcrBatchResultItem): boolean =>
+  isAssignmentOrderCandidate(item) &&
+  item.ok === true &&
+  item.suppressed !== true &&
+  (item.quality?.passed === false ||
+    ((item.engine_used ?? '').toLowerCase().includes('tesseract') &&
+      (/(พ\.ศ\.\s*(?:25[0-3]\d|๒๕[๐-๓][๐-๙]))/.test(String(item.markdown ?? '')) ||
+        hasSuspiciousOrderNo(item.markdown) ||
+        hasSuspiciousAssignmentDates(item.markdown))));
+
+const hasEnhanceCandidates = (results: OcrBatchResultItem[]): boolean =>
+  results.some((item) => shouldEnhanceWithPaddle(item));
+
+const enhanceSuspiciousResultsWithPaddle = async (
+  baseResults: OcrBatchResultItem[],
+  files: Array<{ file_name: string; file_path: string }>,
+  ocrBase: string,
+): Promise<OcrBatchResultItem[]> => {
+  const paddleBase = OcrHttpProvider.getPaddleServiceBase();
+  if (!paddleBase || paddleBase === ocrBase) return baseResults;
+
+  const filePathByName = new Map<string, string>();
+  for (const file of files) {
+    const key = String(file.file_name ?? '').trim().toLowerCase();
+    if (!key) continue;
+    filePathByName.set(key, file.file_path);
+  }
+
+  const filesToEnhance = baseResults
+    .filter(shouldEnhanceWithPaddle)
+    .map((item) => {
+      const fileName = String(item.name ?? '').trim();
+      const filePath = filePathByName.get(fileName.toLowerCase());
+      if (!fileName || !filePath) return null;
+      return { file_name: fileName, file_path: filePath };
+    })
+    .filter((item): item is { file_name: string; file_path: string } => Boolean(item));
+
+  if (filesToEnhance.length === 0) return baseResults;
+
+  try {
+    const enhanced = await runStoredFileOcrBatch(filesToEnhance, paddleBase, {
+      disableFallbackChain: true,
+    });
+    return mergeOcrResultsByFileName(baseResults, enhanced.results);
+  } catch (error) {
+    console.error('[OCR Manual] paddle enhancement failed:', error);
+    return baseResults;
+  }
+};
+
 export class RequestCommandService {
   private legacyOfficerCreatorCache = new Map<number, number | null>();
   private static readonly REQUEST_NO_MAX_RETRIES = 10;
+
+  private async enhanceOcrResultsInBackground(params: {
+    kind: 'request' | 'eligibility';
+    id: number;
+    ocrBase: string;
+    serviceUrl: string;
+    files: Array<{ file_name: string; file_path: string }>;
+    baseResults: OcrBatchResultItem[];
+  }): Promise<void> {
+    try {
+      if (!hasEnhanceCandidates(params.baseResults)) return;
+
+      const enhancedResults = await enhanceSuspiciousResultsWithPaddle(
+        params.baseResults,
+        params.files,
+        params.ocrBase,
+      );
+
+      const currentResults = await getExistingOcrResults({ kind: params.kind, id: params.id });
+      const mergedResults = mergeOcrResultsByFileName(currentResults, enhancedResults);
+      const successCount = mergedResults.filter((item) => item.ok).length;
+      const failedCount = mergedResults.length - successCount;
+
+      await saveOcrPrecheck({ kind: params.kind, id: params.id }, {
+        status: successCount > 0 ? "completed" : "failed",
+        source: "MANUAL_VERIFY",
+        service_url: params.serviceUrl,
+        worker: "server-manual-async",
+        started_at: new Date().toISOString(),
+        finished_at: new Date().toISOString(),
+        count: mergedResults.length,
+        success_count: successCount,
+        failed_count: failedCount,
+        error: null,
+        results: mergedResults,
+      });
+    } catch (error) {
+      console.error('[OCR Manual] async paddle enhancement failed:', error);
+    }
+  }
 
   private async generateUniqueRequestNo(
     requestId: number,
@@ -238,7 +359,9 @@ export class RequestCommandService {
       });
     }
 
-    const batchSummary = await runStoredFileOcrBatch(attachmentsToRun, ocrBase);
+    const batchSummary = await runStoredFileOcrBatch(attachmentsToRun, ocrBase, {
+      disableFallbackChain: true,
+    });
     const existingResults = await getExistingOcrResults({ kind: 'request', id: requestId });
     const mergedResults = mergeOcrResultsByFileName(existingResults, batchSummary.results);
     const successCount = mergedResults.filter((item) => item.ok).length;
@@ -256,6 +379,15 @@ export class RequestCommandService {
       failed_count: failedCount,
       error: null,
       results: mergedResults,
+    });
+
+    void this.enhanceOcrResultsInBackground({
+      kind: 'request',
+      id: requestId,
+      ocrBase,
+      serviceUrl: batchSummary.service_url,
+      files: attachmentsToRun,
+      baseResults: batchSummary.results,
     });
 
     return {
@@ -437,7 +569,9 @@ export class RequestCommandService {
       });
     }
 
-    const batchSummary = await runStoredFileOcrBatch(attachmentsToRun, ocrBase);
+    const batchSummary = await runStoredFileOcrBatch(attachmentsToRun, ocrBase, {
+      disableFallbackChain: true,
+    });
     const existingResults = await getExistingOcrResults({ kind: 'eligibility', id: eligibilityId });
     const mergedResults = mergeOcrResultsByFileName(existingResults, batchSummary.results);
     const successCount = mergedResults.filter((item) => item.ok).length;
@@ -455,6 +589,15 @@ export class RequestCommandService {
       failed_count: failedCount,
       error: null,
       results: mergedResults,
+    });
+
+    void this.enhanceOcrResultsInBackground({
+      kind: 'eligibility',
+      id: eligibilityId,
+      ocrBase,
+      serviceUrl: batchSummary.service_url,
+      files: attachmentsToRun,
+      baseResults: batchSummary.results,
     });
 
     return {
