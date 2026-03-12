@@ -480,14 +480,22 @@ export class SnapshotRepository {
     conn?: PoolConnection,
   ): Promise<Snapshot | null> {
     const executor = conn ?? db;
-    const sql = `
-      SELECT * FROM pay_snapshots
+    const latestIdSql = `
+      SELECT snapshot_id FROM pay_snapshots
       WHERE period_id = ? AND snapshot_type = ?
-      ORDER BY created_at DESC LIMIT 1
+      ORDER BY snapshot_id DESC LIMIT 1
     `;
+    const [latestIdRows] = await executor.query<RowDataPacket[]>(latestIdSql, [periodId, snapshotType]);
+    if (latestIdRows.length === 0) return null;
+    const latestSnapshotId = Number((latestIdRows[0] as any).snapshot_id);
 
-    const [rows] = await executor.query<RowDataPacket[]>(sql, [periodId, snapshotType]);
-
+    const snapshotSql = `
+      SELECT snapshot_id, period_id, snapshot_type, snapshot_data, record_count, total_amount, created_at
+      FROM pay_snapshots
+      WHERE snapshot_id = ?
+      LIMIT 1
+    `;
+    const [rows] = await executor.query<RowDataPacket[]>(snapshotSql, [latestSnapshotId]);
     if (rows.length === 0) return null;
 
     const row = rows[0] as any;
