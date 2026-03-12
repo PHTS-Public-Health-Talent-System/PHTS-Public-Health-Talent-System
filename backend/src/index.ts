@@ -78,7 +78,7 @@ const envOrigins = (process.env.FRONTEND_URL || '')
 
 const defaultOrigins = ['http://localhost:3000'];
 const allowedOrigins = [...new Set([...envOrigins, ...defaultOrigins])];
-const defaultTunnelSuffixes = ['.ngrok-free.app', '.ngrok.app', '.trycloudflare.com'];
+const defaultTunnelSuffixes = ['.trycloudflare.com'];
 const devTunnelAllowedSuffixes = (process.env.CORS_DEV_TUNNEL_SUFFIXES || defaultTunnelSuffixes.join(','))
   .split(',')
   .map((suffix) => suffix.trim().toLowerCase())

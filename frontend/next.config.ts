@@ -13,10 +13,6 @@ const nextConfig: NextConfig = {
     ...new Set([
       'http://localhost:3000',
       'http://127.0.0.1:3000',
-      'https://*.ngrok-free.app',
-      'https://*.ngrok.app',
-      '*.ngrok-free.app',
-      '*.ngrok.app',
       'https://*.trycloudflare.com',
       '*.trycloudflare.com',
       'laptop-vpnchdqf-1.tail84384c.ts.net',

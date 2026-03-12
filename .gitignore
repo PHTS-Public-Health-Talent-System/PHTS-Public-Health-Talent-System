@@ -70,6 +70,7 @@ temp/
 docs/
 import_data/
 *.tmp
+*:Zone.Identifier
 
 # Certificates and secrets
 *.pem
