@@ -1,5 +1,6 @@
 import { describe, expect, test } from "@jest/globals";
 import {
+  createHolidaySchema,
   deleteRateSchema,
   updateRateSchema,
 } from "@/modules/master-data/master-data.schema.js";
@@ -29,5 +30,13 @@ describe("master-data schema", () => {
     });
 
     expect(parsed.params.rateId).toBe(42);
+  });
+
+  test("createHolidaySchema rejects impossible calendar date", () => {
+    expect(() =>
+      createHolidaySchema.parse({
+        body: { date: "2026-02-31", name: "Holiday" },
+      }),
+    ).toThrow();
   });
 });

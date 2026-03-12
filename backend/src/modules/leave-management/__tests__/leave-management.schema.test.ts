@@ -79,6 +79,16 @@ describe("leave-management schema", () => {
     expect(() => createLeaveManagementSchema.parse({ body: payload })).toThrow();
   });
 
+  test("createLeaveManagement rejects impossible calendar date", () => {
+    const payload = {
+      citizen_id: "123",
+      leave_type: "personal",
+      start_date: "2026-02-31",
+      end_date: "2026-03-01",
+    };
+    expect(() => createLeaveManagementSchema.parse({ body: payload })).toThrow();
+  });
+
   test("upsert rejects document dates when only one side provided", () => {
     const payload = {
       leave_management_id: 10,

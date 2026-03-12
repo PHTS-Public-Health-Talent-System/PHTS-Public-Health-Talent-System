@@ -8,6 +8,7 @@ import type {
 } from '../leave-management.schema.js';
 import { calculateLeaveQuotaStatus } from './leave-domain.service.js';
 import { LEAVE_RULES } from '@/modules/payroll/payroll.constants.js';
+import { NotFoundError, ValidationError } from "@shared/utils/errors.js";
 
 const repository = new LeaveManagementRepository();
 
@@ -105,7 +106,7 @@ export async function upsertLeaveManagementExtension(
 ) {
   const leaveManagementId = payload.leave_management_id ?? payload.leave_record_id;
   if (!leaveManagementId) {
-    throw new Error("leave_management_id or leave_record_id is required");
+    throw new ValidationError("leave_management_id or leave_record_id is required");
   }
   const requireReport = payload.require_return_report ?? false;
   const noPay = payload.is_no_pay ?? payload.pay_exception ?? false;
@@ -199,7 +200,7 @@ export async function listLeaveManagementDocuments(leaveManagementId: number) {
 export async function getLeaveManagementQuotaStatus(leaveManagementId: number) {
   const leave = await repository.findLeaveManagementQuotaContext(leaveManagementId);
   if (!leave) {
-    throw new Error("ไม่พบรายการวันลาที่ต้องการ");
+    throw new NotFoundError("รายการวันลา", leaveManagementId);
   }
 
   const [leaveRows, quotaRow, holidayRows, serviceDates] = await Promise.all([
