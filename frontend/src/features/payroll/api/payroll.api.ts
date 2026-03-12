@@ -172,6 +172,18 @@ export type PayoutDetail = {
       exceedDate: string | null;
     }>;
   };
+  rateBreakdown?: Array<{
+    start_date: string;
+    end_date: string;
+    days: number;
+    rate: number;
+    amount: number;
+    eligibility_id?: number | null;
+    master_rate_id?: number | null;
+    group_no?: number | null;
+    item_no?: number | null;
+    sub_item_no?: number | null;
+  }>;
 };
 
 export type PayoutSearchRow = {

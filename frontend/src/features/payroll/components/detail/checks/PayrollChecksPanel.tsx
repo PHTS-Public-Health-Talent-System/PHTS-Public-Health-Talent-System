@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { usePathname } from 'next/navigation';
-import { AlertTriangle, Info, Clock } from 'lucide-react';
+import { AlertTriangle, Info, Clock, Calculator, Edit3 } from 'lucide-react';
 import type { PayoutDetail } from '@/features/payroll/api';
 import { formatThaiDate, formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
 import type { PayrollRow } from '../model/detail.types';
@@ -39,6 +39,14 @@ export function PayrollChecksPanel({
   const deductedAmount = dailyRate > 0 ? dailyRate * deductedDays : 0;
   const otherLossRaw = Number((baseRate - calculatedAmount - deductedAmount).toFixed(2));
   const otherLoss = otherLossRaw > 0 ? otherLossRaw : 0;
+  const monthlyBaseAmount = Number(
+    Math.max(calculatedAmount + deductedAmount + otherLoss, baseRate).toFixed(2),
+  );
+  const baseAmountDiff = Number((monthlyBaseAmount - baseRate).toFixed(2));
+  const rateBreakdown = payoutDetail?.rateBreakdown ?? [];
+  const sortedRateBreakdown = [...rateBreakdown].sort((a, b) =>
+    String(a.start_date).localeCompare(String(b.start_date)),
+  );
 
   const roleRoot = useMemo(() => {
     const segment = pathname?.split('/').filter(Boolean)[0];
@@ -78,12 +86,18 @@ export function PayrollChecksPanel({
   const summaryDeductedAmount = hasTopImpact ? baseCheckImpactAmount : deductedAmount + otherLoss;
   const summaryDeductedDays = hasTopImpact ? baseCheckImpactDays : deductedDays;
   const hasDeductionImpact = summaryDeductedAmount > 0.01 || summaryDeductedDays > 0.01;
+  const shouldShowDeductionSummaryAlert = hasDeductionImpact && !hasTopImpact;
 
   const conditionDeductedDays =
     dailyRate > 0 && otherLoss > 0 ? Number((otherLoss / dailyRate).toFixed(2)) : 0;
-
-  // Show manual override card only when payout was explicitly edited by a user.
-  // Avoid using stale-check heuristics here because they can produce false positives.
+  const totalDeductedDays = Number((deductedDays + conditionDeductedDays).toFixed(2));
+  const isMixedCase = sortedRateBreakdown.length > 1 && totalDeductedDays > 0;
+  const looksLikeMidMonthRateChange =
+    daysInMonth > 0 &&
+    Math.abs(eligibleDays - daysInMonth) < 0.01 &&
+    totalDeductedDays < 0.01 &&
+    Math.abs(baseAmountDiff) >= 0.01;
+  const hasRateChangeAlert = looksLikeMidMonthRateChange || sortedRateBreakdown.length > 1;
   const hasManualOverrideSignal = hasUpdatedByOfficer;
 
   // Date Range Logic
@@ -156,19 +170,59 @@ export function PayrollChecksPanel({
 
   return (
     <div className="flex flex-col gap-6 w-full pb-8 pt-2">
-      {/* 0. Smart Alerts Section - จัดกลุ่มกล่องแจ้งเตือนทั้งหมดไว้ด้วยกัน */}
-      <div className="flex flex-col gap-3">
-        {/* Warning Alert: สรุปยอดหัก */}
-        {hasDeductionImpact && (
-          <div className="flex items-start gap-3 p-4 rounded-xl bg-orange-50 border border-orange-200/60 text-orange-800 shadow-sm">
-            <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0 mt-0.5" />
+      {/* 0. Smart Alerts Section - ปรับโครงสร้างและเพิ่ม Animation ให้ดูสมูท */}
+      <div className="flex flex-col gap-3.5">
+
+        {/* Alert: เคสเปลี่ยนกลุ่ม/อัตรากลางเดือน (สี Purple) */}
+        {hasRateChangeAlert && (
+          <div className="rounded-xl border border-purple-200 bg-purple-50 text-purple-900 shadow-sm p-4 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-start gap-3">
+              <Calculator className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-1.5">
+                <h4 className="text-sm font-bold leading-tight">
+                  เคสเปลี่ยนกลุ่ม/อัตรากลางเดือน
+                </h4>
+                <p className="text-sm text-purple-800/90 leading-relaxed">
+                  เดือนนี้มีสิทธิ{' '}
+                  <span className="font-bold text-purple-900">
+                    {formatThaiNumber(eligibleDays)}/{formatThaiNumber(daysInMonth)}
+                  </span>{' '}
+                  วัน
+                  {eligibleDateRangesLabel ? ` (${eligibleDateRangesLabel})` : ''}
+                  {totalDeductedDays > 0 && (
+                    <>
+                      {' '}และไม่มีสิทธิ <span className="font-bold text-purple-900">{formatThaiNumber(totalDeductedDays)}</span> วัน
+                    </>
+                  )}
+                </p>
+                <p className="text-xs text-purple-700/80">
+                  ยอดฐานก่อนหัก{' '}
+                  <span className="font-semibold text-purple-900">
+                    {formatThaiNumber(monthlyBaseAmount, { maximumFractionDigits: 2 })} บาท
+                  </span>{' '}
+                  {Math.abs(baseAmountDiff) < 0.01
+                    ? `เท่ากับอัตราเงินเต็มเดือนที่แสดง (${formatThaiNumber(baseRate)} บาท)`
+                    : `${baseAmountDiff > 0 ? 'สูงกว่า' : 'ต่ำกว่า'}อัตราเงินเต็มเดือนที่แสดง (${formatThaiNumber(baseRate)} บาท) อยู่ ${formatThaiNumber(Math.abs(baseAmountDiff), { maximumFractionDigits: 2 })} บาท`}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Alert: สรุปยอดหัก (สี Orange) */}
+        {shouldShowDeductionSummaryAlert && (
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-orange-50 border border-orange-200 text-orange-900 shadow-sm animate-in fade-in slide-in-from-top-2">
+            <AlertTriangle className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />
             <div className="flex-1">
-              <h4 className="text-sm font-bold leading-tight mb-1">
-                งวดนี้ถูกหัก {formatThaiNumber(summaryDeductedAmount, { maximumFractionDigits: 2 })}{' '}
-                บาท ({formatThaiNumber(summaryDeductedDays)} วัน) เพราะ{summaryReason}
+              <h4 className="text-sm font-bold leading-tight">
+                งวดนี้ถูกหัก <span className="text-orange-700 text-base mx-1">{formatThaiNumber(summaryDeductedAmount, { maximumFractionDigits: 2 })}</span> บาท{' '}
+                ({formatThaiNumber(summaryDeductedDays)} วัน)
               </h4>
+              <p className="text-xs text-orange-800/80 mt-1">
+                สาเหตุ: {summaryReason}
+              </p>
               {latestUpdatedAt && (
-                <p className="text-xs text-orange-600/80 flex items-center gap-1">
+                <p className="text-[11px] text-orange-600/90 flex items-center gap-1.5 mt-2.5">
                   <Clock className="h-3 w-3" /> ข้อมูลล่าสุด: {formatThaiDateTime(latestUpdatedAt)}
                 </p>
               )}
@@ -176,40 +230,35 @@ export function PayrollChecksPanel({
           </div>
         )}
 
-        {/* Info Alert: การแก้ไขโดยเจ้าหน้าที่ */}
+        {/* Alert: การแก้ไขโดยเจ้าหน้าที่ (สี Blue) */}
         {hasManualOverrideSignal && (
-          <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-50/50 border border-blue-100 text-blue-900 shadow-sm">
-            <Info className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
-            <div className="flex-1 text-sm space-y-3">
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-50/80 border border-blue-200 text-blue-900 shadow-sm animate-in fade-in slide-in-from-top-2">
+            <Edit3 className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-3">
               <div>
-                <p className="font-semibold text-blue-800">
-                  รายการนี้มีการแก้ไขเพิ่มเติมโดยเจ้าหน้าที่
-                </p>
-                <p className="text-xs text-blue-600 mt-0.5">
-                  เหตุผลที่ระบุ: {(payout?.remark ?? '').trim() || 'ไม่ได้ระบุเหตุผล'}
+                <h4 className="text-sm font-bold">รายการนี้มีการแก้ไขเพิ่มเติมโดยเจ้าหน้าที่</h4>
+                <p className="text-xs text-blue-800/80 mt-0.5">
+                  เหตุผล: {(payout?.remark ?? '').trim() || 'ไม่ได้ระบุเหตุผล'}
                 </p>
                 {payoutUpdatedAt && (
-                  <p className="text-xs text-blue-600/80 mt-0.5 flex items-center gap-1">
+                  <p className="text-[11px] text-blue-600/90 flex items-center gap-1.5 mt-1.5">
                     <Clock className="h-3 w-3" /> แก้ไขล่าสุด: {formatThaiDateTime(payoutUpdatedAt)}
                   </p>
                 )}
               </div>
 
-              {/* ปรับการแสดงผลก่อน-หลังแก้ไข ให้อ่านง่ายขึ้นคล้ายๆ ตาราง */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs bg-white/60 p-3 rounded-lg border border-blue-100/50">
-                <div className="flex flex-col">
-                  <span className="text-muted-foreground mb-1">ก่อนแก้ไข (ตรวจสอบเดิม):</span>
-                  <span className="font-medium text-slate-700">
-                    หักประมาณ{' '}
-                    {formatThaiNumber(baseCheckImpactAmount, { maximumFractionDigits: 2 })} บาท (
-                    {formatThaiNumber(baseCheckImpactDays)} วัน)
+              {/* ปรับสี Grid ให้อ่านง่ายขึ้น และดู Clean ขึ้น */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-blue-200 rounded-lg overflow-hidden border border-blue-200 shadow-sm">
+                <div className="bg-white p-3 flex flex-col justify-center">
+                  <span className="text-[11px] text-slate-500 font-medium mb-1">ก่อนแก้ไข (ระบบตรวจสอบเดิม):</span>
+                  <span className="font-medium text-slate-700 text-xs">
+                    หัก {formatThaiNumber(baseCheckImpactAmount, { maximumFractionDigits: 2 })} บาท ({formatThaiNumber(baseCheckImpactDays)} วัน)
                   </span>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-muted-foreground mb-1">หลังแก้ไข (ค่าปัจจุบัน):</span>
-                  <span className="font-semibold text-blue-700">
-                    หัก {formatThaiNumber(deductedAmount, { maximumFractionDigits: 2 })} บาท (
-                    {formatThaiNumber(deductedDays)} วัน)
+                <div className="bg-blue-50/50 p-3 flex flex-col justify-center">
+                  <span className="text-[11px] text-blue-600 font-semibold mb-1">หลังแก้ไข (ค่าปัจจุบัน):</span>
+                  <span className="font-bold text-blue-800 text-xs">
+                    หัก {formatThaiNumber(deductedAmount, { maximumFractionDigits: 2 })} บาท ({formatThaiNumber(deductedDays)} วัน)
                   </span>
                 </div>
               </div>
@@ -217,30 +266,38 @@ export function PayrollChecksPanel({
           </div>
         )}
 
-        {/* Info Alert: ข้อมูลอาจไม่อัปเดต */}
+        {/* Alert: ข้อมูลอาจไม่อัปเดต (สี Muted) - ปรับให้อยู่ในโหมด Hint */}
         {checksMayBeStale && (
-          <div className="flex items-start gap-2 px-4 py-3 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-600">
-            <Info className="h-4 w-4 shrink-0 text-slate-400 mt-0.5" />
-            <p>
-              มีการแก้ไขข้อมูลการเบิกจ่ายล่าสุดเมื่อ{' '}
-              <span className="font-medium">{formatThaiDateTime(payoutUpdatedAt)}</span> ส่วน
-              &quot;ประเด็นที่ตรวจพบ&quot; อาจยังไม่อัปเดตตามยอดที่แก้ไขล่าสุด
+          <div className="flex items-start gap-2.5 px-4 py-3 rounded-lg border border-border bg-muted/30 text-xs text-muted-foreground mt-1 animate-in fade-in">
+            <Info className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
+            <p className="leading-relaxed">
+              มีการแก้ไขข้อมูลการเบิกจ่ายล่าสุดเมื่อ <span className="font-medium text-foreground">{formatThaiDateTime(payoutUpdatedAt)}</span>{' '}
+              ส่วน <span className="font-medium text-foreground">&quot;ประเด็นที่ตรวจพบ&quot;</span> ด้านล่างอาจยังไม่อัปเดตตามยอดที่แก้ไข
             </p>
           </div>
         )}
       </div>
 
-      <hr className="border-slate-100 my-2" />
+      {/* เปลี่ยน <hr> เป็น <div className="h-px bg-border"> ให้สอดคล้องกับโทนของ Shadcn UI */}
+      <div className="h-px w-full bg-border my-2" aria-hidden="true" />
 
-      {/* 1. รายการแจ้งเตือน / ข้อควรระวัง (ต้องไปแก้ UI ใน ChecksIssuesSection เพิ่มเติม) */}
+      {/* 1. รายการแจ้งเตือน / ข้อควรระวัง */}
       <ChecksIssuesSection
         checks={checks}
         fallbackIssues={fallbackRow?.issues ?? []}
+        items={payoutDetail?.items ?? []}
+        leaveImpactSummary={payoutDetail?.leaveImpactSummary}
+        fallbackRetroAmount={retro}
+        fallbackDeductionAmount={deductedAmount + otherLoss}
+        fallbackDeductedDays={deductedDays + conditionDeductedDays}
+        fallbackLicenseValidUntil={fallbackRow?.licenseValidUntil ?? null}
+        fallbackLicenseStatus={fallbackRow?.licenseStatus ?? null}
+        fallbackRemark={payout?.remark ?? fallbackRow?.note ?? null}
         overQuotaHref={leaveStudyHref}
         canManageLeaves={isPtsOfficer}
       />
 
-      {/* 2. สรุปตัวเลขคำนวณเงิน (ต้องไปแก้ UI ใน ChecksCalculationSection เพิ่มเติม) */}
+      {/* 2. สรุปตัวเลขคำนวณเงิน */}
       <ChecksCalculationSection
         baseRate={baseRate}
         daysInMonth={daysInMonth}
@@ -254,6 +311,7 @@ export function PayrollChecksPanel({
         otherLoss={otherLoss}
         retro={retro}
         totalPayable={totalPayable}
+        rateBreakdown={sortedRateBreakdown}
       />
     </div>
   );

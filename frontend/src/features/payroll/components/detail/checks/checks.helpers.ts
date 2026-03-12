@@ -53,6 +53,7 @@ export const normalizeLicenseStatusLabel = (value: unknown): string => {
 
 export const localizePayrollText = (value: string): string => {
   return value
+    .replace(/\bno[-\s]?pay\b/gi, "ลาไม่รับค่าตอบแทน")
     .replace(/\bNOT\s+ACTIVE\b/gi, "ไม่ใช้งาน")
     .replace(/ไม่\s*ACTIVE/gi, "ไม่ใช้งาน")
     .replace(/\bINACTIVE\b/gi, "ไม่ใช้งาน")

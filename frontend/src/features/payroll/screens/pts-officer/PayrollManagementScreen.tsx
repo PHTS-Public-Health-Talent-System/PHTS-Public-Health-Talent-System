@@ -292,11 +292,11 @@ export function PayrollManagementScreen() {
               value={currentPeriod?.id ?? ''}
               onValueChange={(value) => setSelectedPeriodId(value)}
             >
-              <SelectTrigger className="w-[220px] bg-background">
+              <SelectTrigger suppressHydrationWarning className="w-[220px] bg-background">
                 <Calendar className="mr-2 h-4 w-4 text-primary" />
                 <SelectValue placeholder="เลือกงวด" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent id="payroll-period-select-content">
                 {periods.map((period) => (
                   <SelectItem key={period.id} value={period.id} className="font-medium">
                     {period.label}
@@ -310,11 +310,11 @@ export function PayrollManagementScreen() {
 
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="shadow-sm mt-5 sm:mt-0">
+              <Button suppressHydrationWarning className="shadow-sm mt-5 sm:mt-0">
                 <Plus className="mr-2 h-4 w-4" /> สร้างรอบใหม่
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent id="payroll-create-period-dialog-content" className="sm:max-w-[425px]">
               <DialogHeader>
                 <DialogTitle>สร้างรอบจ่ายเงินใหม่</DialogTitle>
                 <DialogDescription>
@@ -325,10 +325,10 @@ export function PayrollManagementScreen() {
                 <div className="grid gap-2">
                   <label className="text-sm font-medium">เดือน</label>
                   <Select value={createMonth} onValueChange={setCreateMonth}>
-                    <SelectTrigger>
+                    <SelectTrigger suppressHydrationWarning>
                       <SelectValue placeholder="เลือกเดือน" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent id="payroll-create-month-select-content">
                       {Array.from({ length: 12 }).map((_, index) => {
                         const monthNo = index + 1;
                         return (
