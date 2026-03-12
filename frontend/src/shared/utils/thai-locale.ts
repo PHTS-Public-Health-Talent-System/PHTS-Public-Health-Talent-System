@@ -4,11 +4,43 @@ export const THAI_TIMEZONE = "Asia/Bangkok";
 export const toGregorianYear = (year: number): number => (year >= 2400 ? year - 543 : year);
 export const toBuddhistYear = (year: number): number => (year >= 2400 ? year : year + 543);
 
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
 const toDate = (value?: string | Date | null): Date | null => {
   if (!value) return null;
+  if (typeof value === "string") {
+    const dateOnlyMatch = value.trim().match(DATE_ONLY_PATTERN);
+    if (dateOnlyMatch) {
+      const year = Number(dateOnlyMatch[1]);
+      const month = Number(dateOnlyMatch[2]);
+      const day = Number(dateOnlyMatch[3]);
+      const dateOnly = new Date(Date.UTC(year, month - 1, day));
+      if (!Number.isNaN(dateOnly.getTime())) return dateOnly;
+    }
+  }
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date;
+};
+
+const getThaiDateParts = (value?: string | Date | null): { year: number; month: string; day: string } | null => {
+  const date = toDate(value);
+  if (!date) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: THAI_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const yearPart = parts.find((part) => part.type === "year")?.value;
+  const monthPart = parts.find((part) => part.type === "month")?.value;
+  const dayPart = parts.find((part) => part.type === "day")?.value;
+  if (!yearPart || !monthPart || !dayPart) return null;
+  return {
+    year: Number(yearPart),
+    month: monthPart,
+    day: dayPart,
+  };
 };
 
 export const formatThaiDate = (
@@ -108,9 +140,11 @@ export const formatThaiNumber = (
 ): string => new Intl.NumberFormat(THAI_LOCALE, options).format(value);
 
 export const formatBuddhistDateForFilename = (value?: string | Date | null): string => {
-  const date = toDate(value) ?? new Date();
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = String(toBuddhistYear(date.getFullYear()));
-  return `${year}-${month}-${day}`;
+  const parts = getThaiDateParts(value ?? new Date());
+  if (!parts) {
+    const fallback = new Date();
+    return `${toBuddhistYear(fallback.getFullYear())}-${String(fallback.getMonth() + 1).padStart(2, "0")}-${String(fallback.getDate()).padStart(2, "0")}`;
+  }
+  const year = String(toBuddhistYear(parts.year));
+  return `${year}-${parts.month}-${parts.day}`;
 };
