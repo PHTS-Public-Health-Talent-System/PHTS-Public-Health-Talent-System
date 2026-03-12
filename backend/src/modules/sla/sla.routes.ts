@@ -32,7 +32,7 @@ router.get(
     UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
   ),
-  slaController.getSLAConfigs,
+  slaController.getSLAConfigsHandler,
 );
 
 // Update SLA configuration (ADMIN only)
@@ -40,7 +40,7 @@ router.put(
   "/config/:stepNo",
   restrictTo(UserRole.ADMIN),
   validate(updateSLAConfigSchema),
-  slaController.updateSLAConfig,
+  slaController.updateSLAConfigHandler,
 );
 
 // Get SLA report (PTS_OFFICER, HEAD_HR, DIRECTOR, ADMIN)
@@ -54,7 +54,7 @@ router.get(
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
-  slaController.getSLAReport,
+  slaController.getSLAReportHandler,
 );
 
 router.get(
@@ -67,7 +67,7 @@ router.get(
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
-  slaController.getSLAKpiOverview,
+  slaController.getSLAKpiOverviewHandler,
 );
 
 router.get(
@@ -80,7 +80,7 @@ router.get(
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
-  slaController.getSLAKpiByStep,
+  slaController.getSLAKpiByStepHandler,
 );
 
 router.get(
@@ -93,7 +93,7 @@ router.get(
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
-  slaController.getSLAKpiBacklogAging,
+  slaController.getSLAKpiBacklogAgingHandler,
 );
 
 router.get(
@@ -106,7 +106,7 @@ router.get(
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
-  slaController.getSLAKpiDataQuality,
+  slaController.getSLAKpiDataQualityHandler,
 );
 
 router.get(
@@ -119,7 +119,7 @@ router.get(
     UserRole.DIRECTOR,
     UserRole.ADMIN,
   ),
-  slaController.getSLAKpiErrorOverview,
+  slaController.getSLAKpiErrorOverviewHandler,
 );
 
 // Get pending requests with SLA info (PTS_OFFICER, ADMIN)
@@ -133,14 +133,14 @@ router.get(
     UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
   ),
-  slaController.getPendingRequestsWithSLA,
+  slaController.getPendingRequestsWithSLAHandler,
 );
 
 // Manual trigger for reminders (ADMIN only)
 router.post(
   "/send-reminders",
   restrictTo(UserRole.ADMIN),
-  slaController.sendReminders,
+  slaController.sendRemindersHandler,
 );
 
 // Calculate business days utility
@@ -148,7 +148,7 @@ router.get(
   "/calculate-days",
   restrictTo(UserRole.PTS_OFFICER, UserRole.HEAD_SCOPE, UserRole.ADMIN),
   validate(calculateBusinessDaysSchema),
-  slaController.calculateBusinessDays,
+  slaController.calculateBusinessDaysHandler,
 );
 
 export default router;
