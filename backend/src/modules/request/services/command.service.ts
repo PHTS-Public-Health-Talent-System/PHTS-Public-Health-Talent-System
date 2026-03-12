@@ -1131,21 +1131,7 @@ export class RequestCommandService {
       connection,
     );
 
-    await OcrRequestRepository.upsertRequestPrecheck(
-      requestId,
-      {
-        status: 'queued',
-        queued_at: new Date().toISOString(),
-        source: 'AUTO_ON_SUBMIT',
-      },
-      connection,
-    );
-
     await connection.commit();
-
-    void enqueueRequestOcrPrecheck(requestId).catch((error) => {
-      console.error('[OCRQueue] enqueue failed:', error);
-    });
 
     const updatedEntity = await requestRepository.findById(requestId);
     if (!updatedEntity) {
@@ -1504,6 +1490,7 @@ export class RequestCommandService {
     _signatureFile?: Express.Multer.File,
   ): Promise<RequestWithDetails> {
     const connection = await getConnection();
+    let shouldEnqueueOcr = false;
 
     try {
       await connection.beginTransaction();
@@ -1559,6 +1546,18 @@ export class RequestCommandService {
       await requestRepository.updateRequestNo(requestId, requestNo, connection);
 
       await this.insertAttachments(connection, requestId, files);
+      shouldEnqueueOcr = Boolean(files?.some((file) => Boolean(file.path)));
+      if (shouldEnqueueOcr) {
+        await OcrRequestRepository.upsertRequestPrecheck(
+          requestId,
+          {
+            status: 'queued',
+            queued_at: new Date().toISOString(),
+            source: 'AUTO_ON_ATTACHMENT_UPLOAD',
+          },
+          connection,
+        );
+      }
 
       await emitAuditEvent(
         {
@@ -1581,6 +1580,12 @@ export class RequestCommandService {
       );
 
       await connection.commit();
+
+      if (shouldEnqueueOcr) {
+        void enqueueRequestOcrPrecheck(requestId).catch((error) => {
+          console.error('[OCRQueue] enqueue failed:', error);
+        });
+      }
 
       return await requestQueryService.getRequestDetails(requestId);
     } catch (error) {
@@ -1710,7 +1715,6 @@ export class RequestCommandService {
       );
 
       const submissionData = this.parseSubmissionData(requestRow.submission_data);
-      const nowIso = new Date().toISOString();
 
       // [REFACTOR] Use Repo Update
       await requestRepository.update(
@@ -1720,15 +1724,6 @@ export class RequestCommandService {
           current_step: nextStep,
           step_started_at: new Date(),
           submission_data: submissionData,
-        },
-        connection,
-      );
-      await OcrRequestRepository.upsertRequestPrecheck(
-        requestId,
-        {
-          status: 'queued',
-          queued_at: nowIso,
-          source: 'AUTO_ON_SUBMIT',
         },
         connection,
       );
@@ -1762,11 +1757,6 @@ export class RequestCommandService {
         console.error('[Notification] enqueue failed after submit:', error);
       });
 
-      // Fire-and-forget OCR precheck enqueue (worker handles processing).
-      void enqueueRequestOcrPrecheck(requestId).catch((error) => {
-        console.error('[OCRQueue] enqueue failed:', error);
-      });
-
       const updatedEntity = await requestRepository.findById(requestId);
       if (!updatedEntity) {
         throw new Error("Request not found after creation");
@@ -1793,6 +1783,7 @@ export class RequestCommandService {
     _signatureFile?: Express.Multer.File,
   ): Promise<RequestWithDetails> {
     const connection = await getConnection();
+    let shouldEnqueueOcr = false;
 
     try {
       await connection.beginTransaction();
@@ -1826,8 +1817,26 @@ export class RequestCommandService {
 
       // Insert new files
       await this.insertAttachments(connection, requestId, files);
+      shouldEnqueueOcr = Boolean(files?.some((file) => Boolean(file.path)));
+      if (shouldEnqueueOcr) {
+        await OcrRequestRepository.upsertRequestPrecheck(
+          requestId,
+          {
+            status: 'queued',
+            queued_at: new Date().toISOString(),
+            source: 'AUTO_ON_ATTACHMENT_UPLOAD',
+          },
+          connection,
+        );
+      }
 
       await connection.commit();
+
+      if (shouldEnqueueOcr) {
+        void enqueueRequestOcrPrecheck(requestId).catch((error) => {
+          console.error('[OCRQueue] enqueue failed:', error);
+        });
+      }
       return await requestQueryService.getRequestDetails(requestId);
     } catch (error) {
       await connection.rollback();

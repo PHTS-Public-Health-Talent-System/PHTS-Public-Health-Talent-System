@@ -341,6 +341,7 @@ export function Step5Review({
                     <TabsContent value="NEW" className="mt-0">
                       <div className="rounded-lg border border-border/60 bg-muted/5 p-3">
                         <SignaturePad
+                          initialData={data.signature ?? null}
                           onSave={(signatureData: string) => {
                             updateData('signatureMode', 'NEW');
                             updateData('signature', signatureData);

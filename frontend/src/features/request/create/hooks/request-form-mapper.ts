@@ -96,5 +96,12 @@ export const mapRequestToFormData = (
     effectiveDate: normalizeDate(request.effective_date),
     attachments: request.attachments ?? [],
     rateMapping,
+    signatureMode:
+      (submission.signature_mode as RequestFormData["signatureMode"] | undefined) ??
+      undefined,
+    signature:
+      typeof submission.signature_draft_data_url === "string"
+        ? (submission.signature_draft_data_url as string)
+        : undefined,
   }
 }

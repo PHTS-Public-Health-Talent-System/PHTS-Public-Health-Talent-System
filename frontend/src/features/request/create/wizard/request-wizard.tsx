@@ -16,6 +16,7 @@ import { Step5Review } from './steps/step-5-review';
 import { useCheckSignature } from '@/features/signature/queries';
 import type { RequestWithDetails } from '@/types/request.types';
 import { cn } from '@/lib/utils';
+import { formatThaiDateTime } from '@/shared/utils/thai-locale';
 
 const steps = [
   { id: 1, title: 'ข้อมูลส่วนตัว' },
@@ -45,6 +46,9 @@ export function RequestWizard({ initialRequest, returnPath, prefillUserId }: Req
     submitRequest,
     confirmAttachments,
     prefillOriginal,
+    autosaveStatus,
+    autosaveLastSavedAt,
+    ocrPrecheck,
   } = useRequestForm({ initialRequest, returnPath, prefillUserId });
 
   const { data: signatureCheck } = useCheckSignature();
@@ -69,6 +73,9 @@ export function RequestWizard({ initialRequest, returnPath, prefillUserId }: Req
 
   const disabledReason = missingReasons.length > 0 ? `ยังขาด: ${missingReasons.join(', ')}` : '';
   const isStep3Valid = hasAttachments;
+  const idleAutosaveHint = initialRequest
+    ? 'ระบบจะบันทึกฉบับร่างอัตโนมัติเมื่อมีการเปลี่ยนแปลงข้อมูล'
+    : 'ระบบจะบันทึกฉบับร่างอัตโนมัติเมื่อเริ่มแนบไฟล์';
 
   // Scroll to top on step change
   useEffect(() => {
@@ -185,10 +192,19 @@ export function RequestWizard({ initialRequest, returnPath, prefillUserId }: Req
                 onUpload={handleUploadFile}
                 onRemove={removeFile}
                 onRemoveExisting={removeExistingAttachment}
-                showExistingAttachments={Boolean(initialRequest)}
+                showExistingAttachments={
+                  Boolean(initialRequest) || Boolean((formData.attachments ?? []).length)
+                }
+                ocrPrecheck={ocrPrecheck}
               />
             )}
-            {currentStep === 4 && <Step4RateMapping data={formData} updateData={updateFormData} />}
+            {currentStep === 4 && (
+              <Step4RateMapping
+                data={formData}
+                updateData={updateFormData}
+                ocrPrecheck={ocrPrecheck}
+              />
+            )}
             {currentStep === 5 && (
               <Step5Review
                 data={formData}
@@ -202,15 +218,31 @@ export function RequestWizard({ initialRequest, returnPath, prefillUserId }: Req
         </CardContent>
 
         {/* Footer Actions */}
-        <CardFooter className="border-t bg-muted/5 p-6 flex justify-between items-center rounded-b-xl">
-          <Button
-            variant="ghost"
-            onClick={handlePrev}
-            disabled={currentStep === 1 || isSubmitting}
-            className="gap-2 min-w-[100px]"
-          >
-            <ChevronLeft className="w-4 h-4" /> ย้อนกลับ
-          </Button>
+        <CardFooter className="border-t bg-muted/5 p-6 grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-b-xl">
+          <div className="flex flex-col items-start gap-1">
+            <Button
+              variant="ghost"
+              onClick={handlePrev}
+              disabled={currentStep === 1 || isSubmitting}
+              className="gap-2 min-w-[100px]"
+            >
+              <ChevronLeft className="w-4 h-4" /> ย้อนกลับ
+            </Button>
+          </div>
+
+          <div className="min-h-5 text-center">
+            {autosaveStatus === 'saving' ? (
+              <p className="text-xs text-muted-foreground leading-5">กำลังบันทึกฉบับร่างอัตโนมัติ...</p>
+            ) : autosaveStatus === 'saved' && autosaveLastSavedAt ? (
+              <p className="text-xs text-emerald-700 leading-5">
+                บันทึกล่าสุด {formatThaiDateTime(autosaveLastSavedAt)}
+              </p>
+            ) : autosaveStatus === 'error' ? (
+              <p className="text-xs text-destructive leading-5">บันทึกฉบับร่างไม่สำเร็จ</p>
+            ) : (
+              <p className="text-xs text-muted-foreground leading-5">{idleAutosaveHint}</p>
+            )}
+          </div>
 
           {currentStep === steps.length ? (
             <TooltipProvider>

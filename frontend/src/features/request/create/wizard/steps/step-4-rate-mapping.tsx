@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ThaiDateField } from '@/components/thai-date-field';
 import { RequestFormData } from '@/types/request.types';
+import type { RequestWithDetails } from '@/types/request.types';
 import {
   CheckCircle2,
   AlertCircle,
@@ -28,6 +29,7 @@ import {
   PROFESSION_CODE_ALIASES,
   resolveProfessionLabel,
 } from '@/shared/constants/profession';
+import { normalizeOcrAnalysisText } from '@/features/request/detail/utils';
 
 // Interfaces
 interface Criterion {
@@ -50,6 +52,76 @@ interface ProfessionDef {
   groups: ProfessionGroup[];
 }
 
+const normalizeToken = (value: unknown): string => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  return raw.replace(/^item/i, '').replace(/_/g, '.').trim();
+};
+
+const toPositiveNumber = (value: unknown): number | null => {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const normalizeMatchText = (value: unknown): string => {
+  const text = normalizeOcrAnalysisText(String(value ?? ''))
+    .toLowerCase()
+    .replace(/[^\u0E00-\u0E7Fa-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text;
+};
+
+const buildKeywordSet = (value: string): Set<string> => {
+  return new Set(
+    value
+      .split(' ')
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3),
+  );
+};
+
+const scoreTextMatch = (candidate: string, ocrText: string, ocrKeywords: Set<string>): number => {
+  const normalized = normalizeMatchText(candidate);
+  if (!normalized) return 0;
+
+  let score = 0;
+  const candidateTokens = buildKeywordSet(normalized);
+  for (const token of candidateTokens) {
+    if (ocrKeywords.has(token)) {
+      score += token.length >= 5 ? 3 : 2;
+      continue;
+    }
+    if (ocrText.includes(token)) {
+      score += 1;
+    }
+  }
+  return score;
+};
+
+const scoreGroupByHint = (
+  group: ProfessionGroup,
+  hintText: string,
+  hintKeywords: Set<string>,
+): number => {
+  let score = scoreTextMatch(group.name, hintText, hintKeywords);
+  for (const criterion of group.criteria ?? []) {
+    score += scoreTextMatch(
+      `${criterion.label ?? ''} ${criterion.description ?? ''}`,
+      hintText,
+      hintKeywords,
+    );
+    for (const sub of criterion.subCriteria ?? []) {
+      score += scoreTextMatch(
+        `${sub.label ?? ''} ${sub.description ?? ''}`,
+        hintText,
+        hintKeywords,
+      );
+    }
+  }
+  return score;
+};
+
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   DOCTOR: Stethoscope,
   DENTIST: Smile,
@@ -61,6 +133,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 interface Step4Props {
   data: RequestFormData;
   updateData: (field: keyof RequestFormData, value: unknown) => void;
+  ocrPrecheck?: RequestWithDetails['ocr_precheck'];
 }
 
 // UI Helper: Selection Step Block
@@ -120,7 +193,7 @@ const SelectionStep = ({
   );
 };
 
-export function Step4RateMapping({ data, updateData }: Step4Props) {
+export function Step4RateMapping({ data, updateData, ocrPrecheck }: Step4Props) {
   const { data: hierarchyData, isLoading: isHeirarchyLoading } = useRateHierarchy();
   const isLoading = isHeirarchyLoading;
 
@@ -179,6 +252,8 @@ export function Step4RateMapping({ data, updateData }: Step4Props) {
   }, [selectedProfCode, effectiveProfData]);
   const activeProfessionId = effectiveProfData?.id ?? selectedProfCode;
   const previousProfessionRef = useRef<string>('');
+  const autoSelectByProfessionRef = useRef<string>('');
+  const autoSelectCriteriaRef = useRef<string>('');
 
   useEffect(() => {
     if (!activeProfessionId) return;
@@ -298,7 +373,280 @@ export function Step4RateMapping({ data, updateData }: Step4Props) {
   const handleChoiceSelect = (choice: string | null) => setSelectedChoice(choice);
   const handleReset = () => {
     handleGroupSelect(null);
+    autoSelectByProfessionRef.current = '';
   };
+
+  const ocrSuggestion = useMemo(() => {
+    const results = ocrPrecheck?.results ?? [];
+    const textHints: string[] = [];
+    for (const result of results) {
+      const fields = (result?.fields ?? {}) as Record<string, unknown>;
+      const groupNo = toPositiveNumber(fields.group_no ?? fields.groupNo ?? fields.group);
+      const itemNo = normalizeToken(fields.item_no ?? fields.itemNo ?? fields.item);
+      const subItemNo = normalizeToken(
+        fields.sub_item_no ?? fields.subItemNo ?? fields.sub_item ?? fields.subItem,
+      );
+      const amount = toPositiveNumber(
+        fields.amount ?? fields.requested_amount ?? fields.requestedAmount,
+      );
+      for (const key of ['section_title', 'duties', 'department', 'subject', 'main_duty']) {
+        const value = normalizeMatchText(fields[key]);
+        if (value) {
+          textHints.push(value);
+        }
+      }
+      const markdownHint = normalizeMatchText(result?.markdown);
+      if (markdownHint) {
+        textHints.push(markdownHint.slice(0, 1200));
+      }
+      if (groupNo !== null || itemNo || subItemNo || amount !== null) {
+        return {
+          groupNo,
+          itemNo,
+          subItemNo,
+          amount,
+          textHint: textHints.join(' '),
+        };
+      }
+    }
+    return { groupNo: null, itemNo: '', subItemNo: '', amount: null, textHint: textHints.join(' ') };
+  }, [ocrPrecheck?.results]);
+
+  const findBestCriteriaFromOcr = (
+    group: ProfessionGroup,
+    suggestion: {
+      itemNo: string;
+      subItemNo: string;
+      textHint: string;
+    },
+  ): { criteria: Criterion | null; subCriteria: Criterion | null } => {
+    let nextCriteria: Criterion | null = null;
+    let nextSubCriteria: Criterion | null = null;
+    const normalizedItem = normalizeToken(suggestion.itemNo);
+    const normalizedSubItem = normalizeToken(suggestion.subItemNo);
+
+    if (normalizedItem && (group.criteria?.length ?? 0) > 0) {
+      nextCriteria =
+        group.criteria.find(
+          (criterion) => normalizeToken(criterion.id) === normalizedItem,
+        ) ?? null;
+
+      if (
+        nextCriteria &&
+        normalizedSubItem &&
+        (nextCriteria.subCriteria?.length ?? 0) > 0
+      ) {
+        nextSubCriteria =
+          nextCriteria.subCriteria?.find(
+            (sub) => normalizeToken(sub.id) === normalizedSubItem,
+          ) ?? null;
+      }
+    }
+
+    if (!nextCriteria && suggestion.textHint && (group.criteria?.length ?? 0) > 0) {
+      const hintText = normalizeMatchText(suggestion.textHint);
+      const hintKeywords = buildKeywordSet(hintText);
+      let best: { score: number; criterion: Criterion } | null = null;
+      let secondBestScore = 0;
+      for (const criterion of group.criteria) {
+        const score = scoreTextMatch(
+          `${criterion.label ?? ''} ${criterion.description ?? ''}`,
+          hintText,
+          hintKeywords,
+        );
+        if (!best || score > best.score) {
+          secondBestScore = best?.score ?? 0;
+          best = { score, criterion };
+        } else if (score > secondBestScore) {
+          secondBestScore = score;
+        }
+      }
+      if (
+        best &&
+        best.score > 0 &&
+        (best.score > secondBestScore || (secondBestScore === 0 && best.score >= 1))
+      ) {
+        nextCriteria = best.criterion;
+      }
+    }
+
+    if (
+      nextCriteria &&
+      !nextSubCriteria &&
+      suggestion.textHint &&
+      (nextCriteria.subCriteria?.length ?? 0) > 0
+    ) {
+      const hintText = normalizeMatchText(suggestion.textHint);
+      const hintKeywords = buildKeywordSet(hintText);
+      let best: { score: number; criterion: Criterion } | null = null;
+      let secondBestScore = 0;
+      for (const sub of nextCriteria.subCriteria ?? []) {
+        const score = scoreTextMatch(
+          `${sub.label ?? ''} ${sub.description ?? ''}`,
+          hintText,
+          hintKeywords,
+        );
+        if (!best || score > best.score) {
+          secondBestScore = best?.score ?? 0;
+          best = { score, criterion: sub };
+        } else if (score > secondBestScore) {
+          secondBestScore = score;
+        }
+      }
+      if (
+        best &&
+        best.score > 0 &&
+        (best.score > secondBestScore || (secondBestScore === 0 && best.score >= 1))
+      ) {
+        nextSubCriteria = best.criterion;
+      }
+    }
+
+    if (!nextCriteria && (group.criteria?.length ?? 0) > 0) {
+      nextCriteria = group.criteria[0] ?? null;
+    }
+
+    if (
+      nextCriteria &&
+      !nextSubCriteria &&
+      (nextCriteria.subCriteria?.length ?? 0) > 0
+    ) {
+      nextSubCriteria = nextCriteria.subCriteria?.[0] ?? null;
+    }
+
+    return { criteria: nextCriteria, subCriteria: nextSubCriteria };
+  };
+
+  useEffect(() => {
+    if (!effectiveProfData || selectedGroup || data.rateMapping?.groupId) return;
+
+    const profileKey = `${effectiveProfData.id}:${effectiveProfData.groups.length}`;
+    if (autoSelectByProfessionRef.current === profileKey) return;
+
+    let nextGroup: ProfessionGroup | null = null;
+    if (ocrSuggestion.groupNo !== null) {
+      nextGroup =
+        effectiveProfData.groups.find((group) => {
+          const groupDigits = Number((group.id ?? '').toString().match(/\d+/)?.[0] ?? '0');
+          return groupDigits === ocrSuggestion.groupNo;
+        }) ?? null;
+    }
+
+    const suggestedAmount = ocrSuggestion.amount ?? (data.rateMapping?.amount ?? 0);
+    if (!nextGroup && suggestedAmount > 0) {
+      const matchedByAmount = effectiveProfData.groups.filter(
+        (group) => Number(group.rate ?? 0) === Number(suggestedAmount),
+      );
+      if (matchedByAmount.length === 1) {
+        nextGroup = matchedByAmount[0];
+      }
+    }
+
+    if (!nextGroup && ocrSuggestion.textHint && effectiveProfData.groups.length > 1) {
+      const hintText = normalizeMatchText(ocrSuggestion.textHint);
+      const hintKeywords = buildKeywordSet(hintText);
+      const groupScores = effectiveProfData.groups
+        .map((group) => ({
+          group,
+          score: scoreGroupByHint(group, hintText, hintKeywords),
+        }))
+        .sort((left, right) => right.score - left.score);
+
+      const top = groupScores[0];
+      const runnerUp = groupScores[1];
+      if (
+        top &&
+        top.score >= 3 &&
+        (!runnerUp || top.score >= (runnerUp.score + 2))
+      ) {
+        nextGroup = top.group;
+      }
+    }
+
+    // Do not auto-fallback to first group when OCR/DB mapping is ambiguous.
+
+    if (!nextGroup) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      const { criteria: nextCriteria, subCriteria: nextSubCriteria } = findBestCriteriaFromOcr(
+        nextGroup,
+        {
+          itemNo: ocrSuggestion.itemNo,
+          subItemNo: ocrSuggestion.subItemNo,
+          textHint: ocrSuggestion.textHint,
+        },
+      );
+
+      setSelectedGroup(nextGroup);
+      setSelectedCriteria(nextCriteria);
+      setSelectedSubCriteria(nextSubCriteria);
+      setSelectedChoice(null);
+      writeRateMapping({
+        group: nextGroup,
+        criteria: nextCriteria,
+        subCriteria: nextSubCriteria,
+      });
+      // Mark as auto-selected only after applying selection successfully.
+      autoSelectByProfessionRef.current = profileKey;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    data.rateMapping?.amount,
+    data.rateMapping?.groupId,
+    effectiveProfData,
+    ocrSuggestion,
+    selectedGroup,
+  ]);
+
+  useEffect(() => {
+    if (!selectedGroup || selectedCriteria) return;
+    if (!ocrSuggestion.itemNo && !ocrSuggestion.subItemNo && !ocrSuggestion.textHint) return;
+
+    const key = [
+      selectedGroup.id,
+      normalizeToken(ocrSuggestion.itemNo),
+      normalizeToken(ocrSuggestion.subItemNo),
+      normalizeMatchText(ocrSuggestion.textHint).slice(0, 300),
+    ].join('|');
+    if (!key || autoSelectCriteriaRef.current === key) return;
+
+    const { criteria: nextCriteria, subCriteria: nextSubCriteria } = findBestCriteriaFromOcr(
+      selectedGroup,
+      {
+        itemNo: ocrSuggestion.itemNo,
+        subItemNo: ocrSuggestion.subItemNo,
+        textHint: ocrSuggestion.textHint,
+      },
+    );
+    if (!nextCriteria) return;
+
+    autoSelectCriteriaRef.current = key;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setSelectedCriteria(nextCriteria);
+      setSelectedSubCriteria(nextSubCriteria);
+      setSelectedChoice(null);
+      writeRateMapping({
+        group: selectedGroup,
+        criteria: nextCriteria,
+        subCriteria: nextSubCriteria,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    ocrSuggestion.itemNo,
+    ocrSuggestion.subItemNo,
+    ocrSuggestion.textHint,
+    selectedCriteria,
+    selectedGroup,
+  ]);
 const renderMoney = (amount: number) => formatThaiNumber(amount) + ' บาท';
 
   if (isLoading)

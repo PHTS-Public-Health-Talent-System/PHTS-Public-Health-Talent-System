@@ -1,6 +1,8 @@
 /**
  * src/modules/request/read/services/query.service.ts
  */
+import path from 'node:path';
+import { stat } from 'node:fs/promises';
 import {
   RequestStatus,
   RequestAttachment,
@@ -27,6 +29,32 @@ import { AuthorizationError, NotFoundError } from '@/shared/utils/errors.js';
 // ============================================================================
 
 export class RequestQueryService {
+  private async resolveAttachmentFileSize(
+    filePath?: string | null,
+    fallbackSize?: unknown,
+  ): Promise<number | null> {
+    const fallbackNumber = Number(fallbackSize);
+    if (Number.isFinite(fallbackNumber) && fallbackNumber > 0) {
+      return fallbackNumber;
+    }
+
+    const normalizedPath = String(filePath ?? '').trim();
+    if (!normalizedPath) {
+      return null;
+    }
+
+    const absolutePath = path.isAbsolute(normalizedPath)
+      ? normalizedPath
+      : path.join(process.cwd(), normalizedPath);
+
+    try {
+      const fileStat = await stat(absolutePath);
+      return Number.isFinite(fileStat.size) ? fileStat.size : null;
+    } catch {
+      return null;
+    }
+  }
+
   private resolveRequesterLicenseStatus(reqAny: any):
     | "ACTIVE"
     | "EXPIRED"
@@ -255,25 +283,35 @@ export class RequestQueryService {
       requestRepository.findEligibilityOcrPrecheck(eligibilityId),
     ]);
 
-    return {
-      ...row,
-      attachments: attachments.map((att: any) => ({
+    const requestAttachments = await Promise.all(
+      attachments.map(async (att: any) => ({
         attachment_id: att.attachment_id,
         request_id: att.request_id,
         file_type: att.file_type,
         file_path: att.file_path,
         file_name: att.file_name,
+        file_size: await this.resolveAttachmentFileSize(att.file_path, att.file_size),
         uploaded_at: att.uploaded_at,
       })),
-      eligibility_attachments: eligibilityAttachments.map((att: any) => ({
+    );
+
+    const directEligibilityAttachments = await Promise.all(
+      eligibilityAttachments.map(async (att: any) => ({
         attachment_id: att.attachment_id,
         eligibility_id: att.eligibility_id,
         file_type: att.file_type,
         file_path: att.file_path,
         file_name: att.file_name,
+        file_size: await this.resolveAttachmentFileSize(att.file_path, (att as any).file_size),
         uploaded_by: att.uploaded_by,
         uploaded_at: att.uploaded_at,
       })),
+    );
+
+    return {
+      ...row,
+      attachments: requestAttachments,
+      eligibility_attachments: directEligibilityAttachments,
       license: license
         ? {
             license_id: (license as any).license_id,
@@ -590,6 +628,20 @@ export class RequestQueryService {
 
     // Map Entity to Domain Object using helper
     const mappedRequest = mapRequestRow(request);
+    const requestAttachments = await Promise.all(
+      attachments.map(async (att) => ({
+        attachment_id: att.attachment_id,
+        request_id: att.request_id,
+        file_type: att.file_type,
+        file_path: att.file_path,
+        file_name: att.file_name,
+        original_filename: att.file_name,
+        file_size: await this.resolveAttachmentFileSize(att.file_path, att.file_size),
+        mime_type: att.mime_type,
+        uploaded_at: att.uploaded_at,
+      })),
+    );
+
     return {
       ...mappedRequest,
       linked_eligibility: linkedEligibility
@@ -617,17 +669,7 @@ export class RequestQueryService {
                 : ((latestVerificationSnapshot as any).snapshot_data ?? null),
           }
         : null,
-      attachments: attachments.map((att) => ({
-        attachment_id: att.attachment_id,
-        request_id: att.request_id,
-        file_type: att.file_type,
-        file_path: att.file_path,
-        file_name: att.file_name,
-        original_filename: att.file_name,
-        file_size: att.file_size,
-        mime_type: att.mime_type,
-        uploaded_at: att.uploaded_at,
-      })) as RequestAttachment[],
+      attachments: requestAttachments as RequestAttachment[],
       actions: actionsWithActor,
     };
   }

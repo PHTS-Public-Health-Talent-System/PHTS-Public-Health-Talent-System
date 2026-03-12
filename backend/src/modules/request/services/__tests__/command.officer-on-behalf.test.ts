@@ -112,6 +112,53 @@ describe("RequestCommandService officer on behalf flow", () => {
     );
   });
 
+  it("queues OCR immediately after creating draft with attachments", async () => {
+    mockOfficerTargetCitizenLookup();
+    jest.spyOn(requestRepository, "findSignatureIdByUserId").mockResolvedValue(null);
+    jest.spyOn(requestRepository, "findEmployeeProfile").mockResolvedValue({
+      citizen_id: "1100702579863",
+    } as any);
+    jest.spyOn(requestRepository, "create").mockResolvedValue(777);
+    jest.spyOn(requestRepository, "updateRequestNo").mockResolvedValue();
+    jest.spyOn(requestRepository, "insertAttachment").mockResolvedValue();
+    jest.spyOn(requestQueryService, "getRequestDetails").mockResolvedValue({
+      request_id: 777,
+    } as any);
+    jest.spyOn(OcrRequestRepository, "upsertRequestPrecheck").mockResolvedValue();
+
+    const { enqueueRequestOcrPrecheck } = jest.requireMock("@/modules/ocr/services/ocr-precheck.service.js");
+
+    await service.createRequest(
+      9001,
+      "PTS_OFFICER",
+      {
+        target_user_id: 2001,
+        personnel_type: "CIVIL_SERVANT" as any,
+        request_type: RequestType.NEW_ENTRY,
+        requested_amount: 1500,
+        effective_date: "2026-03-03",
+      } as any,
+      [
+        {
+          fieldname: "files",
+          originalname: "memo.pdf",
+          path: "uploads/req/memo.pdf",
+        } as Express.Multer.File,
+      ],
+      undefined,
+    );
+
+    expect(OcrRequestRepository.upsertRequestPrecheck).toHaveBeenCalledWith(
+      777,
+      expect.objectContaining({
+        status: "queued",
+        source: "AUTO_ON_ATTACHMENT_UPLOAD",
+      }),
+      connection as any,
+    );
+    expect(enqueueRequestOcrPrecheck).toHaveBeenCalledWith(777);
+  });
+
   it("submits officer-created request by approving immediately and creating eligibility", async () => {
     mockOfficerTargetCitizenLookup();
     jest
@@ -219,15 +266,8 @@ describe("RequestCommandService officer on behalf flow", () => {
       }),
       connection as any,
     );
-    expect(OcrRequestRepository.upsertRequestPrecheck).toHaveBeenCalledWith(
-      501,
-      expect.objectContaining({
-        status: "queued",
-        source: "AUTO_ON_SUBMIT",
-      }),
-      connection as any,
-    );
-    expect(enqueueRequestOcrPrecheck).toHaveBeenCalledWith(501);
+    expect(OcrRequestRepository.upsertRequestPrecheck).not.toHaveBeenCalled();
+    expect(enqueueRequestOcrPrecheck).not.toHaveBeenCalled();
     expect(result.status).toBe(RequestStatus.APPROVED);
   });
 
@@ -363,6 +403,49 @@ describe("RequestCommandService officer on behalf flow", () => {
       }),
       connection as any,
     );
+  });
+
+  it("queues OCR immediately after updating draft with newly attached files", async () => {
+    jest.spyOn(requestRepository, "findById").mockResolvedValue({
+      request_id: 888,
+      user_id: 2001,
+      status: RequestStatus.DRAFT,
+      submission_data: {},
+    } as any);
+    jest.spyOn(requestRepository, "update").mockResolvedValue();
+    jest.spyOn(requestRepository, "insertAttachment").mockResolvedValue();
+    jest.spyOn(requestQueryService, "getRequestDetails").mockResolvedValue({
+      request_id: 888,
+    } as any);
+    jest.spyOn(OcrRequestRepository, "upsertRequestPrecheck").mockResolvedValue();
+    const { enqueueRequestOcrPrecheck } = jest.requireMock("@/modules/ocr/services/ocr-precheck.service.js");
+
+    await service.updateRequest(
+      888,
+      2001,
+      "USER",
+      {
+        requested_amount: 2500,
+      } as any,
+      [
+        {
+          fieldname: "files",
+          originalname: "new-proof.pdf",
+          path: "uploads/req/new-proof.pdf",
+        } as Express.Multer.File,
+      ],
+      undefined,
+    );
+
+    expect(OcrRequestRepository.upsertRequestPrecheck).toHaveBeenCalledWith(
+      888,
+      expect.objectContaining({
+        status: "queued",
+        source: "AUTO_ON_ATTACHMENT_UPLOAD",
+      }),
+      connection as any,
+    );
+    expect(enqueueRequestOcrPrecheck).toHaveBeenCalledWith(888);
   });
 
   it("allows rate mapping update for legacy on-behalf draft identified from create audit log", async () => {

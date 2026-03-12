@@ -8,6 +8,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import {
   createRequest,
   updateRequest,
+  getRequestById,
   submitRequest,
   updateRateMapping,
   confirmAttachments as confirmAttachmentsApi,
@@ -15,6 +16,103 @@ import {
 } from "@/features/request/core/api";
 import { toast } from "sonner";
 import { mapRequestToFormData } from "./request-form-mapper";
+import { parseAssignmentOrderSummary } from "@/features/request/detail/utils/requestDetail.assignmentOrder";
+
+const DRAFT_AUTOSAVE_DELAY_MS = 700;
+const OCR_POLL_INTERVAL_MS = 2500;
+
+const THAI_MONTH_TO_INDEX: Record<string, number> = {
+  มกราคม: 1,
+  กุมภาพันธ์: 2,
+  มีนาคม: 3,
+  เมษายน: 4,
+  พฤษภาคม: 5,
+  มิถุนายน: 6,
+  กรกฎาคม: 7,
+  สิงหาคม: 8,
+  กันยายน: 9,
+  ตุลาคม: 10,
+  พฤศจิกายน: 11,
+  ธันวาคม: 12,
+};
+
+const toArabicDigits = (value: string): string => {
+  const thaiDigits = "๐๑๒๓๔๕๖๗๘๙";
+  return value.replace(/[๐-๙]/g, (char) => String(thaiDigits.indexOf(char)));
+};
+
+const parseThaiDateToYmd = (value: string): string | null => {
+  const normalized = toArabicDigits(String(value ?? ""))
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return null;
+
+  const match = normalized.match(
+    /([0-9]{1,2})\s*(มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)\s*(?:พ\.ศ\.\s*)?([0-9]{4})/,
+  );
+  if (!match?.[1] || !match[2] || !match[3]) return null;
+
+  const day = Number(match[1]);
+  const month = THAI_MONTH_TO_INDEX[match[2]] ?? 0;
+  const buddhistYear = Number(match[3]);
+  if (!Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(buddhistYear)) {
+    return null;
+  }
+
+  const year = buddhistYear > 2400 ? buddhistYear - 543 : buddhistYear;
+  if (day < 1 || day > 31 || month < 1 || month > 12 || year < 1900 || year > 2600) {
+    return null;
+  }
+
+  const yyyy = String(year).padStart(4, "0");
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const extractEffectiveDateFromOcrPrecheck = (
+  ocrPrecheck: RequestWithDetails["ocr_precheck"],
+  personName: string,
+): string | null => {
+  const results = ocrPrecheck?.results ?? [];
+  for (const result of results) {
+    const fields = (result?.fields ?? {}) as Record<string, unknown>;
+    const directValue =
+      String(
+        fields.effective_date ??
+          fields.order_effective_date ??
+          fields.start_date ??
+          fields.effectiveDate ??
+          fields.orderEffectiveDate ??
+          "",
+      ).trim();
+    const parsedDirect = directValue ? parseThaiDateToYmd(directValue) : null;
+    if (parsedDirect) return parsedDirect;
+
+    const markdown = String(result?.markdown ?? "").trim();
+    if (!markdown) continue;
+    const summary = parseAssignmentOrderSummary(
+      {
+        fileName: String(result?.name ?? ""),
+        markdown,
+      },
+      personName,
+    );
+    const parsedFromSummary = summary?.effectiveDate
+      ? parseThaiDateToYmd(summary.effectiveDate)
+      : null;
+    if (parsedFromSummary) return parsedFromSummary;
+
+    const directEffectiveLine = markdown.match(
+      /(?:ทั้งนี้\s*)?(?:ตั้งแต่วันที่|ต้งแต่วันที่)\s+([^\n]+)/,
+    )?.[1];
+    const parsedFromLine = directEffectiveLine
+      ? parseThaiDateToYmd(directEffectiveLine)
+      : null;
+    if (parsedFromLine) return parsedFromLine;
+  }
+  return null;
+};
 
 const detectProfessionFromPosition = (positionName: string): string | null => {
   const pos = positionName.trim();
@@ -93,10 +191,23 @@ export function useRequestForm(options?: {
   const [formData, setFormData] = useState<RequestFormData>(INITIAL_FORM_DATA);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [autosaveLastSavedAt, setAutosaveLastSavedAt] = useState<string | null>(null);
+  const [ocrPrecheck, setOcrPrecheck] = useState<RequestWithDetails["ocr_precheck"]>(
+    options?.initialRequest?.ocr_precheck ?? null,
+  );
   const returnPath = options?.returnPath ?? "/user/my-requests";
   const [draftRequestId, setDraftRequestId] = useState<number | null>(null);
   const [prefillOriginal, setPrefillOriginal] = useState<typeof prefill | null>(null);
   const prefillCitizenRef = useRef<string | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autosaveInFlightRef = useRef(false);
+  const autosaveRequeueRef = useRef(false);
+  const autosaveEnabledRef = useRef(Boolean(options?.initialRequest));
+  const ocrPollInFlightRef = useRef(false);
+  const latestFormDataRef = useRef<RequestFormData>(INITIAL_FORM_DATA);
+  const latestDraftRequestIdRef = useRef<number | null>(null);
+  const latestSubmittingRef = useRef(false);
   const isOfficerOnBehalfFlow = Boolean(
     options?.prefillUserId && user?.role === "PTS_OFFICER" && !options?.initialRequest,
   );
@@ -106,16 +217,133 @@ export function useRequestForm(options?: {
     setFormData((prev) => ({ ...prev, [key]: value }));
   }, []);
 
+  const buildFormData = (source: RequestFormData, includeSignature = true): FormData => {
+    const fd = new FormData();
+
+    // Map wizard requestType to backend request_type
+    const typeMap: Record<string, string> = {
+      NEW: "NEW_ENTRY",
+      EDIT: "EDIT_INFO_SAME_RATE",
+      CHANGE_RATE: "EDIT_INFO_NEW_RATE",
+    };
+    fd.append("request_type", typeMap[source.requestType] ?? source.requestType);
+    fd.append("personnel_type", source.employeeType);
+    const submissionData = {
+      title: source.title,
+      first_name: source.firstName,
+      last_name: source.lastName,
+      position_name: source.positionName,
+      department: source.department,
+      sub_department: source.subDepartment,
+      employment_region: source.employmentRegion,
+      rate_mapping: {
+        groupId: source.rateMapping.groupId,
+        itemId: source.rateMapping.itemId,
+        subItemId: source.rateMapping.subItemId,
+        amount: source.rateMapping.amount,
+        rateId: source.rateMapping.rateId,
+        professionCode: source.rateMapping.professionCode,
+      },
+      signature_mode: source.signatureMode ?? null,
+      signature_draft_data_url:
+        source.signatureMode === "NEW" ? source.signature ?? null : null,
+    };
+    fd.append("submission_data", JSON.stringify(submissionData));
+    if (options?.prefillUserId) {
+      fd.append("target_user_id", String(options.prefillUserId));
+    }
+    fd.append("citizen_id", source.citizenId);
+    fd.append("position_number", source.positionNumber);
+    fd.append("department_group", source.department);
+    fd.append("main_duty", source.missionGroup);
+    fd.append("requested_amount", String(source.rateMapping.amount ?? 0));
+    fd.append(
+      "effective_date",
+      source.effectiveDate || new Date().toISOString().split("T")[0]
+    );
+    fd.append("work_attributes", JSON.stringify(source.workAttributes));
+
+    source.files.forEach((file) => {
+      fd.append("files", file);
+    });
+
+    if (includeSignature && source.signatureMode === "NEW" && source.signature) {
+      const byteString = atob(source.signature.split(",")[1] ?? "");
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([ab], { type: "image/png" });
+      fd.append("applicant_signature", blob, `signature_${Date.now()}.png`);
+    }
+
+    return fd;
+  };
+
+  const persistDraftSnapshot = async (): Promise<void> => {
+    if (!autosaveEnabledRef.current) return;
+    if (latestSubmittingRef.current) return;
+    if (isOfficerOnBehalfFlow && !latestDraftRequestIdRef.current) return;
+
+    if (autosaveInFlightRef.current) {
+      autosaveRequeueRef.current = true;
+      return;
+    }
+
+    autosaveInFlightRef.current = true;
+    setAutosaveStatus("saving");
+    try {
+      const form = buildFormData(latestFormDataRef.current, false);
+      const existingDraftId = latestDraftRequestIdRef.current;
+      const request = existingDraftId
+        ? await updateRequest(existingDraftId, form)
+        : await createRequest(form);
+
+      if (!existingDraftId) {
+        setDraftRequestId(request.request_id);
+      }
+      setFormDataField("id", String(request.request_id));
+      setFormDataField("attachments", request.attachments ?? []);
+      setOcrPrecheck(request.ocr_precheck ?? null);
+      if ((latestFormDataRef.current.files ?? []).length > 0) {
+        setFormDataField("files", []);
+      }
+      const now = new Date().toISOString();
+      setAutosaveLastSavedAt(now);
+      setAutosaveStatus("saved");
+    } catch (error) {
+      console.error("[DraftAutosave] failed:", error);
+      setAutosaveStatus("error");
+    } finally {
+      autosaveInFlightRef.current = false;
+      if (autosaveRequeueRef.current) {
+        autosaveRequeueRef.current = false;
+        void persistDraftSnapshot();
+      }
+    }
+  };
+
   // Public updater used by UI. Marks the field as touched so subsequent prefill won't overwrite it.
-  const updateFormData = useCallback(
-    (key: keyof RequestFormData, value: unknown) => {
-      touchedKeysRef.current.add(key);
-      setFormDataField(key, value);
-    },
-    [setFormDataField],
-  );
+  const updateFormData = (key: keyof RequestFormData, value: unknown) => {
+    touchedKeysRef.current.add(key);
+    setFormDataField(key, value);
+    if (
+      autosaveEnabledRef.current &&
+      (key === "rateMapping" || key === "signatureMode" || key === "signature")
+    ) {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+      autosaveTimerRef.current = setTimeout(() => {
+        autosaveTimerRef.current = null;
+        void persistDraftSnapshot();
+      }, DRAFT_AUTOSAVE_DELAY_MS);
+    }
+  };
 
   const handleUploadFile = (file: File) => {
+    autosaveEnabledRef.current = true;
     setFormData((prev) => ({
       ...prev,
       // Prevent duplicate selections in the same client session.
@@ -128,6 +356,13 @@ export function useRequestForm(options?: {
         ? prev.files
         : [...prev.files, file],
     }));
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveTimerRef.current = null;
+      void persistDraftSnapshot();
+    }, DRAFT_AUTOSAVE_DELAY_MS);
   };
 
   const removeFile = (index: number) => {
@@ -135,6 +370,15 @@ export function useRequestForm(options?: {
       ...prev,
       files: prev.files.filter((_, i) => i !== index),
     }));
+    if (autosaveEnabledRef.current) {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+      autosaveTimerRef.current = setTimeout(() => {
+        autosaveTimerRef.current = null;
+        void persistDraftSnapshot();
+      }, DRAFT_AUTOSAVE_DELAY_MS);
+    }
   };
 
   const removeExistingAttachment = async (attachmentId: number) => {
@@ -143,6 +387,7 @@ export function useRequestForm(options?: {
     try {
       const updated = await deleteRequestAttachment(draftRequestId, attachmentId);
       setFormDataField("attachments", updated.attachments ?? []);
+      setOcrPrecheck(updated.ocr_precheck ?? null);
     } catch (error: unknown) {
       const msg =
         error instanceof Error ? error.message : "เกิดข้อผิดพลาดในการลบไฟล์แนบ";
@@ -167,10 +412,83 @@ export function useRequestForm(options?: {
       files: [], // Reset local files on load, attachments handle existing
     }));
     setDraftRequestId(options.initialRequest.request_id);
+    setOcrPrecheck(options.initialRequest.ocr_precheck ?? null);
+    autosaveEnabledRef.current = true;
     initializedRef.current = true;
   }, [options?.initialRequest]);
 
-  // ... (prefill effects remain same) ...
+  useEffect(() => {
+    latestFormDataRef.current = formData;
+  }, [formData]);
+
+  useEffect(() => {
+    latestDraftRequestIdRef.current = draftRequestId;
+  }, [draftRequestId]);
+
+  useEffect(() => {
+    latestSubmittingRef.current = isSubmitting;
+  }, [isSubmitting]);
+
+  useEffect(() => {
+    if (touchedKeysRef.current.has("effectiveDate")) return;
+    const personName = `${formData.firstName ?? ""} ${formData.lastName ?? ""}`.trim();
+    const ocrEffectiveDate = extractEffectiveDateFromOcrPrecheck(ocrPrecheck, personName);
+    if (!ocrEffectiveDate) return;
+    if (formData.effectiveDate === ocrEffectiveDate) return;
+    setFormDataField("effectiveDate", ocrEffectiveDate);
+  }, [
+    formData.effectiveDate,
+    formData.firstName,
+    formData.lastName,
+    ocrPrecheck,
+    setFormDataField,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const status = String(ocrPrecheck?.status ?? "").toLowerCase();
+    if (!draftRequestId || !["queued", "processing"].includes(status)) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const refreshDraftOcr = async () => {
+      if (cancelled || latestSubmittingRef.current || ocrPollInFlightRef.current) {
+        return;
+      }
+      ocrPollInFlightRef.current = true;
+      try {
+        const latestRequest = await getRequestById(draftRequestId);
+        if (cancelled) return;
+        setFormDataField("attachments", latestRequest.attachments ?? []);
+        setOcrPrecheck(latestRequest.ocr_precheck ?? null);
+      } catch (error) {
+        if (!cancelled) {
+          console.error("[OcrPoll] failed:", error);
+        }
+      } finally {
+        ocrPollInFlightRef.current = false;
+      }
+    };
+
+    void refreshDraftOcr();
+    const interval = setInterval(() => {
+      void refreshDraftOcr();
+    }, OCR_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [draftRequestId, ocrPrecheck?.status, setFormDataField]);
 
   useEffect(() => {
     if (options?.initialRequest) return;
@@ -191,6 +509,10 @@ export function useRequestForm(options?: {
       ...INITIAL_FORM_DATA,
       requestType: prev.requestType,
     }));
+    setOcrPrecheck(null);
+    autosaveEnabledRef.current = false;
+    setAutosaveStatus("idle");
+    setAutosaveLastSavedAt(null);
   }, [options?.initialRequest, prefill]);
 
   useEffect(() => {
@@ -304,69 +626,6 @@ export function useRequestForm(options?: {
     setFormDataField("effectiveDate", today);
   }, [formData.effectiveDate, setFormDataField]);
 
-
-  const buildFormData = (includeSignature = true): FormData => {
-    const fd = new FormData();
-
-    // Map wizard requestType to backend request_type
-    const typeMap: Record<string, string> = {
-      NEW: "NEW_ENTRY",
-      EDIT: "EDIT_INFO_SAME_RATE",
-      CHANGE_RATE: "EDIT_INFO_NEW_RATE",
-    };
-    fd.append("request_type", typeMap[formData.requestType] ?? formData.requestType);
-    fd.append("personnel_type", formData.employeeType);
-    const submissionData = {
-      title: formData.title,
-      first_name: formData.firstName,
-      last_name: formData.lastName,
-      position_name: formData.positionName,
-      department: formData.department,
-      sub_department: formData.subDepartment,
-      employment_region: formData.employmentRegion,
-      rate_mapping: {
-        groupId: formData.rateMapping.groupId,
-        itemId: formData.rateMapping.itemId,
-        subItemId: formData.rateMapping.subItemId,
-        amount: formData.rateMapping.amount,
-        rateId: formData.rateMapping.rateId,
-        professionCode: formData.rateMapping.professionCode,
-      },
-    };
-    fd.append("submission_data", JSON.stringify(submissionData));
-    if (options?.prefillUserId) {
-      fd.append("target_user_id", String(options.prefillUserId));
-    }
-    fd.append("citizen_id", formData.citizenId);
-    fd.append("position_number", formData.positionNumber);
-    fd.append("department_group", formData.department);
-    fd.append("main_duty", formData.missionGroup);
-    fd.append("requested_amount", String(formData.rateMapping.amount ?? 0));
-    fd.append(
-      "effective_date",
-      formData.effectiveDate || new Date().toISOString().split("T")[0]
-    );
-    fd.append("work_attributes", JSON.stringify(formData.workAttributes));
-
-    // Append all files to 'files' key
-    formData.files.forEach((file) => {
-      fd.append("files", file);
-    });
-
-    if (includeSignature && formData.signatureMode === "NEW" && formData.signature) {
-      const byteString = atob(formData.signature.split(",")[1] ?? "");
-      const ab = new ArrayBuffer(byteString.length);
-      const ia = new Uint8Array(ab);
-      for (let i = 0; i < byteString.length; i++) {
-        ia[i] = byteString.charCodeAt(i);
-      }
-      const blob = new Blob([ab], { type: "image/png" });
-      fd.append("applicant_signature", blob, `signature_${Date.now()}.png`);
-    }
-
-    return fd;
-  };
-
   const confirmAttachments = async () => {
     setIsSubmitting(true);
     try {
@@ -374,7 +633,12 @@ export function useRequestForm(options?: {
         return true;
       }
 
-      const form = buildFormData(false);
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+
+      const form = buildFormData(formData, false);
       const request = draftRequestId
         ? await updateRequest(draftRequestId, form)
         : await createRequest(form);
@@ -382,6 +646,7 @@ export function useRequestForm(options?: {
       if (!draftRequestId) setDraftRequestId(request.request_id);
       setFormDataField("id", String(request.request_id));
       setFormDataField("attachments", request.attachments ?? []);
+      setOcrPrecheck(request.ocr_precheck ?? null);
       setFormDataField("files", []);
 
       const attachments = request.attachments ?? [];
@@ -402,11 +667,17 @@ export function useRequestForm(options?: {
   const submitRequestFlow = async () => {
     setIsSubmitting(true);
     try {
-      const form = buildFormData(true);
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+
+      const form = buildFormData(formData, true);
       const request = draftRequestId
         ? await updateRequest(draftRequestId, form)
         : await createRequest(form);
       setFormDataField("attachments", request.attachments ?? []);
+      setOcrPrecheck(request.ocr_precheck ?? null);
       setFormDataField("files", []);
 
       // Update rate mapping with rateId if available
@@ -452,5 +723,8 @@ export function useRequestForm(options?: {
     validateStep,
     confirmAttachments,
     prefillOriginal,
+    autosaveStatus,
+    autosaveLastSavedAt,
+    ocrPrecheck,
   };
 }

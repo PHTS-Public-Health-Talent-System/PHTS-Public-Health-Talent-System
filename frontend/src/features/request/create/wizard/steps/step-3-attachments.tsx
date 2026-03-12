@@ -1,13 +1,14 @@
 'use client';
 import { CloudUpload, FileText, Lightbulb, Eye, X } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { AttachmentPreviewDialog } from '@/components/common';
-import { AttachmentList } from '@/components/common';
 import { toast } from 'sonner';
 
-import { RequestFormData } from '@/types/request.types';
+import { RequestFormData, RequestWithDetails } from '@/types/request.types';
+import { detectOcrDocumentKind, getOcrDocumentTypeLabel } from '@/features/request/detail/utils';
 
 interface Step3Props {
   data: RequestFormData;
@@ -15,7 +16,27 @@ interface Step3Props {
   onRemove: (index: number) => void;
   onRemoveExisting?: (attachmentId: number) => void;
   showExistingAttachments?: boolean;
+  ocrPrecheck?: RequestWithDetails['ocr_precheck'];
 }
+
+type OcrResult = NonNullable<
+  NonNullable<RequestWithDetails['ocr_precheck']>['results']
+>[number];
+type ExistingAttachment = NonNullable<RequestFormData['attachments']>[number];
+
+const normalizeFileKey = (value: string): string => {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized) return '';
+  const segments = normalized.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] ?? normalized;
+};
+
+const formatFileSizeLabel = (size?: number | null): string => {
+  if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) {
+    return 'ไม่ระบุขนาดไฟล์';
+  }
+  return `${(size / 1024 / 1024).toFixed(2)} MB`;
+};
 
 export function Step3Attachments({
   data,
@@ -23,11 +44,21 @@ export function Step3Attachments({
   onRemove,
   onRemoveExisting,
   showExistingAttachments = false,
+  ocrPrecheck,
 }: Step3Props) {
   const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewName, setPreviewName] = useState('');
+
+  const resolveFileUrl = (filePath: string): string => {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
+    const baseUrl = apiBase.replace(/\/api\/?$/, '');
+    const normalizedPath = filePath.includes('uploads/')
+      ? filePath.slice(filePath.indexOf('uploads/'))
+      : filePath;
+    return `${baseUrl}/${normalizedPath}`;
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -52,6 +83,65 @@ export function Step3Attachments({
     setPreviewUrl(url);
     setPreviewName(name);
     setPreviewOpen(true);
+  };
+
+  const existingAttachments = showExistingAttachments ? data.attachments ?? [] : [];
+  const dedupedExistingAttachments = useMemo(() => {
+    const byName = new Map<string, ExistingAttachment>();
+    for (const attachment of existingAttachments) {
+      const key = normalizeFileKey(attachment.file_name);
+      if (!key) continue;
+      const current = byName.get(key);
+      if (!current || attachment.attachment_id > current.attachment_id) {
+        byName.set(key, attachment);
+      }
+    }
+    return Array.from(byName.values());
+  }, [existingAttachments]);
+  const totalSelectedCount = data.files.length + dedupedExistingAttachments.length;
+  const ocrResultMap = useMemo(() => {
+    const map = new Map<string, OcrResult>();
+    for (const result of ocrPrecheck?.results ?? []) {
+      const normalizedName = String(result?.name ?? '').trim();
+      if (!normalizedName) continue;
+      const exactKey = normalizedName.toLowerCase();
+      const basenameKey = normalizeFileKey(normalizedName);
+      map.set(exactKey, result);
+      if (basenameKey && basenameKey !== exactKey) {
+        map.set(basenameKey, result);
+      }
+    }
+    return map;
+  }, [ocrPrecheck?.results]);
+
+  const getOcrLabel = (fileName: string): string | null => {
+    const exactKey = String(fileName ?? '').trim().toLowerCase();
+    const basenameKey = normalizeFileKey(fileName);
+    const result = ocrResultMap.get(exactKey) ?? ocrResultMap.get(basenameKey);
+    if (!result) return null;
+
+    const backendKind = String(result.document_kind ?? '').trim().toLowerCase();
+    const detectedKind = result.markdown
+      ? detectOcrDocumentKind({
+          fileName,
+          markdown: result.markdown,
+        })
+      : 'general';
+
+    const kind =
+      backendKind === 'general' && detectedKind !== 'general'
+        ? detectedKind
+        : backendKind || (detectedKind !== 'general' ? detectedKind : '');
+
+    switch (kind) {
+      case 'memo':
+      case 'assignment_order':
+      case 'license':
+      case 'general':
+        return getOcrDocumentTypeLabel(kind);
+      default:
+        return kind || null;
+    }
   };
 
   return (
@@ -97,16 +187,15 @@ export function Step3Attachments({
 
       {/* File Lists */}
       <div className="space-y-6">
-        {/* New Uploads */}
-        {data.files.length > 0 && (
+        {totalSelectedCount > 0 && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-base font-medium">ไฟล์ที่เลือก ({data.files.length})</Label>
+              <Label className="text-base font-medium">ไฟล์แนบ ({totalSelectedCount})</Label>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {data.files.map((file, idx) => (
                 <div
-                  key={idx}
+                  key={`local-${idx}-${file.name}`}
                   className="relative flex items-start gap-3 p-3 rounded-lg border bg-card shadow-sm hover:shadow-md transition-shadow group"
                 >
                   <div className="p-2.5 bg-primary/10 rounded-md shrink-0">
@@ -114,9 +203,7 @@ export function Step3Attachments({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate pr-6">{file.name}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      {(file.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{formatFileSizeLabel(file.size)}</p>
                     <div className="flex items-center gap-2 mt-2">
                       <button
                         onClick={() => handlePreview(URL.createObjectURL(file), file.name)}
@@ -134,27 +221,50 @@ export function Step3Attachments({
                   </button>
                 </div>
               ))}
-            </div>
-          </div>
-        )}
-
-        {/* Existing Attachments (Server) */}
-        {showExistingAttachments && data.attachments && data.attachments.length > 0 && (
-          <div className="space-y-3 pt-4 border-t border-dashed">
-            <Label className="text-base font-medium text-muted-foreground">
-              ไฟล์เดิมในระบบ ({data.attachments.length})
-            </Label>
-            <div className="opacity-80">
-              <AttachmentList
-                items={data.attachments.map((att) => ({
-                  id: att.attachment_id,
-                  name: att.file_name,
-                  type: att.file_type,
-                  path: att.file_path,
-                }))}
-                onPreview={handlePreview}
-                onDelete={onRemoveExisting}
-              />
+              {dedupedExistingAttachments.map((attachment) => {
+                const ocrLabel = getOcrLabel(attachment.file_name);
+                return (
+                  <div
+                    key={`existing-${attachment.attachment_id}`}
+                    className="relative flex items-start gap-3 p-3 rounded-lg border bg-card shadow-sm hover:shadow-md transition-shadow group"
+                  >
+                    <div className="p-2.5 bg-primary/10 rounded-md shrink-0">
+                      <FileText className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate pr-6">{attachment.file_name}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {formatFileSizeLabel(attachment.file_size)}
+                      </p>
+                      {ocrLabel ? (
+                        <div className="mt-2">
+                          <Badge variant="outline" className="text-[11px]">
+                            {ocrLabel}
+                          </Badge>
+                        </div>
+                      ) : null}
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          onClick={() =>
+                            handlePreview(resolveFileUrl(attachment.file_path), attachment.file_name)
+                          }
+                          className="text-xs text-primary hover:underline flex items-center gap-1"
+                        >
+                          <Eye className="w-3 h-3" /> ดูตัวอย่าง
+                        </button>
+                      </div>
+                    </div>
+                    {onRemoveExisting ? (
+                      <button
+                        onClick={() => onRemoveExisting(attachment.attachment_id)}
+                        className="absolute top-2 right-2 p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
