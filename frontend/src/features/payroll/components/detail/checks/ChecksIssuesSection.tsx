@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { PayoutDetail } from '@/features/payroll/api';
 import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
-import { issueBadgeClass } from '../model/detail.helpers';
 import type { PayrollRow } from '../model/detail.types';
 import { EvidenceBlock, SummaryWithBoldMoney } from './ChecksEvidence';
 import { localizePayrollText } from './checks.helpers';
@@ -284,7 +283,6 @@ export function ChecksIssuesSection({
     }
   }
 
-  const hasEnhancedFallbackDetail = fallbackRetroCards.length > 0;
   const overQuotaLeaves = (leaveImpactSummary?.leavesInPeriod ?? []).filter(
     (leave) => Boolean(leave.overQuota),
   );
@@ -297,11 +295,6 @@ export function ChecksIssuesSection({
     (sum, leave) => sum + Number(leave.deductedAmount ?? 0),
     0,
   );
-  const hasEnhancedDeductionFallback = fallbackIssues.some((issue) => issue.key === 'HAS_DEDUCTION');
-  const hasEnhancedLicenseFallback = fallbackIssues.some(
-    (issue) => issue.key === 'LICENSE_EXPIRED' || issue.key === 'LICENSE_SOON',
-  );
-  const hasEnhancedNoteFallback = fallbackIssues.some((issue) => issue.key === 'HAS_NOTE');
   const nonRetroFallbackIssues = fallbackIssues.filter(
     (issue) =>
       issue.key !== 'HAS_RETRO' &&

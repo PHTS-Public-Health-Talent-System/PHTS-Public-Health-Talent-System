@@ -91,7 +91,6 @@ export function PayrollChecksPanel({
   const conditionDeductedDays =
     dailyRate > 0 && otherLoss > 0 ? Number((otherLoss / dailyRate).toFixed(2)) : 0;
   const totalDeductedDays = Number((deductedDays + conditionDeductedDays).toFixed(2));
-  const isMixedCase = sortedRateBreakdown.length > 1 && totalDeductedDays > 0;
   const looksLikeMidMonthRateChange =
     daysInMonth > 0 &&
     Math.abs(eligibleDays - daysInMonth) < 0.01 &&
